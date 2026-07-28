@@ -73,3 +73,16 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+
+# Laravel
+backend/vendor/
+backend/.env
+backend/storage/*.key
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
