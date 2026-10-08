@@ -23,7 +23,8 @@ class AIServiceClient
         array $vehicleInfo,
         string $symptoms,
         ?string $mediaBase64 = null,
-        ?string $mediaMime = 'image/jpeg',
+        ?string $mediaMime = null,
+        string $inputType = 'text',
         array $history = [],
         ?string $requestId = null,
         ?int $userId = null
@@ -45,9 +46,9 @@ class AIServiceClient
             ],
             'diagnosis' => [
                 'symptoms' => $symptoms,
-                'input_type' => !empty($mediaBase64) ? 'image' : 'text',
+                'input_type' => $inputType,
                 'media_base64' => $mediaBase64,
-                'media_mime' => $mediaMime,
+                'media_mime' => $mediaMime ?: 'image/jpeg',
                 'history' => $history,
             ],
         ];
@@ -132,16 +133,16 @@ class AIServiceClient
             'reported' => $symptoms !== '' ? [$symptoms] : [],
             'observed' => [],
             'severity' => 'MODERATE',
-            'urgency' => 'Further inspection recommended.',
+            'urgency' => 'Please provide more detail about when the symptom occurs.',
             'possible_causes' => [
                 [
                     'cause' => 'Component inspection required',
                     'likelihood' => 'MODERATE',
-                    'reason' => 'AI Service temporarily unavailable. Physical inspection recommended.',
+                    'reason' => 'The available information is insufficient to identify a specific component.',
                 ],
             ],
             'recommended_actions' => [
-                'Consult a certified technician if the problem persists.',
+                'Provide more detail about when the symptom occurs.',
             ],
             'clarification_questions' => [
                 'When does the symptom occur?',
@@ -153,7 +154,8 @@ class AIServiceClient
             ],
             'professional_help' => [
                 'recommended' => false,
-                'reason' => 'Professional inspection recommended if symptoms persist.',
+                'requires_specialist' => false,
+                'reason' => '',
                 'severity' => 'MODERATE',
             ],
         ];

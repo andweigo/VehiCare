@@ -218,7 +218,7 @@ const MaintenanceScreen = ({ navigation }) => {
             >
               <View style={[styles.heroVehicleIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
                 <Icon
-                  name={getVehicleIconName(vehicleProfile?.vehicle_type ?? vehicleProfile?.vehicleType)}
+                  name={getVehicleIconName(vehicleProfile)}
                   size={24}
                   color={isDark ? '#F63B05' : '#C2410C'}
                 />
@@ -247,7 +247,8 @@ const MaintenanceScreen = ({ navigation }) => {
             {/* Bottom Row: Vehicle Health Score Gauge */}
             <View style={styles.healthGaugeRow}>
               <View style={styles.healthScoreBlock}>
-                <Text style={[styles.healthScoreBig, { color: theme.text }]}>
+                <Text style={[styles.healthScoreLabel, { color: theme.textSecondary }]}>HEALTH SCORE</Text>
+                <Text style={[styles.healthScoreBig, { color: scoreColor }]}>
                   {scorePercent}
                   <Text style={[styles.healthPercentSymbol, { color: scoreColor }]}>%</Text>
                 </Text>
@@ -289,6 +290,7 @@ const MaintenanceScreen = ({ navigation }) => {
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={[styles.statNumberText, { color: '#D6A23A' }]}>{dueSoonCount || 0}</Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Due Soon</Text>
+              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Routine Checks</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -296,11 +298,86 @@ const MaintenanceScreen = ({ navigation }) => {
                 {overdueCount || 0}
               </Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Overdue</Text>
+              <Text style={[styles.statSubText, { color: (overdueCount || 0) > 0 ? '#FF5A5F' : theme.textSecondary }]}>
+                {(overdueCount || 0) > 0 ? 'Fix First' : 'Clear'}
+              </Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={[styles.statNumberText, { color: isDark ? '#32D583' : '#15803D' }]}>{completedCount || 0}</Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Completed</Text>
+              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Logged</Text>
+            </View>
+          </View>
+
+          {/* =========================================================
+              BEGINNER-FRIENDLY GUIDE & STATUS EXPLAINER
+          ========================================================= */}
+          <View
+            style={[
+              styles.beginnerGuideCard,
+              {
+                backgroundColor: theme.surface || '#151515',
+                borderColor: theme.border || '#292929',
+              },
+            ]}
+          >
+            <View style={styles.beginnerGuideHeader}>
+              <View style={[styles.beginnerGuideIconBox, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}>
+                <Icon name="school" size={17} color={isDark ? '#60A5FA' : '#2563EB'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.beginnerGuideTitle, { color: theme.text }]}>
+                  Beginner's Maintenance Overview
+                </Text>
+                <Text style={[styles.beginnerGuideSubtitle, { color: theme.textSecondary }]}>
+                  How to manage your vehicle in 3 easy steps
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.beginnerGuideList}>
+              <View style={styles.beginnerGuideItem}>
+                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(255, 90, 95, 0.16)' : '#FEE2E2' }]}>
+                  <Text style={[styles.guideStepText, { color: '#FF5A5F' }]}>1</Text>
+                </View>
+                <View style={styles.guideStepContent}>
+                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
+                    Prioritize Overdue Items
+                  </Text>
+                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
+                    These are critical diagnostic issues that need prompt attention to avoid vehicle damage.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.beginnerGuideItem}>
+                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(214, 162, 58, 0.16)' : '#FEF3C7' }]}>
+                  <Text style={[styles.guideStepText, { color: '#D6A23A' }]}>2</Text>
+                </View>
+                <View style={styles.guideStepContent}>
+                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
+                    Keep Up with Routine Tasks
+                  </Text>
+                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
+                    Items in "Due Soon" (like oil, tire pressure, and chain lubrication) prevent costly repairs.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.beginnerGuideItem}>
+                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(50, 213, 131, 0.16)' : '#DCFCE7' }]}>
+                  <Text style={[styles.guideStepText, { color: '#32D583' }]}>3</Text>
+                </View>
+                <View style={styles.guideStepContent}>
+                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
+                    Follow Step-by-Step Categories
+                  </Text>
+                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
+                    Tap any category below to view DIY guides, checklists, or nearby repair shop recommendations.
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
 
@@ -335,13 +412,13 @@ const MaintenanceScreen = ({ navigation }) => {
               </View>
             </View>
 
-            <Text style={[styles.aiDesc, { color: theme.textSecondary }]}>
+            <Text style={[styles.aiDesc, { color: theme.textSecondary }]} numberOfLines={3}>
               {hasDiagnosticItems
-                ? `Get tailored step-by-step guidance for ${
-                    safeDiagnosticItems[0]?.relatedProblem ||
+                ? `Get step-by-step guidance for ${
                     safeDiagnosticItems[0]?.title ||
+                    safeDiagnosticItems[0]?.relatedProblem ||
                     'your active vehicle'
-                  }.`
+                  }. Ask VehiCare AI for DIY instructions or when to visit a shop.`
                 : 'Ask VehiCare AI for personalized maintenance recommendations based on your vehicle model and history.'}
             </Text>
 
@@ -485,46 +562,10 @@ const MaintenanceScreen = ({ navigation }) => {
                   <Text style={[styles.recentItemCost, { color: theme.text }]}>₱{item.cost}</Text>
                 ) : (
                   <Icon name="chevron-right" size={18} color={theme.textSecondary} />
-                )}
+                 )}
               </TouchableOpacity>
             ))
           )}
-
-          {/* =========================================================
-              7. QUICK ACTIONS
-          ========================================================= */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitleHeader, { color: theme.text }]}>QUICK ACTIONS</Text>
-          </View>
-
-          <View style={styles.quickActionsRow}>
-            <TouchableOpacity
-              style={[styles.quickActionPill, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              activeOpacity={0.82}
-              onPress={() => navigation.navigate('AskVehiCare')}
-            >
-              <Icon name="add-circle-outline" size={18} color={theme.accent} />
-              <Text style={[styles.quickActionPillText, { color: theme.text }]}>Log Maintenance</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionPill, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              activeOpacity={0.82}
-              onPress={() => navigation.navigate('NotificationPreferences')}
-            >
-              <Icon name="notifications-none" size={18} color={theme.accent} />
-              <Text style={[styles.quickActionPillText, { color: theme.text }]}>Reminders</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionPill, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              activeOpacity={0.82}
-              onPress={() => navigation.navigate('RepairShops')}
-            >
-              <Icon name="place" size={18} color={theme.accent} />
-              <Text style={[styles.quickActionPillText, { color: theme.text }]}>Repair Shops</Text>
-            </TouchableOpacity>
-          </View>
 
         </ScrollView>
       </Animated.View>
@@ -548,7 +589,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
 
   /* HEADER */
@@ -697,6 +738,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  healthScoreLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 8.5,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
   healthScoreBig: {
     fontFamily: 'Outfit-ExtraBold',
     fontSize: 34,
@@ -748,7 +795,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   statCard: {
     flex: 1,
@@ -763,9 +810,78 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   statLabelText: {
-    fontFamily: 'Inter-Medium',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     marginTop: 2,
+  },
+  statSubText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 9,
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+
+  /* BEGINNER GUIDE CARD */
+  beginnerGuideCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 16,
+  },
+  beginnerGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  beginnerGuideIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beginnerGuideTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
+  },
+  beginnerGuideSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10.5,
+    marginTop: 1,
+  },
+  beginnerGuideList: {
+    gap: 10,
+  },
+  beginnerGuideItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  guideStepNumber: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  guideStepText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+  },
+  guideStepContent: {
+    flex: 1,
+  },
+  guideStepTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 12,
+  },
+  guideStepDesc: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10.5,
+    lineHeight: 15,
+    marginTop: 1,
   },
 
   /* AI ASSISTANT CARD */

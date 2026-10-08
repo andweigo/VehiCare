@@ -26,11 +26,24 @@ class RepairShopAdminController extends Controller
         }
 
         if ($request->filled('category')) {
-            $cat = $request->input('category');
-            $query->where(function ($q) use ($cat) {
-                $q->where('vehicle_category', $cat)
-                  ->orWhere('type', $cat);
-            });
+            $category = strtolower(trim((string) $request->input('category')));
+
+            if ($category !== 'all' && $category !== 'all_categories' && $category !== 'all_vehicle_types' && $category !== 'all_types') {
+                $categorySearch = match ($category) {
+                    'car' => 'car',
+                    'motorcycle' => 'motor',
+                    'bicycle' => 'bicyc',
+                    default => $category,
+                };
+
+                $query->where(function ($q) use ($categorySearch) {
+                    $q->where('vehicle_category', 'like', "%{$categorySearch}%")
+                      ->orWhere('type', 'like', "%{$categorySearch}%")
+                      ->orWhere('vehicle_category', 'like', '%all%')
+                      ->orWhere('type', 'like', '%all%')
+                      ->orWhereNull('vehicle_category');
+                });
+            }
         }
 
         if ($request->has('status') && $request->status !== '') {

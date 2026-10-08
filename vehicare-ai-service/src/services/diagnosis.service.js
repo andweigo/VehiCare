@@ -24,6 +24,7 @@ export const processDiagnosisRequest = async (payload) => {
     requestType,
     symptomsLength: symptoms ? symptoms.length : 0,
     hasMedia: Boolean(mediaBase64),
+    mediaMime,
   });
 
   // 1. Generate Cache Key
@@ -33,6 +34,8 @@ export const processDiagnosisRequest = async (payload) => {
     symptoms,
     userLanguage: language,
     mediaBase64,
+    inputType,
+    mediaMime,
   };
   const cacheKey = cacheService.generateKey(cacheKeyParams);
 
@@ -107,6 +110,8 @@ export const processDiagnosisRequest = async (payload) => {
           userLanguage: language,
           history,
           hasMedia: Boolean(mediaBase64),
+          inputType,
+          mediaMime,
         });
 
         // 7. Call Gemini API
@@ -116,6 +121,7 @@ export const processDiagnosisRequest = async (payload) => {
           mediaMime,
           requestId,
           requestType,
+          inputType,
         });
 
         return { response, queueWaitMs };
@@ -132,7 +138,10 @@ export const processDiagnosisRequest = async (payload) => {
 
       if (!jsonObject) {
         logger.warn('AI_JSON_PARSE_FAILED', requestId, { rawResponsePreview: (rawResponseText || '').substring(0, 200) });
-        const fallbackData = generateFallbackResponse(vehicleContext, symptoms, language);
+        const fallbackData = applySafetyRules(
+          generateFallbackResponse(vehicleContext, symptoms, language),
+          symptoms
+        );
         return {
           success: true,
           ai_source: 'fallback',
@@ -202,7 +211,10 @@ export const processDiagnosisRequest = async (payload) => {
       }
 
       logger.error('AI_PIPELINE_ERROR', requestId, { error: err.message });
-      const fallbackData = generateFallbackResponse(vehicleContext, symptoms, language);
+      const fallbackData = applySafetyRules(
+        generateFallbackResponse(vehicleContext, symptoms, language),
+        symptoms
+      );
       return {
         success: true,
         ai_source: 'fallback',
@@ -351,7 +363,7 @@ const generateFallbackResponse = (vehicleContext, symptoms, language) => {
     reported: symptoms ? [symptoms] : [],
     observed: [],
     severity: 'MODERATE',
-    urgency: 'Further inspection is recommended before making a repair decision.',
+    urgency: 'Please provide more detail before making a repair decision.',
     possible_causes: [
       {
         cause: 'Component inspection required',
@@ -362,7 +374,7 @@ const generateFallbackResponse = (vehicleContext, symptoms, language) => {
     ],
     recommended_actions: [
       'Check visible components safely.',
-      'Consult a certified technician if symptoms persist.',
+      'Provide more detail about when the symptom occurs.',
     ],
     clarification_questions: [
       {
@@ -377,7 +389,8 @@ const generateFallbackResponse = (vehicleContext, symptoms, language) => {
     estimated_cost: { min: 1000, max: 3500, currency: 'PHP' },
     professional_help: {
       recommended: false,
-      reason: 'Professional inspection recommended if symptoms persist.',
+      requires_specialist: false,
+      reason: '',
       severity: 'MODERATE',
     },
   };

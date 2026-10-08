@@ -37,7 +37,6 @@ import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
 import { vehicleApi } from '../api/vehicleApi';
 import { fetchAIUsageStats } from '../services/aiUsageService';
 import activityService from '../services/activity.service';
-import { buildVehiCarePrompt } from '../config/aiPromptConfig';
 
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -995,35 +994,41 @@ export default function AskVehiCareScreen({
       }));
 
       const activeSymptoms = trimmed || (currentAudio ? 'Audio recording of engine or vehicle noise' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
-      const mediaAttachedStr = currentAudio ? 'Audio file attached.' : currentVideo ? 'Video file attached.' : currentImage ? 'Image file attached.' : 'No media attached.';
-
-      const systemPromptStr = buildVehiCarePrompt({
-        vType: safeVehicleType,
-        vBrand: activeVehicle?.brand || activeVehicle?.make || 'Unknown',
-        vModel: activeVehicle?.model || 'Unknown',
-        vYear: activeVehicle?.year || 'Unknown',
-        langInstruction: language === 'fil' ? 'Respond in Tagalog/Filipino.' : language === 'taglish' ? 'Respond in Taglish.' : 'Respond in English.',
-        historyText: history.length > 0 ? `HISTORY:\n${history.map(h => `${h.role}: ${h.content}`).join('\n')}` : '',
-        symptoms: activeSymptoms,
-        mediaInstruction: mediaAttachedStr,
-      });
-
       const payload = {
         vehicle_id: vehicleId,
         vehicle_name: safeVehicleName,
         vehicle_type: safeVehicleType,
         symptoms: activeSymptoms,
         input_type: currentAudio ? 'voice' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
-        image_base64: currentImage?.base64 || null,
-        video_base64: currentVideo?.base64 || null,
-        video_mime: currentVideo?.mime || 'video/mp4',
         video_duration: currentVideo?.durationSec || 0,
-        audio_base64: currentAudio?.base64 || null,
+        audio_duration: currentAudio?.durationSec || 0,
         history,
-        system_prompt: systemPromptStr,
       };
 
-      const resultData = await vehicleApi.submitDiagnostic(payload);
+      const media = currentAudio || currentVideo || currentImage;
+      let requestPayload = payload;
+      if (media) {
+        requestPayload = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (key === 'history') {
+            value.forEach((turn, index) => {
+              requestPayload.append(`history[${index}][role]`, turn.role);
+              requestPayload.append(`history[${index}][content]`, turn.content);
+            });
+          } else {
+            requestPayload.append(key, String(value));
+          }
+        });
+
+        const mediaField = currentAudio ? 'audio' : currentVideo ? 'video' : 'image';
+        requestPayload.append(mediaField, {
+          uri: media.uri,
+          name: media.fileName || (currentAudio ? 'voice_note.mp4' : currentVideo ? 'video.mp4' : 'photo.jpg'),
+          type: media.mime || (currentAudio ? 'audio/mp4' : currentVideo ? 'video/mp4' : 'image/jpeg'),
+        });
+      }
+
+      const resultData = await vehicleApi.submitDiagnostic(requestPayload);
 
       const isDiagnostic = resultData?.type === 'diagnostic';
       const isClarificationNeeded = resultData?.status === 'needs_clarification' || (resultData?.clarification_questions && resultData.clarification_questions.length > 0);
@@ -1108,7 +1113,6 @@ export default function AskVehiCareScreen({
     try {
       const result = await launchCamera({
         mediaType: 'photo',
-        includeBase64: true,
         quality: 0.8,
       });
 
@@ -1120,8 +1124,8 @@ export default function AskVehiCareScreen({
       setAttachedVideo(null);
       setAttachedImage({
         uri: asset.uri,
-        base64: asset.base64,
         fileName: asset.fileName || 'camera_photo.jpg',
+        mime: asset.type || 'image/jpeg',
       });
     } catch (err) {
       console.warn('[AskVehiCareScreen] Camera Photo Error:', err);
@@ -1136,7 +1140,6 @@ export default function AskVehiCareScreen({
       const result = await launchImageLibrary({
         mediaType: 'photo',
         selectionLimit: 1,
-        includeBase64: true,
       });
 
       if (result.didCancel || !result.assets?.[0]) {
@@ -1147,8 +1150,8 @@ export default function AskVehiCareScreen({
       setAttachedVideo(null);
       setAttachedImage({
         uri: asset.uri,
-        base64: asset.base64,
         fileName: asset.fileName || 'photo.jpg',
+        mime: asset.type || 'image/jpeg',
       });
     } catch (err) {
       console.warn('[AskVehiCareScreen] Photo Pick Error:', err);
@@ -1164,7 +1167,6 @@ export default function AskVehiCareScreen({
         mediaType: 'video',
         videoQuality: 'medium',
         durationLimit: usageStats?.video?.max_duration_seconds || 30,
-        includeBase64: true,
       });
 
       if (result.didCancel || !result.assets?.[0]) {
@@ -1195,7 +1197,6 @@ export default function AskVehiCareScreen({
       setAttachedImage(null);
       setAttachedVideo({
         uri: asset.uri,
-        base64: asset.base64 || null,
         fileName: asset.fileName || 'recorded_video.mp4',
         fileSizeMb,
         durationSec,
@@ -1214,7 +1215,6 @@ export default function AskVehiCareScreen({
       const result = await launchImageLibrary({
         mediaType: 'video',
         selectionLimit: 1,
-        includeBase64: true,
       });
 
       if (result.didCancel || !result.assets?.[0]) {
@@ -1245,7 +1245,6 @@ export default function AskVehiCareScreen({
       setAttachedImage(null);
       setAttachedVideo({
         uri: asset.uri,
-        base64: asset.base64 || null,
         fileName: asset.fileName || 'video.mp4',
         fileSizeMb,
         durationSec,
@@ -1314,6 +1313,7 @@ export default function AskVehiCareScreen({
           uri,
           durationSec: recordingSeconds || 1,
           fileName: 'voice_note.mp4',
+          mime: 'audio/mp4',
         });
       }
     } catch (err) {

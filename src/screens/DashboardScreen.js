@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-import BottomTabBar from '../components/BottomTabBar';
+
 import DashboardActionCard from '../components/DashboardActionCard';
 import DashboardGreeting from '../components/DashboardGreeting';
 import DashboardVehicleProfileModal from '../components/DashboardVehicleProfileModal';
@@ -81,7 +81,7 @@ const DashboardScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { isOpen, openSidebar } = useSidebar();
 
-  const [activeTab, setActiveTab] = useState('Home');
+
   const [requestedFeature, setRequestedFeature] = useState('');
   const [requestedRoute, setRequestedRoute] = useState(null);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
@@ -848,49 +848,6 @@ const DashboardScreen = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      {/* ==================================================
-          BOTTOM TAB
-      ================================================== */}
-
-      <BottomTabBar
-        activeTab={activeTab}
-        isSidebarOpen={isOpen}
-        onTabPress={tab => {
-          setActiveTab(tab);
-
-          if (tab === 'Home') {
-            navigation.navigate(
-              'Dashboard',
-            );
-          }
-
-          if (tab === 'Diagnose') {
-            navigation.navigate(
-              'Diagnostics',
-            );
-          }
-
-          if (tab === 'Maintenance') {
-            navigation.navigate(
-              'Maintenance',
-            );
-          }
-
-          if (
-            tab === 'Notifications'
-          ) {
-            navigation.navigate(
-              'Notifications',
-            );
-          }
-
-          if (tab === 'Profile') {
-            navigation.navigate(
-              'Profile',
-            );
-          }
-        }}
-      />
 
       {/* ==================================================
           SIGN IN MODAL

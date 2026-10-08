@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { sendOtp } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
+import { formatApiMessage } from './OtpVerificationScreen';
 import { useTheme } from '../theme/ThemeContext';
 
 const ForgotPasswordScreen = ({ navigation }) => {
@@ -75,19 +76,42 @@ const ForgotPasswordScreen = ({ navigation }) => {
           });
         }, 1500);
       } else {
+        const cd = response?.cooldown_seconds || response?.cooldown;
         showToast({
           type: 'error',
           title: 'Request Failed',
-          message: response?.message || 'Unable to send verification code.',
+          message: formatApiMessage(response?.message) || 'Unable to send verification code.',
         });
+        if (cd) {
+          setTimeout(() => {
+            navigation.navigate('OtpVerification', {
+              email: trimmedEmail,
+              purpose: 'password_reset',
+              cooldown_seconds: cd,
+            });
+          }, 1500);
+        }
       }
     } catch (err) {
-      const apiMsg = err?.response?.data?.message || err?.message || 'Failed to request password reset code.';
+      const resData = err?.response?.data;
+      const rawMsg = resData?.message || err?.message || 'Failed to request password reset code.';
+      const cd = resData?.cooldown_seconds || resData?.cooldown;
+
       showToast({
         type: 'error',
-        title: 'Reset Error',
-        message: apiMsg,
+        title: cd ? 'Cooldown Active' : 'Reset Error',
+        message: formatApiMessage(rawMsg),
       });
+
+      if (cd) {
+        setTimeout(() => {
+          navigation.navigate('OtpVerification', {
+            email: trimmedEmail,
+            purpose: 'password_reset',
+            cooldown_seconds: cd,
+          });
+        }, 1500);
+      }
     } finally {
       setLoading(false);
     }

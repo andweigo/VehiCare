@@ -73,6 +73,7 @@ export const callGemini = async ({
   mediaMime,
   requestId,
   requestType = 'diagnostic',
+  inputType = 'text',
 }) => {
   const ai = getGeminiClient();
   const primaryModel = requestType === 'conversation' || requestType === 'general'
@@ -100,17 +101,71 @@ export const callGemini = async ({
   }
 
   const parts = [{ text: prompt }];
+  let uploadedVideo = null;
 
   if (mediaBase64) {
-    parts.push({
-      inlineData: {
-        mimeType: mediaMime || 'image/jpeg',
-        data: mediaBase64.replace(/^data:[^;]+;base64,/i, '').trim(),
-      },
-    });
+    const mimeType = mediaMime || 'image/jpeg';
+    const cleanBase64 = mediaBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+
+    if (inputType === 'video' || mimeType.startsWith('video/')) {
+      try {
+        const videoBytes = Buffer.from(cleanBase64, 'base64');
+        uploadedVideo = await ai.files.upload({
+          file: new Blob([videoBytes], { type: mimeType }),
+          config: { mimeType },
+        });
+
+        const uploadTimeoutMs = Math.min(config.gemini.timeoutMs || 25000, 30000);
+        const uploadStartedAt = Date.now();
+        while (uploadedVideo.state === 'PROCESSING' && Date.now() - uploadStartedAt < uploadTimeoutMs) {
+          await delay(1000);
+          uploadedVideo = await ai.files.get({ name: uploadedVideo.name });
+        }
+
+        if (uploadedVideo.state !== 'ACTIVE' || !uploadedVideo.uri) {
+          throw new Error(`Gemini video processing did not complete (state: ${uploadedVideo.state || 'unknown'})`);
+        }
+
+        parts.push({
+          fileData: {
+            mimeType: uploadedVideo.mimeType || mimeType,
+            fileUri: uploadedVideo.uri,
+          },
+        });
+      } catch (error) {
+        if (uploadedVideo?.name) {
+          try {
+            await ai.files.delete({ name: uploadedVideo.name });
+          } catch (cleanupError) {
+            logger.warn('AI_GEMINI_VIDEO_CLEANUP_FAILED', requestId, {
+              error: cleanupError?.message || String(cleanupError),
+            });
+          }
+        }
+        throw error;
+      }
+    } else {
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: cleanBase64,
+        },
+      });
+    }
   }
 
   let lastError = null;
+
+  const cleanupUploadedVideo = async () => {
+    if (!uploadedVideo?.name) return;
+    try {
+      await ai.files.delete({ name: uploadedVideo.name });
+    } catch (error) {
+      logger.warn('AI_GEMINI_VIDEO_CLEANUP_FAILED', requestId, {
+        error: error?.message || String(error),
+      });
+    }
+  };
 
   for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
     const modelName = candidateModels[mIdx];
@@ -125,6 +180,8 @@ export const callGemini = async ({
         attempt,
         promptLength: prompt.length,
         hasMedia: Boolean(mediaBase64),
+        inputType,
+        mediaMime,
         requestType,
       });
 
@@ -163,6 +220,7 @@ export const callGemini = async ({
 
         if (textOutput && textOutput.trim()) {
           clearModelCooldown(modelName);
+          await cleanupUploadedVideo();
           logger.info('AI_GEMINI_REQUEST_COMPLETED', requestId, {
             model: modelName,
             attempt,
@@ -234,5 +292,6 @@ export const callGemini = async ({
     error: lastError?.message || 'All Gemini model candidates failed',
   });
 
+  await cleanupUploadedVideo();
   throw lastError || new Error('Failed to obtain response from Gemini API');
 };

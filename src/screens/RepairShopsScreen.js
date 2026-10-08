@@ -57,6 +57,8 @@ const RepairShopsScreen = ({ navigation }) => {
     setManualLocation,
     requestPermissionAndAcquire,
     acquireFreshLocation,
+    categoryFilter,
+    setCategoryFilter,
     reload,
   } = useRepairShops(displayVehicleType);
 
@@ -368,6 +370,43 @@ const RepairShopsScreen = ({ navigation }) => {
               isExpanded={isMapExpanded}
               onToggleExpand={() => setIsMapExpanded(prev => !prev)}
             />
+
+            {/* CATEGORY FILTER CHIPS */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryFilterRow}
+            >
+              {[
+                { id: 'all', label: 'All Categories', icon: 'storefront' },
+                { id: 'car', label: 'Car / Auto', icon: 'directions-car' },
+                { id: 'motorcycle', label: 'Motorcycle', icon: 'motorcycle' },
+                { id: 'bicycle', label: 'Bicycle', icon: 'pedal-bike' },
+              ].map(cat => {
+                const isSelected = categoryFilter === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    activeOpacity={0.8}
+                    onPress={() => setCategoryFilter(cat.id)}
+                    style={[
+                      styles.categoryChip,
+                      {
+                        backgroundColor: isSelected
+                          ? (isDark ? 'rgba(246, 59, 5, 0.18)' : '#FFF4F0')
+                          : (theme.surface || '#151515'),
+                        borderColor: isSelected ? BRAND : (theme.border || '#292929'),
+                      },
+                    ]}
+                  >
+                    <Icon name={cat.icon} size={15} color={isSelected ? BRAND : theme.textSecondary} />
+                    <Text style={[styles.categoryChipText, { color: isSelected ? BRAND : theme.textSecondary, fontFamily: isSelected ? 'Inter-SemiBold' : 'Inter-Regular' }]}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             {/* NEARBY SHOPS SECTION HEADER */}
             <View style={styles.sectionHeader}>
@@ -1068,6 +1107,24 @@ const styles = StyleSheet.create({
   presetName: {
     fontFamily: 'Outfit-Bold',
     fontSize: 14,
+  },
+
+  /* CATEGORY FILTER CHIPS */
+  categoryFilterRow: {
+    gap: 8,
+    marginVertical: 12,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  categoryChipText: {
+    fontSize: 12,
   },
 });
 

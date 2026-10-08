@@ -7,7 +7,7 @@ const SidebarContext = createContext(null);
 
 export const SidebarProvider = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState('Dashboard');
+  const [activeScreen, setActiveScreen] = useState(null);
 
   const closeSidebar = useCallback(() => setIsOpen(false), []);
   const openSidebar = useCallback(() => setIsOpen(true), []);
@@ -61,7 +61,10 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
 
   return (
     <View
-      style={StyleSheet.absoluteFill}
+      style={[
+        StyleSheet.absoluteFill,
+        isOpen && styles.openOverlay,
+      ]}
       pointerEvents={isOpen ? 'auto' : 'none'}>
       {/* BACKDROP */}
       <TouchableWithoutFeedback onPress={closeSidebar} disabled={!isOpen}>
@@ -104,6 +107,12 @@ const styles = StyleSheet.create({
     left: 0,
     width: 300,
     backgroundColor: '#0A0A0A',
+    elevation: 30,
+    zIndex: 30,
+  },
+  openOverlay: {
+    elevation: 30,
+    zIndex: 30,
   },
 });
 

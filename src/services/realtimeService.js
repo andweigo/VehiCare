@@ -9,7 +9,7 @@ let reconnectTimer = null;
 let currentUserId = null;
 let nextSubscriptionId = 1;
 
-// Multi-component subscription registry: subscriptionId -> { subscriptionId, userId, channelName, eventCallbacks }
+// Multi-component subscription registry: subscriptionId -> { subscriptionId, userId, channelNames, eventCallbacks }
 const activeSubscriptions = new Map();
 // Active channels authorized on WebSocket connection
 const authorizedChannels = new Set();
@@ -18,13 +18,14 @@ const authorizedChannels = new Set();
  * Extract host, port, scheme from apiClient base URL
  */
 const getWebSocketUrlConfig = () => {
-  const apiBase = apiClient.defaults.baseURL || 'http://127.0.0.1:8000/api';
+  const apiBase = apiClient.defaults.baseURL || 'http://127.0.0.1:8080/api';
   try {
     const isEncrypted = apiBase.startsWith('https://');
     const wsScheme = isEncrypted ? 'wss' : 'ws';
     const urlClean = apiBase.replace(/^https?:\/\//, '').split('/')[0];
     const parts = urlClean.split(':');
     const host = parts[0] || '127.0.0.1';
+    // Reverb runs on 8080 by default in Laravel setup unless specified
     const port = parts[1] ? parseInt(parts[1], 10) : 8080;
     const appKey = 'vehicare_key_2026';
 
@@ -84,18 +85,20 @@ const authenticateAndSubscribeChannel = async channelName => {
       channel_name: channelName,
     });
 
-    const authData = response?.data?.auth || response?.data?.auth_token;
+    const authData = response?.data?.auth || response?.data?.auth_token || response?.data?.data?.auth;
+    const channelData = response?.data?.channel_data || response?.data?.data?.channel_data;
 
     if (authData) {
-      socket.send(
-        JSON.stringify({
-          event: 'pusher:subscribe',
-          data: {
-            auth: authData,
-            channel: channelName,
-          },
-        }),
-      );
+      const subscribeMsg = {
+        event: 'pusher:subscribe',
+        data: {
+          auth: authData,
+          channel: channelName,
+          ...(channelData ? { channel_data: channelData } : {}),
+        },
+      };
+
+      socket.send(JSON.stringify(subscribeMsg));
       authorizedChannels.add(channelName);
       console.info(`[RealtimeService] Subscribed WebSocket channel ${channelName}`);
     }
@@ -113,7 +116,9 @@ const authenticateAndSubscribeChannel = async channelName => {
 const syncAllActiveChannels = () => {
   const uniqueChannels = new Set();
   activeSubscriptions.forEach(sub => {
-    if (sub.channelName) {
+    if (Array.isArray(sub.channelNames)) {
+      sub.channelNames.forEach(ch => uniqueChannels.add(ch));
+    } else if (sub.channelName) {
       uniqueChannels.add(sub.channelName);
     }
   });
@@ -151,6 +156,9 @@ export const initRealtimeClient = async userId => {
       console.info('[RealtimeService] WebSocket connected successfully.');
       isConnected = true;
       startPingInterval();
+      if (socketId) {
+        syncAllActiveChannels();
+      }
     };
 
     socket.onmessage = event => {
@@ -176,24 +184,45 @@ export const initRealtimeClient = async userId => {
           return;
         }
 
-        // Pong
+        // Respond to server-initiated ping (CRITICAL for Reverb connection keep-alive)
+        if (eventName === 'pusher:ping') {
+          try {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ event: 'pusher:pong', data: {} }));
+            }
+          } catch (e) {
+            // Ignore
+          }
+          return;
+        }
+
+        // Pong response from server
         if (eventName === 'pusher:pong') {
           return;
         }
 
+        // Normalize event names for flexible matching
+        const normEvent = String(eventName || '').replace(/\\/g, '.').toLowerCase();
+
         // Dispatch incoming events to ALL matching active component subscriptions
         activeSubscriptions.forEach(sub => {
-          if (!channelName || sub.channelName === channelName) {
+          const subChannels = Array.isArray(sub.channelNames) ? sub.channelNames : [sub.channelName];
+          const isChannelMatch = !channelName || subChannels.includes(channelName);
+
+          if (isChannelMatch) {
             const callbacks = sub.eventCallbacks || {};
             Object.keys(callbacks).forEach(targetEvent => {
               const fn = callbacks[targetEvent];
               if (typeof fn === 'function') {
+                const normTarget = String(targetEvent || '').replace(/\\/g, '.').toLowerCase();
+
                 const isMatch =
                   targetEvent === '*' ||
-                  targetEvent === eventName ||
-                  eventName.endsWith(targetEvent) ||
-                  targetEvent.endsWith(eventName) ||
-                  (eventName.includes('Notification') && targetEvent.includes('Notification'));
+                  eventName === targetEvent ||
+                  normEvent === normTarget ||
+                  normEvent.endsWith(normTarget) ||
+                  normTarget.endsWith(normEvent) ||
+                  (normEvent.includes('notification') && normTarget.includes('notification'));
 
                 if (isMatch) {
                   console.info(
@@ -244,56 +273,71 @@ export const initRealtimeClient = async userId => {
 };
 
 /**
- * Subscribe to private user channel with reference counting
+ * Subscribe to private user channels with reference counting
  * Returns an unsubscribe() function specific to this component call
  */
 export const subscribeToPrivateUserChannel = async (userId, eventCallbacks = {}) => {
   if (!userId) return () => {};
 
   currentUserId = userId;
-  const channelName = `private-user.${userId}`;
+
+  // Support all standard Laravel notification channel formats
+  const channelNames = [
+    `private-user.${userId}`,
+    `private-App.Models.User.${userId}`,
+    `private-App.User.${userId}`,
+  ];
+
   const subscriptionId = `sub_${nextSubscriptionId++}`;
 
   activeSubscriptions.set(subscriptionId, {
     subscriptionId,
     userId,
-    channelName,
+    channelNames,
     eventCallbacks,
   });
 
-  console.info(`[RealtimeService] Registered component subscription #${subscriptionId} for ${channelName}`);
+  console.info(`[RealtimeService] Registered component subscription #${subscriptionId} for user ${userId}`);
 
-  // Ensure socket is active and authorized for this channel
+  // Ensure socket is active and authorized for these channels
   await initRealtimeClient(userId);
 
-  if (socket && socket.readyState === WebSocket.OPEN && socketId && !authorizedChannels.has(channelName)) {
-    await authenticateAndSubscribeChannel(channelName);
+  if (socket && socket.readyState === WebSocket.OPEN && socketId) {
+    channelNames.forEach(ch => {
+      if (!authorizedChannels.has(ch)) {
+        authenticateAndSubscribeChannel(ch);
+      }
+    });
   }
 
   // Return component-specific unsubscribe function
   return () => {
-    console.info(`[RealtimeService] Unsubscribing component #${subscriptionId} from ${channelName}`);
+    console.info(`[RealtimeService] Unsubscribing component #${subscriptionId} for user ${userId}`);
     activeSubscriptions.delete(subscriptionId);
 
-    // Check if any other component still needs this channel
-    const stillNeeded = Array.from(activeSubscriptions.values()).some(sub => sub.channelName === channelName);
+    channelNames.forEach(ch => {
+      // Check if any other component still needs this channel
+      const stillNeeded = Array.from(activeSubscriptions.values()).some(
+        sub => Array.isArray(sub.channelNames) && sub.channelNames.includes(ch),
+      );
 
-    if (!stillNeeded && authorizedChannels.has(channelName)) {
-      authorizedChannels.delete(channelName);
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        try {
-          socket.send(
-            JSON.stringify({
-              event: 'pusher:unsubscribe',
-              data: { channel: channelName },
-            }),
-          );
-          console.info(`[RealtimeService] Sent pusher:unsubscribe for ${channelName} (0 listeners left)`);
-        } catch (e) {
-          // Ignore close errors
+      if (!stillNeeded && authorizedChannels.has(ch)) {
+        authorizedChannels.delete(ch);
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send(
+              JSON.stringify({
+                event: 'pusher:unsubscribe',
+                data: { channel: ch },
+              }),
+            );
+            console.info(`[RealtimeService] Sent pusher:unsubscribe for ${ch}`);
+          } catch (e) {
+            // Ignore close errors
+          }
         }
       }
-    }
+    });
   };
 };
 
@@ -320,4 +364,10 @@ export const disconnectRealtimeClient = () => {
     isConnected = false;
     console.info('[RealtimeService] Disconnected realtime client.');
   }
+};
+
+export default {
+  initRealtimeClient,
+  subscribeToPrivateUserChannel,
+  disconnectRealtimeClient,
 };

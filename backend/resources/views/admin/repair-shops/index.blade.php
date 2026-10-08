@@ -34,6 +34,7 @@
                         <option value="car" {{ request('category') == 'car' ? 'selected' : '' }}>Car / Automotive</option>
                         <option value="motorcycle" {{ request('category') == 'motorcycle' ? 'selected' : '' }}>Motorcycle</option>
                         <option value="bicycle" {{ request('category') == 'bicycle' ? 'selected' : '' }}>Bicycle</option>
+                        <option value="all" {{ request('category') == 'all' ? 'selected' : '' }}>All Vehicle Types</option>
                     </select>
                 </div>
                 <div>

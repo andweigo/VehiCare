@@ -14,7 +14,7 @@ class CacheService {
     };
   }
 
-  generateKey({ requestType = 'diagnostic', vehicleContext = {}, symptoms = '', userLanguage = 'en', mediaBase64 = null }) {
+  generateKey({ requestType = 'diagnostic', vehicleContext = {}, symptoms = '', userLanguage = 'en', mediaBase64 = null, inputType = 'text', mediaMime = '' }) {
     const normSymptoms = normalizeText(symptoms);
     const vType = (vehicleContext.type || 'vehicle').toLowerCase().trim();
     const vBrand = (vehicleContext.brand || 'unknown').toLowerCase().trim();
@@ -24,7 +24,7 @@ class CacheService {
     const type = (requestType || 'diagnostic').toLowerCase().trim();
 
     const mediaKey = mediaBase64 ? hashMedia(mediaBase64) : null;
-    const mediaPart = mediaKey ? `:media-${mediaKey}` : '';
+    const mediaPart = mediaKey ? `:media-${inputType}-${mediaMime}-${mediaKey}` : '';
 
     return `${type}:${vType}:${vBrand}:${vModel}:${vYear}:${lang}:${normSymptoms}${mediaPart}`;
   }

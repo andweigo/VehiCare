@@ -1,4 +1,5 @@
 import { getVehicleDisplayDetails, getVehicleDisplayName, normalizeVehicleProfile } from '../src/utils/vehicleDisplay';
+import { getVehicleIconName } from '../src/utils/maintenanceUtils';
 
 describe('vehicleDisplay utilities', () => {
   it('normalizes backend vehicle relation objects', () => {
@@ -29,5 +30,12 @@ describe('vehicleDisplay utilities', () => {
 
     expect(getVehicleDisplayName(vehicle)).toBe('Toyota RAV4');
     expect(getVehicleDisplayDetails(vehicle)).toBe('2024 • SUV');
+  });
+
+  it('resolves vehicle icons from nested vehicle type relations', () => {
+    expect(getVehicleIconName({ vehicle_type: { id: 2, name: 'Motorcycle' } })).toBe('two-wheeler');
+    expect(getVehicleIconName({ vehicleType: { label: 'Scooter' } })).toBe('two-wheeler');
+    expect(getVehicleIconName({ type: 'Bicycle' })).toBe('directions-bike');
+    expect(getVehicleIconName({ vehicle_type: { name: 'Bus' } })).toBe('directions-bus');
   });
 });

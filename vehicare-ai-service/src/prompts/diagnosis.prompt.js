@@ -84,7 +84,7 @@ JSON RESPONSE FORMAT:
 }`;
 };
 
-export const buildDiagnosisPrompt = ({ vehicleContext, symptoms, userLanguage, history = [], hasMedia = false }) => {
+export const buildDiagnosisPrompt = ({ vehicleContext, symptoms, userLanguage, history = [], hasMedia = false, inputType = 'text', mediaMime = '' }) => {
   if (!hasMedia && isGeneralQuestion(symptoms)) {
     return buildCompactGeneralPrompt({ vehicleContext, symptoms, userLanguage, history });
   }
@@ -97,8 +97,15 @@ export const buildDiagnosisPrompt = ({ vehicleContext, symptoms, userLanguage, h
   const langInstruction = matchLanguage(userLanguage);
   const historyText = formatHistory(history, 4);
 
+  const modalityInstructions = {
+    image: 'Analyze the image only for visible evidence: identify components or warning indicators only when recognizable, describe visible damage/leaks/wear, and state when the image is unclear. Do not infer sounds or hidden mechanical faults.',
+    video: 'Analyze the video over time, including visible changes and any audible sounds. Refer to approximate timestamps when useful. Distinguish what is seen/heard from possible causes; do not claim a component is faulty unless evidence supports it.',
+    voice: 'Analyze the audio recording for vehicle sounds. Describe the audible pattern (for example, ticking, grinding, squealing, knocking, or rattling), when it appears to occur if discernible, and audio quality. Do not claim visual observations.',
+    audio: 'Analyze the audio recording for vehicle sounds. Describe the audible pattern and audio quality; do not claim visual observations.',
+  };
+  const modality = inputType === 'voice' ? 'voice' : inputType;
   const mediaInstruction = hasMedia
-    ? 'MEDIA ATTACHED: Carefully inspect visible leaks, warning indicators, component wear, smoke, or damage.'
+    ? `${modalityInstructions[modality] || 'Analyze the attached media only for evidence supported by its content.'}${mediaMime ? ` Media MIME type: ${mediaMime}.` : ''}`
     : 'NO MEDIA ATTACHED: Base diagnosis on reported symptoms.';
 
   return `You are VehiCare AI, an expert automotive diagnostic and maintenance assistant.
@@ -122,6 +129,8 @@ DOMAIN & SAFETY RULES:
 - Focus strictly on vehicle diagnostics, repairs, maintenance, and safety.
 - For general greetings or basic vehicle questions without symptoms, set type="conversation".
 - For reported faults, symptoms, sounds, warning lights, or leaks, set type="diagnostic".
+- Never invent details that are not present in the text or media. If the media is missing, unreadable, unclear, or inconclusive, say so and ask a targeted clarification question.
+- Recommend professional assistance only when severity is HIGH or CRITICAL, or when the repair requires specialist training/tools or is unsafe for an ordinary owner. Do not recommend a shop for routine checks or manageable maintenance.
 
 CONFIDENCE SCORING:
 - 90-100: Very strong symptom match and conclusive details
@@ -182,7 +191,8 @@ For DIAGNOSTIC:
   },
   "professional_help": {
     "recommended": false,
-    "reason": "Reason for recommendation",
+    "requires_specialist": false,
+    "reason": "",
     "severity": "MODERATE"
   }
 }`;

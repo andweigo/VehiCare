@@ -43,11 +43,23 @@ class RepairShopService
                 if (empty($category) || $category === 'all') {
                     return true;
                 }
-                $shopCat = strtolower((string) ($shop->vehicle_category ?? $shop->type ?? 'car'));
-                if ($shopCat === 'all' || empty($shopCat)) {
+                $shopCategories = array_filter(
+                    [$shop->vehicle_category, $shop->type],
+                    fn ($shopCategory) => trim((string) $shopCategory) !== ''
+                );
+
+                if (empty($shopCategories)) {
                     return true;
                 }
-                return $shopCat === $category;
+
+                foreach ($shopCategories as $shopCategory) {
+                    $normalizedShopCategory = $this->normalizeCategory((string) $shopCategory);
+                    if ($normalizedShopCategory === 'all' || $normalizedShopCategory === $category) {
+                        return true;
+                    }
+                }
+
+                return false;
             })
             ->map(function ($shop) use ($latitude, $longitude) {
                 $shopLat = (float) $shop->latitude;
@@ -103,7 +115,15 @@ class RepairShopService
      */
     protected function normalizeCategory(?string $vehicleType): string
     {
-        $type = strtolower((string) $vehicleType);
+        $type = strtolower(trim((string) $vehicleType));
+
+        if ($type === '') {
+            return 'car';
+        }
+
+        if (in_array($type, ['all', 'any', 'general', 'all vehicle types', 'all_vehicles', 'all_vehicle_types'], true)) {
+            return 'all';
+        }
 
         if (str_contains($type, 'moto') || str_contains($type, 'scooter')) {
             return 'motorcycle';

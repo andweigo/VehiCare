@@ -650,7 +650,15 @@ const vehicleApi = {
   submitDiagnostic: async payload => {
     try {
       const config = await buildAuthConfig();
-      const response = await apiClient.post('/diagnostics', payload, config);
+      const response = await apiClient.post('/diagnostics', payload, {
+        ...config,
+        headers: {
+          ...(config.headers || {}),
+          ...(typeof FormData !== 'undefined' && payload instanceof FormData
+            ? { 'Content-Type': 'multipart/form-data' }
+            : {}),
+        },
+      });
       return response?.data?.data || response?.data;
     } catch (error) {
       if (error?.response?.status !== 422) {

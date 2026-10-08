@@ -36,9 +36,11 @@ class OtpService
             ->first();
 
         if ($latestOtp && $latestOtp->created_at) {
-            $secondsSinceCreation = now()->diffInSeconds($latestOtp->created_at);
-            if ($secondsSinceCreation < 60) {
-                $cooldownRemaining = 60 - $secondsSinceCreation;
+            // Subtract timestamps explicitly: Carbon 3's diffInSeconds is signed
+            // when the supplied date is in the past.
+            $secondsSinceCreation = max(0, now()->getTimestamp() - $latestOtp->created_at->getTimestamp());
+            $cooldownRemaining = max(0, 60 - $secondsSinceCreation);
+            if ($cooldownRemaining > 0) {
                 return [
                     'success' => false,
                     'message' => "Please wait {$cooldownRemaining} seconds before requesting a new code.",
@@ -58,7 +60,7 @@ class OtpService
         $codeHash = Hash::make($rawCode);
         $expiresAt = now()->addMinutes(5);
 
-        OtpCode::create([
+        $otpRecord = OtpCode::create([
             'email' => $normalizedEmail,
             'code_hash' => $codeHash,
             'purpose' => $purpose,
@@ -83,8 +85,12 @@ class OtpService
         } catch (\Throwable $e) {
             Log::error('[OtpService] Failed to send OTP email', [
                 'email' => $normalizedEmail,
+                'purpose' => $purpose,
                 'error' => $e->getMessage(),
             ]);
+
+            // A failed delivery must not leave an unusable code blocking retries.
+            $otpRecord->delete();
 
             return [
                 'success' => false,

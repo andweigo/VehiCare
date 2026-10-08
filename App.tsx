@@ -16,6 +16,7 @@ import { VehicleProvider } from './src/context/VehicleContext';
 import VehicleHealthProvider from './src/context/VehicleHealthContext';
 
 import AppNavigator from './src/navigation/AppNavigator';
+import GlobalBottomTabBar from './src/components/GlobalBottomTabBar';
 import { ThemeProvider } from './src/theme/ThemeContext';
 
 export const navigationRef = createNavigationContainerRef();
@@ -35,6 +36,14 @@ const App = () => {
                     <SidebarProvider>
                       <NavigationContainer
                         ref={navigationRef}
+                        onReady={() => {
+                          if (navigationRef.isReady()) {
+                            const currentRoute = navigationRef.getCurrentRoute();
+                            if (currentRoute?.name && activeScreenSyncRef.current) {
+                              activeScreenSyncRef.current(currentRoute.name);
+                            }
+                          }
+                        }}
                         onStateChange={() => {
                           if (navigationRef.isReady()) {
                             const currentRoute = navigationRef.getCurrentRoute();
@@ -67,6 +76,7 @@ const AppNavigatorWithSidebar = ({ onSyncReady }: { onSyncReady: (fn: (name: str
   return (
     <View style={styles.appShell}>
       <AppNavigator />
+      <GlobalBottomTabBar navigationRef={navigationRef} />
       <SidebarDrawerOverlay navigationRef={navigationRef} />
     </View>
   );

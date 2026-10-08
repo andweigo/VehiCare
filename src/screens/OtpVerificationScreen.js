@@ -19,6 +19,36 @@ import CustomToast from '../components/CustomToast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
+/**
+ * Format total seconds into a clean, human-friendly duration string.
+ * Example: 218 -> "3m 38s", 60 -> "1m", 45 -> "45s"
+ */
+export const formatCooldownTime = totalSeconds => {
+  const secs = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+  if (secs < 60) {
+    return `${secs}s`;
+  }
+  const mins = Math.floor(secs / 60);
+  const remainingSecs = secs % 60;
+  if (remainingSecs === 0) {
+    return `${mins}m`;
+  }
+  return `${mins}m ${remainingSecs}s`;
+};
+
+/**
+ * Clean and format API error messages that contain unrounded decimal seconds.
+ * Example: "Please wait 217.779071 seconds before requesting a new code."
+ *       -> "Please wait 3m 38s before requesting a new code."
+ */
+export const formatApiMessage = msg => {
+  if (!msg || typeof msg !== 'string') return '';
+  return msg.replace(/(\d+(?:\.\d+)?)\s*seconds?/gi, (_, match) => {
+    const formatted = formatCooldownTime(parseFloat(match));
+    return formatted.includes('m') ? formatted : `${formatted} seconds`;
+  });
+};
+
 const OtpVerificationScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
   const { verifyUserEmail } = useAuth();
@@ -27,15 +57,17 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   const purpose = route?.params?.purpose || 'registration';
   const redirectTo = route?.params?.redirectTo || null;
 
+  const initialCooldown = route?.params?.cooldown_seconds || route?.params?.initialCooldown;
+
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [cooldown, setCooldown] = useState(60);
+  const [cooldown, setCooldown] = useState(initialCooldown ? Math.ceil(initialCooldown) : 60);
   const [toast, setToast] = useState(null);
 
   const inputRef = useRef(null);
 
-  const showToast = useCallback(({ type = 'info', title = '', message = '', duration = 3000 }) => {
+  const showToast = useCallback(({ type = 'info', title = '', message = '', duration = 3500 }) => {
     setToast({ type, title, message, duration });
   }, []);
 
@@ -43,7 +75,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setToast(null);
   }, []);
 
-  // 60-second Resend Cooldown Countdown
+  // Cooldown Countdown Timer
   useEffect(() => {
     let timer = null;
     if (cooldown > 0) {
@@ -105,7 +137,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
         showToast({
           type: 'error',
           title: 'Verification Failed',
-          message: response?.message || 'Invalid verification code. Please try again.',
+          message: formatApiMessage(response?.message) || 'Invalid verification code. Please try again.',
         });
       }
     } catch (err) {
@@ -113,7 +145,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
       showToast({
         type: 'error',
         title: 'Verification Error',
-        message: apiMsg,
+        message: formatApiMessage(apiMsg),
       });
     } finally {
       setLoading(false);
@@ -139,7 +171,8 @@ const OtpVerificationScreen = ({ route, navigation }) => {
       const response = await resendOtp(email, purpose);
 
       if (response?.success) {
-        setCooldown(response?.cooldown_seconds || 60);
+        const cd = response?.cooldown_seconds || response?.cooldown || 60;
+        setCooldown(Math.ceil(cd));
         setOtp('');
         showToast({
           type: 'success',
@@ -147,18 +180,27 @@ const OtpVerificationScreen = ({ route, navigation }) => {
           message: 'A new 6-digit verification code has been sent to your email.',
         });
       } else {
+        const cd = response?.cooldown_seconds || response?.cooldown;
+        if (cd) {
+          setCooldown(Math.ceil(cd));
+        }
         showToast({
           type: 'error',
           title: 'Resend Failed',
-          message: response?.message || 'Failed to resend code. Please try again later.',
+          message: formatApiMessage(response?.message) || 'Failed to resend code. Please try again later.',
         });
       }
     } catch (err) {
-      const apiMsg = err?.response?.data?.message || err?.message || 'Failed to resend code.';
+      const resData = err?.response?.data;
+      const cd = resData?.cooldown_seconds || resData?.cooldown;
+      if (cd) {
+        setCooldown(Math.ceil(cd));
+      }
+      const rawMsg = resData?.message || err?.message || 'Failed to resend code.';
       showToast({
         type: 'error',
-        title: 'Resend Error',
-        message: apiMsg,
+        title: 'Resend Cooldown Active',
+        message: formatApiMessage(rawMsg),
       });
     } finally {
       setResending(false);
@@ -252,7 +294,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
               </Text>
               {cooldown > 0 ? (
                 <Text style={[styles.cooldownText, { color: theme.accent }]}>
-                  Resend available in {cooldown}s
+                  Resend available in {formatCooldownTime(cooldown)}
                 </Text>
               ) : (
                 <TouchableOpacity onPress={handleResendCode} disabled={resending} activeOpacity={0.7} style={{ paddingVertical: 4 }}>

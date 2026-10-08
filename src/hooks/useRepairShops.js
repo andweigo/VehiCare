@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MAP_CONFIG from '../config/mapConfig';
-import { fetchNearbyRepairShops } from '../services/repairShopApi';
+import { fetchNearbyRepairShops, filterShopsByCategory } from '../services/repairShopApi';
 import LocationService, { getAccuracyStatus } from '../services/locationService';
+import { BRAND } from '../theme/colors';
 
 const SAVED_LOCATION_STORAGE_KEY = '@vehicare_last_location';
 
@@ -209,6 +210,9 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
     }
   };
 
+  const [rawShops, setRawShops] = useState([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
   // Fetch nearby repair shops from backend API for active selectedLocation
   const loadShops = useCallback(async (isRefresh = false) => {
     if (!selectedLocation || selectedLocation.latitude === undefined || selectedLocation.longitude === undefined) {
@@ -227,12 +231,16 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
         latitude: selectedLocation.latitude,
         longitude: selectedLocation.longitude,
         radius: MAP_CONFIG.defaultRadiusMeters,
-        vehicleType,
+        vehicleType: 'all', // Fetch all nearby shops, then filter client side safely
       });
 
-      setShops(Array.isArray(data) ? data : []);
-      if (Array.isArray(data) && data.length > 0) {
-        setSelectedShopId(data[0].id);
+      const list = Array.isArray(data) ? data : [];
+      setRawShops(list);
+      const filtered = filterShopsByCategory(list, categoryFilter);
+      setShops(filtered);
+
+      if (filtered.length > 0) {
+        setSelectedShopId(filtered[0].id);
       }
     } catch (err) {
       console.warn('[useRepairShops] API load error:', err);
@@ -241,7 +249,16 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedLocation, vehicleType]);
+  }, [selectedLocation, categoryFilter]);
+
+  // Re-filter when categoryFilter or rawShops change
+  useEffect(() => {
+    const filtered = filterShopsByCategory(rawShops, categoryFilter);
+    setShops(filtered);
+    if (filtered.length > 0 && !filtered.some(s => s.id === selectedShopId)) {
+      setSelectedShopId(filtered[0].id);
+    }
+  }, [categoryFilter, rawShops]);
 
   // Initial load priority: 1) Saved location -> 2) Current GPS -> 3) Default Preset
   useEffect(() => {
@@ -342,6 +359,8 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
     setManualLocation: (loc) => setSelectedLocation(loc, true),
     requestPermissionAndAcquire,
     acquireFreshLocation: useCurrentGpsLocation,
+    categoryFilter,
+    setCategoryFilter,
     reload: loadShops,
   };
 };

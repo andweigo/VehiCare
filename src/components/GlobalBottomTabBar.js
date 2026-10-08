@@ -13,47 +13,110 @@ import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import notificationService from '../services/notificationService';
 import { useTheme } from '../theme/ThemeContext';
 
-const tabs = [
-  { key: 'Home', icon: 'home', label: 'Home' },
-  { key: 'Diagnose', icon: 'medical-services', label: 'Diagnose' },
-  { key: 'Maintenance', icon: 'build', label: 'Maintenance' },
-  { key: 'Notifications', icon: 'notifications', label: 'Notifications' },
-  { key: 'Profile', icon: 'person', label: 'Profile' },
+// ─── Tab definitions ────────────────────────────────────────────────────────
+
+const TABS = [
+  { key: 'Home',          icon: 'home',             label: 'Home' },
+  { key: 'Diagnose',      icon: 'medical-services',  label: 'Diagnose' },
+  { key: 'Maintenance',   icon: 'build',             label: 'Maintenance' },
+  { key: 'Notifications', icon: 'notifications',     label: 'Notifications' },
+  { key: 'Profile',       icon: 'person',            label: 'Profile' },
 ];
 
-const BottomTabBar = ({ activeTab, onTabPress, isSidebarOpen }) => {
+// Screens where the bottom tab bar should be visible
+const TAB_VISIBLE_ROUTES = new Set([
+  'Dashboard',
+  'Maintenance',
+  'Notifications',
+  'Profile',
+]);
+
+// Map route name → active tab key
+const ROUTE_TO_TAB = {
+  Dashboard:                'Home',
+  Diagnostics:              'Diagnose',
+  AskVehiCare:              'Diagnose',
+  Maintenance:              'Maintenance',
+  MaintenanceCategory:      'Maintenance',
+  MaintenanceGuide:         'Maintenance',
+  MaintenanceHistory:       'Maintenance',
+  SmartRecommendations:     'Maintenance',
+  History:                  'Maintenance',
+  RepairShops:              'Maintenance',
+  VehicleHealth:            'Maintenance',
+  Notifications:            'Notifications',
+  NotificationPreferences:  'Notifications',
+  Profile:                  'Profile',
+  PersonalInformation:      'Profile',
+  ManagePlan:               'Profile',
+  Settings:                 'Profile',
+  Activity:                 'Profile',
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+const GlobalBottomTabBar = ({ navigationRef }) => {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { isOpen: sidebarOpenFromContext } = useSidebar();
-  const sidebarOpen = isSidebarOpen !== undefined ? isSidebarOpen : sidebarOpenFromContext;
+  const { activeScreen, isOpen: sidebarOpen } = useSidebar();
   const [unread, setUnread] = useState(0);
 
+  // Derive which tab is active from the current route name
+  const activeTab = ROUTE_TO_TAB[activeScreen] || null;
+
+  // Only show when the current route is one of our main tab screens
+  const isVisible = TAB_VISIBLE_ROUTES.has(activeScreen);
+
+  // ── Notifications badge ──
   const loadUnread = useCallback(async () => {
     try {
       const items = await notificationService.fetchNotifications();
       setUnread(items.filter(i => !i.isRead).length);
-    } catch (err) {
+    } catch (_) {
       // ignore
     }
   }, []);
 
   useEffect(() => {
     loadUnread();
-    const timer = setInterval(loadUnread, 10000);
+    const timer = setInterval(loadUnread, 10_000);
     return () => clearInterval(timer);
-  }, [activeTab, loadUnread]);
+  }, [activeScreen, loadUnread]);
 
   useRealtimeUpdates(user?.id, {
     'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated': loadUnread,
     'payment.updated': loadUnread,
   });
 
-  if (sidebarOpen) return null;
+  // ── Tab press ──
+  const handleTabPress = (tabKey) => {
+    if (!navigationRef?.isReady?.()) return;
+
+    if (tabKey === 'Home')          return navigationRef.navigate('Dashboard');
+    if (tabKey === 'Diagnose')      return navigationRef.navigate('Diagnostics');
+    if (tabKey === 'Maintenance')   return navigationRef.navigate('Maintenance');
+    if (tabKey === 'Notifications') return navigationRef.navigate('Notifications');
+    if (tabKey === 'Profile')       return navigationRef.navigate('Profile');
+  };
+
+  if (!isVisible || sidebarOpen) return null;
 
   return (
-    <View style={styles.wrapper} pointerEvents="box-none">
-      <View style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: theme.shadow }]}> 
-        {tabs.map(tab => {
+    <View
+      style={styles.wrapper}
+      pointerEvents="box-none"
+    >
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            shadowColor: theme.shadow,
+          },
+        ]}
+      >
+        {TABS.map(tab => {
           const isActive = activeTab === tab.key;
 
           return (
@@ -61,7 +124,7 @@ const BottomTabBar = ({ activeTab, onTabPress, isSidebarOpen }) => {
               key={tab.key}
               style={styles.tabItem}
               activeOpacity={0.78}
-              onPress={() => onTabPress(tab.key)}
+              onPress={() => handleTabPress(tab.key)}
             >
               <View
                 style={[
@@ -76,7 +139,9 @@ const BottomTabBar = ({ activeTab, onTabPress, isSidebarOpen }) => {
                 />
                 {tab.key === 'Notifications' && unread > 0 && (
                   <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                    <Text style={styles.badgeText}>{unread > 9 ? '9+' : `${unread}`}</Text>
+                    <Text style={styles.badgeText}>
+                      {unread > 9 ? '9+' : `${unread}`}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -144,11 +209,13 @@ const styles = StyleSheet.create({
     width: 38,
     height: 32,
     borderRadius: 11,
-
     alignItems: 'center',
     justifyContent: 'center',
-
     marginBottom: 2,
+  },
+
+  iconContainerActive: {
+    // subtle tint — can be customised
   },
 
   badge: {
@@ -169,7 +236,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
   },
 
-
   tabLabel: {
     fontFamily: 'Inter-Medium',
     fontSize: 9,
@@ -184,4 +250,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BottomTabBar;
+export default GlobalBottomTabBar;

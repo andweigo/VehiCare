@@ -96,13 +96,16 @@ class DiagnosticController extends Controller
             'symptoms' => 'required|string|max:2000',
             'input_type' => 'nullable|string|in:text,image,voice,video,audio',
             'image_base64' => 'nullable|string',
+            'image_mime' => 'nullable|string|starts_with:image/',
             'image' => 'nullable|image|max:10240',
             'video_base64' => 'nullable|string',
             'video_mime' => 'nullable|string',
             'video_duration' => 'nullable|numeric',
             'video' => 'nullable|file|mimes:mp4,mov,m4v,3gp|max:30720',
             'audio_base64' => 'nullable|string',
-            'audio' => 'nullable|file',
+            'audio_mime' => 'nullable|string|starts_with:audio/',
+            'audio_duration' => 'nullable|numeric',
+            'audio' => 'nullable|file|mimes:mp3,wav,m4a,aac,mp4,3gp,amr,ogg,oga|max:10240',
             'vehicle_name' => 'nullable',
             'vehicle_type' => 'nullable',
             'history' => 'nullable|array',
@@ -118,7 +121,7 @@ class DiagnosticController extends Controller
         $videoDurationSec = null;
         $tempStoredPath = null;
 
-        // Process File Uploads (Image or Video)
+        // Process uploaded media files and legacy Base64 clients.
         if ($request->hasFile('video')) {
             $inputType = 'video';
             $file = $request->file('video');
@@ -187,7 +190,7 @@ class DiagnosticController extends Controller
             $inputType = 'image';
             $cleanBase64 = preg_replace('/^data:image\/[a-zA-Z0-9.+-]+;base64,/i', '', trim($validated['image_base64']));
             $mediaBase64 = $cleanBase64;
-            $mediaMime = 'image/jpeg';
+            $mediaMime = $validated['image_mime'] ?? 'image/jpeg';
             $mediaSizeBytes = (int) (strlen($cleanBase64) * 0.75);
 
             $validation = $this->mediaValidationService->validateImage($mediaSizeBytes, $usageStats['media'] ?? []);
@@ -198,11 +201,34 @@ class DiagnosticController extends Controller
                     'message' => $validation['message'],
                 ], 422);
             }
+        } elseif ($request->hasFile('audio')) {
+            $inputType = 'voice';
+            $file = $request->file('audio');
+            $detectedMime = $file->getMimeType();
+            $clientMime = $file->getClientMimeType();
+            $mediaMime = is_string($detectedMime) && str_starts_with($detectedMime, 'audio/')
+                ? $detectedMime
+                : (is_string($clientMime) && str_starts_with($clientMime, 'audio/')
+                    ? $clientMime
+                    : ($validated['audio_mime'] ?? 'audio/mp4'));
+            $mediaSizeBytes = $file->getSize();
+            $audioDurationSec = (int) ($validated['audio_duration'] ?? 0);
+
+            $validation = $this->mediaValidationService->validateAudio($mediaSizeBytes, $audioDurationSec, $usageStats['media'] ?? []);
+            if (!$validation['valid']) {
+                return response()->json([
+                    'status' => 'error',
+                    'reason' => $validation['error'],
+                    'message' => $validation['message'],
+                ], 422);
+            }
+
+            $mediaBase64 = base64_encode(file_get_contents($file->getRealPath()));
         } elseif (!empty($validated['audio_base64'])) {
             $inputType = 'voice';
             $cleanBase64 = preg_replace('/^data:audio\/[a-zA-Z0-9.+-]+;base64,/i', '', trim($validated['audio_base64']));
             $mediaBase64 = $cleanBase64;
-            $mediaMime = 'audio/mp4';
+            $mediaMime = $validated['audio_mime'] ?? 'audio/mp4';
             $mediaSizeBytes = (int) (strlen($cleanBase64) * 0.75);
             $audioDurationSec = (int) ($validated['audio_duration'] ?? 0);
 
@@ -269,7 +295,7 @@ class DiagnosticController extends Controller
 
         Log::info('[DiagnosticController] PIPELINE FLOW: MOBILE INPUT -> LARAVEL REQUEST -> GEMINI REQUEST', [
             'symptoms' => $validated['symptoms'],
-            'input_type' => $validated['input_type'] ?? 'text',
+            'input_type' => $inputType,
             'user_id' => $user?->id,
             'guest_uuid' => $guestUuid,
             'vehicle_info' => $vehicleInfo,
@@ -282,6 +308,7 @@ class DiagnosticController extends Controller
                 $validated['symptoms'],
                 $mediaBase64,
                 $mediaMime,
+                $inputType,
                 $validated['history'] ?? [],
                 null,
                 $user?->id
@@ -308,7 +335,7 @@ class DiagnosticController extends Controller
             $estCostMax = (float) ($analysis['estimated_cost']['max'] ?? 3500);
             $currencyStr = $this->toSafeString($analysis['estimated_cost']['currency'] ?? 'PHP', 'PHP');
             $proHelpRec = (bool) ($analysis['professional_help']['recommended'] ?? false);
-            $proHelpReason = $this->toSafeString($analysis['professional_help']['reason'] ?? 'Professional inspection recommended for vehicle safety.', 'Professional inspection recommended for vehicle safety.');
+            $proHelpReason = $this->toSafeString($analysis['professional_help']['reason'] ?? '', '');
             $proHelpPriority = $this->toSafeString($analysis['professional_help']['priority'] ?? $analysis['professional_help']['severity'] ?? $analysis['severity'] ?? 'MODERATE', 'MODERATE');
 
             $rawConfidence = $analysis['confidence'] ?? 'MODERATE';

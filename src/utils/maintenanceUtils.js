@@ -32,10 +32,34 @@ export const resolveVehicleTypeString = vehicleProfile => {
  * Resolve icon name based on vehicle type string.
  */
 export const getVehicleIconName = vehicleTypeValue => {
-  let typeText = resolveVehicleTypeString(vehicleTypeValue);
-  if (!typeText && typeof vehicleTypeValue === 'string') {
-    typeText = vehicleTypeValue;
-  }
+  const readTypeLabel = value => {
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value).trim();
+    }
+
+    if (value && typeof value === 'object') {
+      for (const key of ['name', 'label', 'type', 'title', 'value', 'code', 'category']) {
+        const label = readTypeLabel(value[key]);
+        if (label) return label;
+      }
+    }
+
+    return '';
+  };
+
+  const typeFields = typeof vehicleTypeValue === 'object' && vehicleTypeValue !== null
+    ? [
+      vehicleTypeValue.vehicle_type,
+      vehicleTypeValue.vehicleType,
+      vehicleTypeValue.vehicle_type_name,
+      vehicleTypeValue.vehicle_type_label,
+      vehicleTypeValue.type,
+      vehicleTypeValue.category,
+      vehicleTypeValue.type_name,
+      vehicleTypeValue.vehicle_category,
+    ]
+    : [vehicleTypeValue];
+  const typeText = typeFields.map(readTypeLabel).find(Boolean) || '';
 
   const text = `${typeText || ''}`.toLowerCase().trim();
 
@@ -44,7 +68,7 @@ export const getVehicleIconName = vehicleTypeValue => {
     text.includes('motor') ||
     text.includes('scooter')
   ) {
-    return 'motorcycle';
+    return 'two-wheeler';
   }
 
   if (
@@ -451,6 +475,7 @@ export const extractDiagnosticRecommendations = diagnoses => {
         diagnosisId: norm.id,
         relatedProblem: norm.problem,
         createdAt: norm.createdAt,
+        diagnosticRecord: norm,
       });
     });
   });

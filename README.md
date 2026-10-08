@@ -93,7 +93,7 @@ Ensure Git, Node.js, PHP, Composer, MySQL, JDK 17, and Android Studio are instal
 
 ### Step 2 — Clone the Repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/andweigo/VehiCare.git
 cd VehiCare
 ```
 
@@ -390,6 +390,18 @@ Before reporting setup completion, verify all items:
      cd android
      ./gradlew clean
      ```
+
+### 7. Google Authentication Issues (`DEVELOPER_ERROR` / Code 10)
+* **Status**: `google-services.json` and `webClientId` are **already pre-configured** in the repository.
+* **Troubleshooting**:
+  1. Google Authentication works out-of-the-box using standard React Native Android debug builds.
+  2. If a groupmate encounters `DEVELOPER_ERROR` (Error 10) when tapping "Sign in with Google", it means their local machine's `debug.keystore` SHA-1 fingerprint is not registered in Firebase Console.
+  3. **Fix**: They can obtain their SHA-1 fingerprint by running:
+     ```bash
+     cd android && ./gradlew signingReport
+     ```
+     Add the resulting `SHA1` string to **Firebase Console** -> **Project Settings** -> **Android App**.
+  4. Alternatively, groupmates can test using **Email/Password Authentication** or **Guest Mode**.
 
 ---
 

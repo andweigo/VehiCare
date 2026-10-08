@@ -18,11 +18,14 @@ import { useTheme } from '../theme/ThemeContext';
 import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
+import { useVehicle } from '../context/VehicleContext';
+import activityService from '../services/activity.service';
 import {
   getHistoryStorageKey,
   getVehiclesStorageKey,
   loadActiveChatSessions,
 } from '../services/storageService';
+import { getVehicleRecommendations } from '../utils/maintenanceUtils';
 import { getVehicleDisplayName } from '../utils/vehicleDisplay';
 import ConfidenceCard from '../components/ConfidenceCard';
 import PossibleCauseCard from '../components/PossibleCauseCard';
@@ -82,8 +85,41 @@ const SORT_OPTIONS = [
   },
 ];
 
+export const normalizeItemType = (rawType = '') => {
+  const t = String(rawType || '').toLowerCase().trim();
+  if (
+    t === 'maintenance' ||
+    t === 'maintenance_completed' ||
+    t === 'maintenance_undone' ||
+    t === 'service' ||
+    t.includes('maint')
+  ) {
+    return 'maintenance';
+  }
+  if (
+    t === 'repair' ||
+    t === 'repair_assistance' ||
+    t === 'referral' ||
+    t === 'service_referral' ||
+    t === 'shop_visit' ||
+    t.includes('repair') ||
+    t.includes('referral') ||
+    t.includes('shop')
+  ) {
+    return 'repair';
+  }
+  if (t === 'diagnosis' || t === 'diagnostic' || t.includes('diag')) {
+    return 'diagnosis';
+  }
+  if (t === 'chat' || t === 'consultation' || t.includes('chat') || t.includes('consult')) {
+    return 'chat';
+  }
+  return t || 'activity';
+};
+
 const getTypeConfig = type => {
-  switch (type) {
+  const normType = normalizeItemType(type);
+  switch (normType) {
     case 'diagnosis':
       return {
         icon: 'medical-services',
@@ -274,27 +310,43 @@ const normalizeSymptoms = symptoms => {
   return [];
 };
 
-const normalizeHistoryItem = item => ({
-  ...item,
-  id:
-    item.id ||
-    `${item.type || 'activity'}-${item.createdAt || Date.now()}-${Math.random()}`,
-  type: item.type || 'chat',
-  title: item.title || 'VehiCare Activity',
-  summary:
-    typeof item.summary === 'string'
-      ? item.summary
-      : item.description || 'No summary available.',
-  createdAt: item.createdAt || new Date().toISOString(),
-  updatedAt:
-    item.updatedAt || item.createdAt || new Date().toISOString(),
-  symptoms: normalizeSymptoms(item.symptoms),
-});
+const normalizeHistoryItem = item => {
+  const normalizedType = normalizeItemType(item?.type);
+  return {
+    ...item,
+    id:
+      item?.id ||
+      `${normalizedType}-${item?.createdAt || Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    type: normalizedType,
+    rawType: item?.type || normalizedType,
+    title:
+      item?.title ||
+      (normalizedType === 'maintenance'
+        ? 'Maintenance Service'
+        : normalizedType === 'repair'
+        ? 'Repair Service'
+        : normalizedType === 'diagnosis'
+        ? 'AI Diagnosis Report'
+        : 'VehiCare Activity'),
+    summary:
+      typeof item?.summary === 'string'
+        ? item.summary
+        : item?.description ||
+          (normalizedType === 'maintenance'
+            ? 'Vehicle maintenance service logged.'
+            : 'No summary available.'),
+    createdAt: item?.createdAt || item?.date || new Date().toISOString(),
+    updatedAt:
+      item?.updatedAt || item?.createdAt || new Date().toISOString(),
+    symptoms: normalizeSymptoms(item?.symptoms),
+  };
+};
 
 const HistoryScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const { openSidebar } = useSidebar();
+  const { activeVehicle: contextActiveVehicle, vehicles: contextVehicles } = useVehicle();
 
   const [history, setHistory] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -313,6 +365,21 @@ const HistoryScreen = ({ navigation }) => {
   const [sortVisible, setSortVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
+  const activeVehicle = useMemo(
+    () =>
+      contextActiveVehicle ||
+      vehicles.find(
+        vehicle =>
+          vehicle?.isActive ||
+          vehicle?.is_active ||
+          vehicle?.active,
+      ) ||
+      (Array.isArray(contextVehicles) && contextVehicles[0]) ||
+      vehicles[0] ||
+      null,
+    [contextActiveVehicle, contextVehicles, vehicles],
+  );
+
   const loadHistory = useCallback(
     async (isRefresh = false, pageNum = 1) => {
       try {
@@ -329,71 +396,88 @@ const HistoryScreen = ({ navigation }) => {
         let combinedItems = [];
         let totalPages = 1;
 
+        // 1. Fetch remote items from backend API if authenticated
         if (isAuthenticated) {
-          const response = await vehicleApi.getHistory({
-            type: filter,
-            search: search.trim(),
-            sort,
-            page: pageNum,
-            per_page: 20,
-          });
+          try {
+            const response = await vehicleApi.getHistory({
+              type: filter === 'all' ? undefined : filter,
+              search: search.trim(),
+              sort,
+              page: pageNum,
+              per_page: 30,
+            });
 
-          const remoteItems = response?.data || [];
+            const remoteItems = response?.data || [];
+            totalPages = response?.meta?.last_page || 1;
 
-          totalPages = response?.meta?.last_page || 1;
-
-          if (Array.isArray(remoteItems)) {
-            combinedItems = remoteItems.map(normalizeHistoryItem);
+            if (Array.isArray(remoteItems)) {
+              combinedItems.push(...remoteItems.map(normalizeHistoryItem));
+            }
+          } catch (apiErr) {
+            console.warn('API error in getHistory:', apiErr?.message);
           }
-        } else {
+        }
+
+        // 2. Concurrently load local storage history, user activities, and completed maintenance
+        try {
           const historyKey = getHistoryStorageKey(userId);
           const vehiclesKey = getVehiclesStorageKey(userId);
           const [
             storedHistory,
             storedVehicles,
             activeSessions,
+            userActivities,
           ] = await Promise.all([
-            AsyncStorage.getItem(historyKey),
-            AsyncStorage.getItem(vehiclesKey),
+            AsyncStorage.getItem(historyKey).catch(() => null),
+            AsyncStorage.getItem(vehiclesKey).catch(() => null),
             loadActiveChatSessions(userId).catch(() => null),
+            activityService.getAllActivities(userId).catch(() => []),
           ]);
 
           if (storedHistory) {
             try {
               const parsed = JSON.parse(storedHistory);
-
               if (Array.isArray(parsed)) {
-                combinedItems.push(
-                  ...parsed.map(normalizeHistoryItem),
-                );
+                combinedItems.push(...parsed.map(normalizeHistoryItem));
               }
             } catch (error) {
-              console.warn(
-                'Failed to parse stored history:',
-                error,
-              );
+              console.warn('Failed to parse stored history:', error);
             }
           }
 
           if (storedVehicles) {
             try {
               const parsedVehicles = JSON.parse(storedVehicles);
-
               if (Array.isArray(parsedVehicles)) {
                 setVehicles(parsedVehicles);
               }
             } catch (error) {
-              console.warn(
-                'Failed to parse stored vehicles:',
-                error,
-              );
+              console.warn('Failed to parse stored vehicles:', error);
             }
           }
 
-          if (
-            activeSessions &&
-            typeof activeSessions === 'object'
-          ) {
+          // Merge activities (tracks maintenance completions, repair referrals, etc.)
+          if (Array.isArray(userActivities) && userActivities.length > 0) {
+            userActivities.forEach(act => {
+              const nType = normalizeItemType(act.type);
+              combinedItems.push(
+                normalizeHistoryItem({
+                  id: act.id,
+                  type: nType,
+                  title: act.title,
+                  summary: act.description || act.title,
+                  vehicleName: act.vehicleName || 'Your Vehicle',
+                  vehicleId: act.vehicleId,
+                  createdAt: act.createdAt,
+                  updatedAt: act.createdAt,
+                  metadata: act.metadata,
+                }),
+              );
+            });
+          }
+
+          // Merge active chat consultations
+          if (activeSessions && typeof activeSessions === 'object') {
             Object.keys(activeSessions).forEach(sessionKey => {
               const session = activeSessions[sessionKey];
 
@@ -406,20 +490,12 @@ const HistoryScreen = ({ navigation }) => {
                 const lastUserMsg = session.messages
                   .slice()
                   .reverse()
-                  .find(
-                    m =>
-                      m.role === 'user' ||
-                      m.sender === 'user',
-                  );
+                  .find(m => m.role === 'user' || m.sender === 'user');
 
                 const lastAiMsg = session.messages
                   .slice()
                   .reverse()
-                  .find(
-                    m =>
-                      m.role === 'assistant' ||
-                      m.sender === 'assistant',
-                  );
+                  .find(m => m.role === 'assistant' || m.sender === 'assistant');
 
                 const summaryText =
                   lastAiMsg?.summary ||
@@ -439,8 +515,7 @@ const HistoryScreen = ({ navigation }) => {
                       typeof summaryText === 'string'
                         ? summaryText
                         : 'Vehicle diagnostic consultation',
-                    vehicleName:
-                      session.vehicleName || 'Vehicle',
+                    vehicleName: session.vehicleName || 'Vehicle',
                     createdAt:
                       session.createdAt ||
                       session.updatedAt ||
@@ -456,13 +531,68 @@ const HistoryScreen = ({ navigation }) => {
               }
             });
           }
+
+          // 3. Load completed maintenance items for active vehicle
+          const targetVehicle = activeVehicle || contextActiveVehicle || (vehicles && vehicles[0]) || null;
+          const targetVehicleId = targetVehicle?.id ?? targetVehicle?.vehicle_id ?? null;
+          const vName = targetVehicle ? getVehicleDisplayName(targetVehicle, 'Your Vehicle') : 'Your Vehicle';
+
+          if (targetVehicle) {
+            const completedMaintKey = targetVehicleId
+              ? `@vehicare_completed_maintenance_${targetVehicleId}`
+              : '@vehicare_completed_maintenance';
+
+            const [savedCompleted, savedGeneralCompleted] = await Promise.all([
+              AsyncStorage.getItem(completedMaintKey).catch(() => null),
+              AsyncStorage.getItem('@vehicare_completed_maintenance').catch(() => null),
+            ]);
+
+            const completedIds = new Set();
+            if (savedCompleted) {
+              try {
+                const arr = JSON.parse(savedCompleted);
+                if (Array.isArray(arr)) arr.forEach(id => completedIds.add(String(id)));
+              } catch (e) {}
+            }
+            if (savedGeneralCompleted) {
+              try {
+                const arr = JSON.parse(savedGeneralCompleted);
+                if (Array.isArray(arr)) arr.forEach(id => completedIds.add(String(id)));
+              } catch (e) {}
+            }
+
+            if (completedIds.size > 0) {
+              const vehicleRecs = getVehicleRecommendations(targetVehicle);
+              vehicleRecs.forEach(rec => {
+                if (completedIds.has(String(rec.id))) {
+                  combinedItems.push(
+                    normalizeHistoryItem({
+                      id: `completed-maint-${rec.id}-${targetVehicleId || 'v'}`,
+                      type: 'maintenance',
+                      title: rec.title,
+                      summary: rec.description || `Completed routine maintenance for ${vName}.`,
+                      vehicleName: vName,
+                      vehicleId: targetVehicleId,
+                      createdAt: new Date().toISOString(),
+                      category: rec.category,
+                      priority: rec.priority,
+                      isCompleted: true,
+                    }),
+                  );
+                }
+              });
+            }
+          }
+        } catch (localErr) {
+          console.warn('Local history storage check error:', localErr);
         }
 
+        // Deduplicate items by ID
         const seenIds = new Set();
         const uniqueItems = [];
 
         combinedItems.forEach(item => {
-          if (!seenIds.has(item.id)) {
+          if (item && item.id && !seenIds.has(item.id)) {
             seenIds.add(item.id);
             uniqueItems.push(item);
           }
@@ -472,14 +602,8 @@ const HistoryScreen = ({ navigation }) => {
           setHistory(uniqueItems);
         } else {
           setHistory(prev => {
-            const prevSeen = new Set(
-              prev.map(item => item.id),
-            );
-
-            const newEntries = uniqueItems.filter(
-              item => !prevSeen.has(item.id),
-            );
-
+            const prevSeen = new Set(prev.map(item => item.id));
+            const newEntries = uniqueItems.filter(item => !prevSeen.has(item.id));
             return [...prev, ...newEntries];
           });
         }
@@ -487,23 +611,14 @@ const HistoryScreen = ({ navigation }) => {
         setPage(pageNum);
         setHasMore(pageNum < totalPages);
       } catch (error) {
-        console.error(
-          'Failed to load history:',
-          error,
-        );
+        console.error('Failed to load history:', error);
       } finally {
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
       }
     },
-    [
-      user,
-      isAuthenticated,
-      filter,
-      search,
-      sort,
-    ],
+    [user, isAuthenticated, filter, search, sort, activeVehicle, contextActiveVehicle, vehicles],
   );
 
   const handleRefresh = useCallback(() => {
@@ -546,7 +661,7 @@ const HistoryScreen = ({ navigation }) => {
 
     if (filter !== 'all') {
       result = result.filter(
-        item => item.type === filter,
+        item => normalizeItemType(item.type) === filter,
       );
     }
 
@@ -614,17 +729,6 @@ const HistoryScreen = ({ navigation }) => {
 
     return groups;
   }, [filteredHistory]);
-
-  const activeVehicle = useMemo(
-    () =>
-      vehicles.find(
-        vehicle =>
-          vehicle?.isActive ||
-          vehicle?.is_active ||
-          vehicle?.active,
-      ),
-    [vehicles],
-  );
 
   const renderFilter = item => {
     const active = filter === item.id;
@@ -933,79 +1037,83 @@ const HistoryScreen = ({ navigation }) => {
     </View>
   );
 
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <View
-        style={[
-          styles.emptyIcon,
-          {
-            backgroundColor:
-              theme.surfaceAlt,
-            borderColor:
-              theme.border,
-          },
-        ]}
-      >
-        <Icon
-          name="history"
-          size={38}
-          color={theme.accent}
-        />
-      </View>
+  const renderEmpty = () => {
+    let emptyIcon = 'history';
+    let emptyTitle = 'No Activity Found';
+    let emptyDesc = 'Your VehiCare diagnoses, consultations, and maintenance activity will appear here.';
+    let actionBtnText = null;
+    let actionBtnRoute = null;
 
-      <Text
-        style={[
-          styles.emptyTitle,
-          {
-            color: theme.text,
-          },
-        ]}
-      >
-        No Activity Found
-      </Text>
+    if (search) {
+      emptyTitle = 'No Results Found';
+      emptyDesc = `No activity matches "${search}". Try searching for another term.`;
+    } else if (filter === 'maintenance') {
+      emptyIcon = 'build';
+      emptyTitle = 'No Maintenance Records Yet';
+      emptyDesc = 'Completed checklist tasks and service logs will appear here. Complete routine tasks in the Maintenance screen to track upkeep.';
+      actionBtnText = 'Go to Maintenance';
+      actionBtnRoute = 'Maintenance';
+    } else if (filter === 'repair') {
+      emptyIcon = 'handyman';
+      emptyTitle = 'No Repair Records Yet';
+      emptyDesc = 'Records of repair shop visits, technician consultations, and service referrals will be tracked here.';
+      actionBtnText = 'Find Repair Shops';
+      actionBtnRoute = 'RepairShops';
+    } else if (filter === 'diagnosis') {
+      emptyIcon = 'medical-services';
+      emptyTitle = 'No AI Diagnoses Yet';
+      emptyDesc = 'Run a vehicle check with VehiCare AI to see detailed problem reports and recommendations here.';
+      actionBtnText = 'Run Diagnosis';
+      actionBtnRoute = 'AskVehiCare';
+    } else if (filter === 'chat') {
+      emptyIcon = 'chat-bubble-outline';
+      emptyTitle = 'No Consultations Yet';
+      emptyDesc = 'Conversations with VehiCare AI assistant will be saved here for quick reference.';
+      actionBtnText = 'Ask VehiCare AI';
+      actionBtnRoute = 'AskVehiCare';
+    }
 
-      <Text
-        style={[
-          styles.emptyDescription,
-          {
-            color:
-              theme.textSecondary,
-          },
-        ]}
-      >
-        {search
-          ? 'No history matches your search.'
-          : filter !== 'all'
-          ? 'There are no activities in this category yet.'
-          : 'Your VehiCare diagnoses, consultations, and maintenance activity will appear here.'}
-      </Text>
-
-      {(search ||
-        filter !== 'all') && (
-        <TouchableOpacity
+    return (
+      <View style={styles.emptyContainer}>
+        <View
           style={[
-            styles.clearButton,
+            styles.emptyIcon,
             {
-              backgroundColor:
-                theme.accent,
+              backgroundColor: theme.surfaceAlt,
+              borderColor: theme.border,
             },
           ]}
-          onPress={() => {
-            setSearch('');
-            setFilter('all');
-          }}
         >
-          <Text
-            style={
-              styles.clearButtonText
-            }
+          <Icon name={emptyIcon} size={38} color={theme.accent} />
+        </View>
+
+        <Text style={[styles.emptyTitle, { color: theme.text }]}>{emptyTitle}</Text>
+        <Text style={[styles.emptyDescription, { color: theme.textSecondary }]}>{emptyDesc}</Text>
+
+        {actionBtnText && actionBtnRoute && (
+          <TouchableOpacity
+            style={[styles.clearButton, { backgroundColor: theme.accent, marginTop: 14 }]}
+            onPress={() => navigation.navigate(actionBtnRoute)}
+            activeOpacity={0.8}
           >
-            Clear Filters
-          </Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+            <Text style={styles.clearButtonText}>{actionBtnText}</Text>
+          </TouchableOpacity>
+        )}
+
+        {(search || (filter !== 'all' && !actionBtnText)) && (
+          <TouchableOpacity
+            style={[styles.clearButton, { backgroundColor: theme.accent, marginTop: 14 }]}
+            onPress={() => {
+              setSearch('');
+              setFilter('all');
+            }}
+          >
+            <Text style={styles.clearButtonText}>Clear Filters</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   if (loading) {
     return (

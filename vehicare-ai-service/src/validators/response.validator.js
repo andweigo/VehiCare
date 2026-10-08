@@ -43,9 +43,10 @@ export const diagnosticOutputSchema = z.object({
   }).optional().default({ min: 1000, max: 3500, currency: 'PHP' }),
   professional_help: z.object({
     recommended: z.boolean().default(false),
-    reason: z.string().default('Professional inspection recommended for vehicle safety.'),
+    requires_specialist: z.boolean().default(false),
+    reason: z.string().default(''),
     severity: z.string().optional().default('MODERATE'),
-  }).optional().default({ recommended: false, reason: 'Professional inspection recommended for vehicle safety.', severity: 'MODERATE' }),
+  }).optional().default({ recommended: false, requires_specialist: false, reason: '', severity: 'MODERATE' }),
 });
 
 export const conversationOutputSchema = z.object({

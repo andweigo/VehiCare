@@ -3,7 +3,8 @@ import config from '../src/config/env.js';
 import { cacheService } from '../src/services/cache.service.js';
 import { dedupService } from '../src/services/dedup.service.js';
 import { queueService } from '../src/services/queue.service.js';
-import { isGeneralQuestion } from '../src/prompts/diagnosis.prompt.js';
+import { buildDiagnosisPrompt, isGeneralQuestion } from '../src/prompts/diagnosis.prompt.js';
+import { applySafetyRules } from '../src/safety/diagnosis-safety.js';
 import { normalizeText, hashMedia } from '../src/utils/symptom-normalizer.js';
 
 console.log('==================================================');
@@ -209,7 +210,58 @@ async function runTests() {
     assert.strictEqual(isGeneralQuestion('Brake squeaking sound when stopping'), false);
   });
 
-  // TEST 10: Concurrency Benchmark (5, 10, 20 Simultaneous Requests)
+  // TEST 10: Modality-specific media analysis instructions
+  await test('Media prompts give image, video, and audio distinct evidence instructions', () => {
+    const common = {
+      vehicleContext: { type: 'Car', brand: 'Honda', model: 'Civic', year: '2020' },
+      symptoms: 'Please inspect this media',
+      userLanguage: 'en',
+      hasMedia: true,
+    };
+    const imagePrompt = buildDiagnosisPrompt({ ...common, inputType: 'image', mediaMime: 'image/jpeg' });
+    const videoPrompt = buildDiagnosisPrompt({ ...common, inputType: 'video', mediaMime: 'video/mp4' });
+    const audioPrompt = buildDiagnosisPrompt({ ...common, inputType: 'voice', mediaMime: 'audio/mp4' });
+
+    assert.ok(imagePrompt.includes('Do not infer sounds'));
+    assert.ok(videoPrompt.includes('over time'));
+    assert.ok(audioPrompt.includes('Do not claim visual observations'));
+  });
+
+  // TEST 11: Professional help is reserved for severe or specialist repairs
+  await test('Professional assistance is limited to severe or specialist-level issues', () => {
+    const apply = (severity, requiresSpecialist = false, symptoms = '') => applySafetyRules({
+      severity,
+      professional_help: {
+        recommended: true,
+        requires_specialist: requiresSpecialist,
+        reason: 'Model supplied generic recommendation',
+      },
+    }, symptoms);
+
+    const routine = apply('MODERATE');
+    assert.strictEqual(routine.professional_help.recommended, false);
+    assert.strictEqual(routine.professional_help.reason, '');
+
+    assert.strictEqual(apply('MODERATE', true).professional_help.recommended, true);
+    assert.strictEqual(apply('HIGH').professional_help.recommended, true);
+    assert.strictEqual(apply('LOW', false, 'brakes not working').severity, 'CRITICAL');
+    assert.strictEqual(apply('LOW', false, 'brakes not working').professional_help.recommended, true);
+  });
+
+  // TEST 12: Cache keys distinguish identical bytes with different media types
+  await test('Media cache keys separate identical bytes analyzed as different modalities', () => {
+    const common = {
+      requestType: 'diagnostic',
+      vehicleContext: { brand: 'Honda', model: 'Civic' },
+      symptoms: 'Please inspect this media',
+      mediaBase64: 'same_media_bytes',
+    };
+    const imageKey = cacheService.generateKey({ ...common, inputType: 'image', mediaMime: 'image/jpeg' });
+    const audioKey = cacheService.generateKey({ ...common, inputType: 'voice', mediaMime: 'audio/mp4' });
+    assert.notStrictEqual(imageKey, audioKey);
+  });
+
+  // TEST 13: Concurrency Benchmark (5, 10, 20 Simultaneous Requests)
   await test('Load Test Benchmark: 5, 10, and 20 simultaneous requests', async () => {
     let totalGeminiCalls = 0;
 

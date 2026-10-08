@@ -9,6 +9,33 @@
 
 ## About Laravel
 
+## Gmail OTP email setup
+
+For local Gmail SMTP delivery, configure the backend environment with:
+
+```dotenv
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-gmail-address@gmail.com
+MAIL_PASSWORD=your-google-app-password
+MAIL_FROM_ADDRESS=your-gmail-address@gmail.com
+MAIL_FROM_NAME="VehiCare"
+```
+
+Enable 2-Step Verification on the Google account and create an App Password.
+Use that generated password for `MAIL_PASSWORD`; a normal Google password will
+not work. Keep it only in the local environment configuration and never commit
+it. The authenticated Gmail address should also be the sender address.
+
+After changing mail environment values, clear Laravel's cached configuration
+from the backend directory with `php artisan config:clear`. Check
+`storage/logs/laravel.log` for `[OtpService] Failed to send OTP email` if
+delivery still fails. A successful SMTP submission means Gmail accepted the
+message for processing; also check Spam and verify that the Gmail account has
+not blocked the message.
+
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
 - [Simple, fast routing engine](https://laravel.com/docs/routing).

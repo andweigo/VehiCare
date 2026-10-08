@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -62,6 +63,91 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   const [itemOpacity] = useState(new Animated.Value(0));
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
+  const [selectedDiagnosisModal, setSelectedDiagnosisModal] = useState(null);
+
+  const handleOpenDiagnosisModal = useCallback(item => {
+    if (!item) return;
+
+    const diagId = String(item.diagnosisId || '');
+    const matched = diagnostics.find(d => {
+      const dId = String(d.id || d.diagnosis_id || d._id || '');
+      return dId && dId === diagId;
+    });
+
+    const record = matched || item.diagnosticRecord || item.raw || {};
+    const norm = normalizeDiagnosticRecord(record) || {};
+
+    const problem =
+      norm.problem ||
+      record.problem ||
+      record.diagnosis_title ||
+      record.title ||
+      item.relatedProblem ||
+      item.title ||
+      'Diagnostic Issue';
+
+    const rawSeverity = norm.severity || record.severity || record.urgency || item.priority || 'medium';
+    const severity = String(rawSeverity).toLowerCase();
+
+    const summary =
+      record.summary ||
+      record.description ||
+      record.explanation ||
+      record.ai_analysis ||
+      item.description ||
+      '';
+
+    const rawActions =
+      norm.recommendedActions ||
+      record.recommended_actions ||
+      record.recommendedActions ||
+      record.actions ||
+      [];
+    const actions = Array.isArray(rawActions) && rawActions.length > 0
+      ? rawActions.map(a => (typeof a === 'string' ? a : a?.action || a?.text || a?.title || String(a)))
+      : [item.title];
+
+    const rawCauses =
+      norm.possibleCauses ||
+      record.possible_causes ||
+      record.possibleCauses ||
+      record.causes ||
+      [];
+    const causes = Array.isArray(rawCauses) && rawCauses.length > 0
+      ? rawCauses.map(c => (typeof c === 'string' ? c : c?.cause || c?.name || c?.title || String(c)))
+      : [];
+
+    const rawSteps =
+      norm.troubleshootingSteps ||
+      record.troubleshooting_steps ||
+      record.troubleshootingSteps ||
+      record.steps ||
+      [];
+    const steps = Array.isArray(rawSteps) && rawSteps.length > 0
+      ? rawSteps.map(s => (typeof s === 'string' ? s : s?.step || s?.text || String(s)))
+      : [];
+
+    const rawSymptoms = record.symptoms || [];
+    const symptoms = Array.isArray(rawSymptoms)
+      ? rawSymptoms.map(s => (typeof s === 'string' ? s : s?.symptom || s?.text || String(s)))
+      : typeof rawSymptoms === 'string' && rawSymptoms
+      ? [rawSymptoms]
+      : [];
+
+    const createdAt = norm.createdAt || record.createdAt || record.created_at || item.createdAt || null;
+
+    setSelectedDiagnosisModal({
+      item,
+      problem,
+      severity,
+      summary,
+      actions,
+      causes,
+      steps,
+      symptoms,
+      createdAt,
+    });
+  }, [diagnostics]);
 
   /*
   |--------------------------------------------------------------------------
@@ -248,12 +334,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   const vehicleName = getVehicleDisplayName(vehicleProfile, 'Your Vehicle');
   const vehicleDetails = getVehicleDisplayDetails(vehicleProfile, 'Vehicle information');
-  const vehicleIconName = getVehicleIconName(
-    vehicleProfile?.vehicle_type ||
-      vehicleProfile?.vehicleType ||
-      vehicleProfile?.type ||
-      vehicleProfile,
-  );
+  const vehicleIconName = getVehicleIconName(vehicleProfile);
 
   const renderRecommendation = ({ item }) => {
     const completed = isRecommendationCompleted(item.id);
@@ -367,14 +448,14 @@ const SmartRecommendationsScreen = ({ navigation }) => {
             {item.description}
           </Text>
 
-          {item.source === 'diagnostic' && item.diagnosisId ? (
+          {item.source === 'diagnostic' ? (
             <TouchableOpacity
               style={styles.viewDiagnosisButton}
-              onPress={() => navigation.navigate('History')}
+              onPress={() => handleOpenDiagnosisModal(item)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.viewDiagnosisText, { color: theme.accent }]}>View Diagnosis</Text>
-              <Icon name="chevron-right" size={16} color={theme.accent} />
+              <Text style={[styles.viewDiagnosisText, { color: theme.accent }]}>View Full Diagnosis</Text>
+              <Icon name="visibility" size={16} color={theme.accent} />
             </TouchableOpacity>
           ) : null}
 
@@ -848,6 +929,230 @@ const SmartRecommendationsScreen = ({ navigation }) => {
           />
         </View>
       </ScrollView>
+
+      {/* FULL DIAGNOSIS DETAILS MODAL */}
+      <Modal
+        visible={Boolean(selectedDiagnosisModal)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedDiagnosisModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSelectedDiagnosisModal(null)}
+          />
+          <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {/* Header */}
+            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Diagnosis Report</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                  {vehicleName}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.modalCloseBtn, { backgroundColor: theme.surfaceAlt || '#242424' }]}
+                onPress={() => setSelectedDiagnosisModal(null)}
+                accessibilityLabel="Close diagnosis report"
+              >
+                <Icon name="close" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {selectedDiagnosisModal && (
+                <>
+                  {/* Severity Badge & Problem Title */}
+                  <View style={styles.modalProblemSection}>
+                    <View
+                      style={[
+                        styles.severityBadge,
+                        {
+                          backgroundColor:
+                            selectedDiagnosisModal.severity.includes('crit') ||
+                            selectedDiagnosisModal.severity.includes('high') ||
+                            selectedDiagnosisModal.severity.includes('urg')
+                              ? 'rgba(255, 90, 95, 0.16)'
+                              : 'rgba(246, 59, 5, 0.16)',
+                          borderColor:
+                            selectedDiagnosisModal.severity.includes('crit') ||
+                            selectedDiagnosisModal.severity.includes('high') ||
+                            selectedDiagnosisModal.severity.includes('urg')
+                              ? '#FF5A5F'
+                              : theme.accent,
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={
+                          selectedDiagnosisModal.severity.includes('crit') ||
+                          selectedDiagnosisModal.severity.includes('high') ||
+                          selectedDiagnosisModal.severity.includes('urg')
+                            ? 'warning'
+                            : 'error-outline'
+                        }
+                        size={14}
+                        color={
+                          selectedDiagnosisModal.severity.includes('crit') ||
+                          selectedDiagnosisModal.severity.includes('high') ||
+                          selectedDiagnosisModal.severity.includes('urg')
+                            ? '#FF5A5F'
+                            : theme.accent
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.severityBadgeText,
+                          {
+                            color:
+                              selectedDiagnosisModal.severity.includes('crit') ||
+                              selectedDiagnosisModal.severity.includes('high') ||
+                              selectedDiagnosisModal.severity.includes('urg')
+                                ? '#FF5A5F'
+                                : theme.accent,
+                          },
+                        ]}
+                      >
+                        {selectedDiagnosisModal.severity.toUpperCase()} PRIORITY
+                      </Text>
+                    </View>
+
+                    <Text style={[styles.modalProblemTitle, { color: theme.text }]}>
+                      {selectedDiagnosisModal.problem}
+                    </Text>
+
+                    {selectedDiagnosisModal.createdAt && (
+                      <Text style={[styles.modalDateText, { color: theme.textSecondary }]}>
+                        Diagnosed on {new Date(selectedDiagnosisModal.createdAt).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Summary / Analysis */}
+                  {Boolean(selectedDiagnosisModal.summary) && (
+                    <View style={[styles.modalSectionCard, { backgroundColor: theme.surfaceAlt || '#1C1C1C', borderColor: theme.border }]}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Icon name="description" size={16} color={theme.accent} />
+                        <Text style={[styles.modalSectionHeading, { color: theme.text }]}>Summary & Analysis</Text>
+                      </View>
+                      <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>
+                        {selectedDiagnosisModal.summary}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Symptoms */}
+                  {selectedDiagnosisModal.symptoms.length > 0 && (
+                    <View style={[styles.modalSectionCard, { backgroundColor: theme.surfaceAlt || '#1C1C1C', borderColor: theme.border }]}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Icon name="hearing" size={16} color="#F59E0B" />
+                        <Text style={[styles.modalSectionHeading, { color: theme.text }]}>Symptoms Observed</Text>
+                      </View>
+                      {selectedDiagnosisModal.symptoms.map((symptom, idx) => (
+                        <View key={idx} style={styles.bulletItemRow}>
+                          <View style={[styles.bulletDot, { backgroundColor: '#F59E0B' }]} />
+                          <Text style={[styles.bulletText, { color: theme.text }]}>{symptom}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Possible Causes */}
+                  {selectedDiagnosisModal.causes.length > 0 && (
+                    <View style={[styles.modalSectionCard, { backgroundColor: theme.surfaceAlt || '#1C1C1C', borderColor: theme.border }]}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Icon name="search" size={16} color="#38BDF8" />
+                        <Text style={[styles.modalSectionHeading, { color: theme.text }]}>Possible Causes</Text>
+                      </View>
+                      {selectedDiagnosisModal.causes.map((cause, idx) => (
+                        <View key={idx} style={styles.bulletItemRow}>
+                          <View style={[styles.bulletDot, { backgroundColor: '#38BDF8' }]} />
+                          <Text style={[styles.bulletText, { color: theme.text }]}>{cause}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Recommended Actions */}
+                  {selectedDiagnosisModal.actions.length > 0 && (
+                    <View style={[styles.modalSectionCard, { backgroundColor: theme.surfaceAlt || '#1C1C1C', borderColor: theme.border }]}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Icon name="check-circle-outline" size={16} color="#32D583" />
+                        <Text style={[styles.modalSectionHeading, { color: theme.text }]}>Recommended Actions</Text>
+                      </View>
+                      {selectedDiagnosisModal.actions.map((act, idx) => (
+                        <View key={idx} style={styles.stepItemRow}>
+                          <View style={[styles.stepNumberBadge, { backgroundColor: 'rgba(50, 213, 131, 0.16)' }]}>
+                            <Text style={[styles.stepNumberText, { color: '#32D583' }]}>{idx + 1}</Text>
+                          </View>
+                          <Text style={[styles.stepText, { color: theme.text }]}>{act}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Troubleshooting Steps */}
+                  {selectedDiagnosisModal.steps.length > 0 && (
+                    <View style={[styles.modalSectionCard, { backgroundColor: theme.surfaceAlt || '#1C1C1C', borderColor: theme.border }]}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Icon name="build" size={16} color={theme.accent} />
+                        <Text style={[styles.modalSectionHeading, { color: theme.text }]}>Troubleshooting Steps</Text>
+                      </View>
+                      {selectedDiagnosisModal.steps.map((step, idx) => (
+                        <View key={idx} style={styles.stepItemRow}>
+                          <View style={[styles.stepNumberBadge, { backgroundColor: theme.accentSoft }]}>
+                            <Text style={[styles.stepNumberText, { color: theme.accent }]}>{idx + 1}</Text>
+                          </View>
+                          <Text style={[styles.stepText, { color: theme.text }]}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Action buttons */}
+                  <View style={styles.modalActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.modalActionPrimary, { backgroundColor: theme.accent }]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const problemText = selectedDiagnosisModal.problem;
+                        setSelectedDiagnosisModal(null);
+                        navigation.navigate('AskVehiCare', {
+                          initialPrompt: `I need advice regarding: ${problemText}`,
+                        });
+                      }}
+                    >
+                      <Icon name="auto-awesome" size={18} color="#FFFFFF" />
+                      <Text style={styles.modalActionPrimaryText}>Ask VehiCare AI</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalActionSecondary, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setSelectedDiagnosisModal(null);
+                        navigation.navigate('RepairShops');
+                      }}
+                    >
+                      <Icon name="place" size={18} color={theme.text} />
+                      <Text style={[styles.modalActionSecondaryText, { color: theme.text }]}>Find Repair Shop</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1208,6 +1513,179 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
     textTransform: 'uppercase',
+  },
+
+  /* MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    maxHeight: '88%',
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalHeaderLeft: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+  },
+  modalSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScrollContent: {
+    padding: 20,
+    gap: 14,
+  },
+  modalProblemSection: {
+    marginBottom: 4,
+  },
+  severityBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  severityBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  modalProblemTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  modalDateText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  modalSectionCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+  },
+  modalSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  modalSectionHeading: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 13.5,
+  },
+  modalBodyText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  bulletItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 6,
+  },
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 6,
+  },
+  bulletText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 18,
+    flex: 1,
+  },
+  stepItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 8,
+  },
+  stepNumberBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumberText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10.5,
+  },
+  stepText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 18,
+    flex: 1,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  modalActionPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  modalActionPrimaryText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  modalActionSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  modalActionSecondaryText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
   },
 });
 

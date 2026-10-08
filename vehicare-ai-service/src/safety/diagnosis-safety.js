@@ -23,28 +23,33 @@ export const applySafetyRules = (diagnosisData, symptomsText) => {
   const isHighRiskSymptom = CRITICAL_KEYWORDS.some((kw) => lowerSymptoms.includes(kw));
 
   const result = { ...diagnosisData };
+  const professionalHelp = {
+    recommended: false,
+    requires_specialist: Boolean(result.professional_help?.requires_specialist),
+    reason: '',
+    severity: result.severity || 'MODERATE',
+    ...result.professional_help,
+  };
 
   if (isHighRiskSymptom) {
     result.severity = 'CRITICAL';
     result.urgency = 'CRITICAL: Stop operating the vehicle safely and request immediate technical/towing assistance.';
-    if (!result.professional_help) {
-      result.professional_help = {};
-    }
-    result.professional_help.recommended = true;
-    result.professional_help.severity = 'CRITICAL';
-    if (!result.professional_help.reason || result.professional_help.reason.includes('recommended')) {
-      result.professional_help.reason = 'Immediate professional inspection required due to high-risk vehicle safety hazard.';
-    }
   }
 
-  // Ensure high/critical severity always triggers professional help recommendation
-  if (['HIGH', 'CRITICAL'].includes(result.severity)) {
-    if (!result.professional_help) {
-      result.professional_help = { recommended: true, reason: 'High severity vehicle issue detected.', severity: result.severity };
-    } else {
-      result.professional_help.recommended = true;
-    }
+  const needsProfessional = ['HIGH', 'CRITICAL'].includes(result.severity) || professionalHelp.requires_specialist;
+  professionalHelp.recommended = needsProfessional;
+  professionalHelp.severity = result.severity || 'MODERATE';
+
+  if (!needsProfessional) {
+    professionalHelp.reason = '';
+  } else if (!professionalHelp.reason) {
+    professionalHelp.reason = result.severity === 'CRITICAL'
+      ? 'Immediate professional inspection is required because this may be a serious safety hazard.'
+      : result.severity === 'HIGH'
+        ? 'Professional inspection is advised because this issue may be unsafe or cause further damage.'
+        : 'This repair may require specialist tools or training beyond routine owner maintenance.';
   }
 
+  result.professional_help = professionalHelp;
   return result;
 };

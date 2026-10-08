@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\RepairShop;
 use App\Models\VehicleCorrectionRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -63,8 +64,54 @@ class AdminController extends Controller
             ->withCount('vehicles')
             ->get();
         $diagnosticsPerformed = \App\Models\Diagnostic::count();
+        $repairShops = RepairShop::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'address',
+                'latitude',
+                'longitude',
+                'vehicle_category',
+                'type',
+                'contact_number',
+                'phone_number',
+                'is_active',
+            ]);
+        $repairShopMapData = $repairShops->map(fn (RepairShop $shop) => [
+            'name' => $shop->name,
+            'address' => $shop->address,
+            'latitude' => $shop->latitude,
+            'longitude' => $shop->longitude,
+            'category' => $shop->vehicle_category ?: $shop->type ?: 'General',
+            'contact' => $shop->contact_number ?: $shop->phone_number,
+            'active' => (bool) $shop->is_active,
+        ])->values();
         $pendingAdminRequests = \App\Models\ServiceReferral::where('status', 'PENDING')->count();
         $pendingCorrectionRequests = VehicleCorrectionRequest::where('status', 'pending')->count();
+
+        // AI Activity Chart Data (Daily for last 30 days)
+        $startDate = \Carbon\Carbon::now()->subDays(30)->startOfDay();
+        $rawDailyUsage = \App\Models\Diagnostic::select(
+                \Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'),
+                \Illuminate\Support\Facades\DB::raw('COUNT(*) as total_runs')
+            )
+            ->where('created_at', '>=', $startDate)
+            ->groupBy(\Illuminate\Support\Facades\DB::raw('DATE(created_at)'))
+            ->orderBy('date', 'ASC')
+            ->get()
+            ->keyBy('date');
+
+        $aiChartLabels = [];
+        $aiChartData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $dateObj = \Carbon\Carbon::now()->subDays($i);
+            $dateStr = $dateObj->format('Y-m-d');
+            $aiChartLabels[] = $dateObj->format('M d');
+            $aiChartData[] = isset($rawDailyUsage[$dateStr]) ? (int)$rawDailyUsage[$dateStr]->total_runs : 0;
+        }
 
         return view('admin.dashboard', compact(
             'totalUsers',
@@ -75,8 +122,12 @@ class AdminController extends Controller
             'totalAdmins',
             'recentUsers',
             'diagnosticsPerformed',
+            'repairShops',
+            'repairShopMapData',
             'pendingAdminRequests',
-            'pendingCorrectionRequests'
+            'pendingCorrectionRequests',
+            'aiChartLabels',
+            'aiChartData'
         ));
     }
 }
