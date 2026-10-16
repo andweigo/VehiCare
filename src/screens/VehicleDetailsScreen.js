@@ -93,6 +93,9 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
       if (typeof exitGuestMode === 'function') {
         exitGuestMode();
       }
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      }
     } else if (navigation.canGoBack()) {
       navigation.goBack();
     }
@@ -107,6 +110,9 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
       if (isGuest) {
         if (typeof exitGuestMode === 'function') {
           exitGuestMode();
+        }
+        if (navigation.canGoBack()) {
+          navigation.goBack();
         }
         return true;
       }

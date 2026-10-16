@@ -367,10 +367,6 @@ const AppNavigator = () => {
             {renderAppScreens()}
             {/* Guest account upgrade entry points */}
             <Stack.Screen
-              name="Welcome"
-              component={WelcomeScreen}
-            />
-            <Stack.Screen
               name="Login"
               component={LoginScreen}
             />
