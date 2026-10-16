@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import {
     ActivityIndicator,
@@ -85,6 +85,8 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   const { isAuthenticated, isGuest, exitGuestMode } = useAuth();
   const { theme } = useTheme();
 
+  const isNavigatingForwardRef = useRef(false);
+
   const handleBack = () => {
     if (step > 1) {
       previousStep();
@@ -118,11 +120,21 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
     });
 
     const unsubscribe = navigation.addListener('beforeRemove', e => {
+      if (isNavigatingForwardRef.current) {
+        return;
+      }
+
+      const actionType = e.data.action?.type;
+      if (actionType && actionType !== 'GO_BACK' && actionType !== 'POP') {
+        return;
+      }
+
       if (step > 1) {
         e.preventDefault();
         previousStep();
         return;
       }
+
       if (isGuest && typeof exitGuestMode === 'function') {
         exitGuestMode();
       }
@@ -156,9 +168,11 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
         return;
       }
 
+      isNavigatingForwardRef.current = true;
       const response = await saveVehicle();
 
       if (!response) {
+        isNavigatingForwardRef.current = false;
         return;
       }
 
