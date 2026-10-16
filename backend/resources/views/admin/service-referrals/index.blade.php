@@ -1,16 +1,16 @@
 <x-admin-layout>
     <x-slot name="header">Service Referrals</x-slot>
-    <x-slot name="description">Certified Repair Shop Referral Dispatch & Status Management</x-slot>
+    <x-slot name="description">Historical records of user-selected repair shops and discovery requests</x-slot>
 
     <div class="space-y-6">
 
         <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-                <h2 class="text-sm font-heading font-bold text-white uppercase tracking-wider">Service Referrals Queue</h2>
-                <p class="text-[11px] text-[#A1A1AA]">Manage repair shop referrals initiated from AI vehicle diagnostics</p>
+                <h2 class="text-sm font-heading font-bold text-white uppercase tracking-wider">Service Referral History</h2>
+                <p class="text-[11px] text-[#A1A1AA]">Review retained user-selected shop records; no shop dispatch is performed by VehiCare.</p>
             </div>
             <div class="rounded-xl border border-[#222222] bg-[#181818] px-3.5 py-2 text-xs font-heading font-semibold text-white">
-                Total Referrals: <span class="text-[#F63B05]">{{ count($referrals) }}</span>
+                Total Referrals: <span class="text-[#F63B05]">{{ number_format($referrals->total()) }}</span>
             </div>
         </div>
 
@@ -29,17 +29,24 @@
                     </thead>
                     <tbody class="divide-y divide-[#222222] bg-[#111111]">
                         @forelse($referrals as $ref)
+                            @php
+                                $vehicle = $ref->diagnostic?->vehicle;
+                                $vehicleName = $vehicle
+                                    ? trim(($vehicle->vehicleBrand?->name ?? $vehicle->custom_brand ?? '') . ' ' . ($vehicle->vehicleModel?->name ?? $vehicle->custom_model ?? ''))
+                                    : 'Not linked to a vehicle';
+                                $issue = $ref->diagnostic?->summary ?? $ref->diagnostic?->symptoms ?? $ref->notes ?? '—';
+                            @endphp
                             <tr class="hover:bg-[#181818]/60 transition">
-                                <td class="px-4 py-3 font-heading font-semibold text-white">{{ $ref['user'] }}</td>
-                                <td class="px-4 py-3 text-white">{{ $ref['vehicle'] }}</td>
-                                <td class="px-4 py-3 text-[#A1A1AA]">{{ $ref['issue'] }}</td>
-                                <td class="px-4 py-3 text-white">{{ $ref['shop'] }}</td>
+                                <td class="px-4 py-3 font-heading font-semibold text-white">{{ $ref->user?->name ?? 'Former user' }}</td>
+                                <td class="px-4 py-3 text-white">{{ $vehicleName }}</td>
+                                <td class="px-4 py-3 text-[#A1A1AA]">{{ \Illuminate\Support\Str::limit($issue, 100) }}</td>
+                                <td class="px-4 py-3 text-white">{{ $ref->shop_name ?: ($ref->repairShop?->name ?? 'Unavailable shop') }}</td>
                                 <td class="px-4 py-3">
                                     <span class="rounded bg-[#F59E0B]/15 border border-[#F59E0B]/30 px-2 py-0.5 text-[10px] font-heading font-bold text-[#F59E0B]">
-                                        {{ strtoupper($ref['status'] ?? 'PENDING') }}
+                                        {{ strtoupper($ref->status ?? 'PENDING') }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-[#666666]">{{ $ref['date'] }}</td>
+                                <td class="px-4 py-3 text-[#666666]">{{ $ref->created_at?->format('M d, Y') ?? '—' }}</td>
                             </tr>
                         @empty
                             <tr>
@@ -52,7 +59,7 @@
                                             </svg>
                                         </div>
                                         <p class="font-heading font-bold text-white">No service referrals yet</p>
-                                        <p class="text-[11px] text-[#A1A1AA]">When users request automated shop referrals, they will appear in this dispatch queue.</p>
+                                        <p class="text-[11px] text-[#A1A1AA]">User-selected repair shop history will appear here.</p>
                                     </div>
                                 </td>
                             </tr>

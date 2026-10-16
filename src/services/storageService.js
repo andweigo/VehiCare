@@ -295,6 +295,39 @@ export const getGuestUuid = async () => {
   }
 };
 
+const GUEST_VEHICLE_KEY = '@vehicare_guest_vehicle';
+
+export const saveGuestVehicle = async (vehicle) => {
+  try {
+    if (!vehicle) {
+      await AsyncStorage.removeItem(GUEST_VEHICLE_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(GUEST_VEHICLE_KEY, JSON.stringify(vehicle));
+  } catch (error) {
+    console.error('Failed to save guest vehicle:', error?.message || error);
+  }
+};
+
+export const getGuestVehicle = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(GUEST_VEHICLE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.error('Failed to get guest vehicle:', error?.message || error);
+    return null;
+  }
+};
+
+export const clearGuestVehicle = async () => {
+  try {
+    await AsyncStorage.removeItem(GUEST_VEHICLE_KEY);
+  } catch (error) {
+    console.error('Failed to clear guest vehicle:', error?.message || error);
+  }
+};
+
 /*
 |--------------------------------------------------------------------------
 | ACTIVE CHAT PERSISTENCE
@@ -384,7 +417,9 @@ export default {
   saveGuestDiagnosisCount,
   incrementGuestDiagnosisCount,
   clearGuestDiagnosisCount,
-  getGuestUuid,
+  saveGuestVehicle,
+  getGuestVehicle,
+  clearGuestVehicle,
 
   getHistoryStorageKey,
   getRecentActivitiesStorageKey,

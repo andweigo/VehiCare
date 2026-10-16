@@ -69,6 +69,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Admin Display Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Timezone used to interpret datetime-local form inputs on admin pages
+    | and to display stored timestamps back to administrators. Laravel's
+    | internal timezone remains UTC; this only affects admin UI conversion.
+    |
+    */
+
+    'admin_timezone' => env('ADMIN_TIMEZONE', 'Asia/Manila'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

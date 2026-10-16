@@ -91,10 +91,10 @@ const ManagePlanScreen = ({ navigation }) => {
 
   const planDescription = useMemo(() => {
     if (isPremium) {
-      return 'Enjoy advanced tools, up to 5 vehicle profiles, and full AI diagnostics.';
+      return 'Advanced multi-vehicle diagnostics, step-by-step repair guides, itemized parts & labor costs, and longitudinal history synthesis.';
     }
     if (isFree) {
-      return 'Get started with essential vehicle assistance and upgrade whenever you need more.';
+      return 'Essential vehicle care: beginner-friendly diagnosis, plausible causes, safe DIY checks, stopping advice, and total cost estimates.';
     }
     return 'Create an account to save your vehicle information, history, and access account features.';
   }, [isPremium, isFree]);
@@ -103,36 +103,39 @@ const ManagePlanScreen = ({ navigation }) => {
     if (isPremium) {
       return [
         'Up to 5 vehicle profiles',
-        'Full AI-assisted diagnostics',
-        'Smart maintenance assistance',
-        'Advanced repair assistance',
-        'Enhanced vehicle insights',
-        'Premium features',
+        '100 AI consultations per month',
+        'Deep diagnostic reasoning with supporting evidence',
+        'Step-by-step DIY & professional repair guides',
+        'Itemized cost breakdown (parts vs. labor)',
+        'Vehicle history analysis (repairs & maintenance)',
       ];
     }
 
     return [
       '1 vehicle profile',
-      'Basic AI diagnostics',
-      'Maintenance reminders',
-      'Repair assistance',
-      'Basic vehicle insights',
+      '20 AI consultations per month',
+      'Essential diagnostic analysis & plausible causes',
+      'Plain-language explanations for beginners',
+      'Safety stopping alerts & basic DIY checks',
+      'Estimated total repair cost ranges',
     ];
   }, [isPremium]);
 
   const freeComparison = [
-    '1 vehicle profile',
-    'Basic diagnostics',
-    'Maintenance reminders',
-    'Repair assistance',
+    '1 saved vehicle profile',
+    '20 AI consultations / month',
+    'Essential diagnostics & plausible causes',
+    'Beginner-friendly safe checks & alerts',
+    'Estimated repair cost range',
   ];
 
   const premiumComparison = [
-    'Up to 5 vehicle profiles',
-    'Full AI diagnostics',
-    'Smart maintenance',
-    'Advanced repair assistance',
-    'Premium features',
+    'Up to 5 saved vehicle profiles',
+    '100 AI consultations / month',
+    'Deep diagnostic reasoning with evidence',
+    'Step-by-step repair guides & safety limits',
+    'Itemized cost breakdowns (parts + labor)',
+    'Vehicle history synthesis & correlation',
   ];
 
   const loadSubscriptionData = useCallback(async () => {
@@ -257,7 +260,12 @@ const ManagePlanScreen = ({ navigation }) => {
       );
     } catch (error) {
       console.error('Subscription error:', error);
+      const validationErrors = error?.response?.data?.errors;
+      const firstValidationError = validationErrors
+        ? Object.values(validationErrors).flat()[0]
+        : null;
       const message =
+        firstValidationError ||
         error?.response?.data?.message ||
         error?.response?.data?.payment?.[0] ||
         error?.message ||

@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
   confidenceTitle: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 17,
     marginTop: 4,
   },

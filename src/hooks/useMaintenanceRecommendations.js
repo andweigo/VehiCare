@@ -1,16 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
+import { VehicleHealthContext } from '../context/VehicleHealthContext';
 import { getHistoryStorageKey } from '../services/storageService';
 import {
   extractDiagnosticRecommendations,
+  extractMaintenanceTasks,
+  extractSmartRecommendations,
   getCategoryFromDiagnosticItem,
   getVehicleMaintenanceCategories,
   getVehicleRecommendations,
   mapItemToCategoryId,
   mergeRecommendations,
+  normalizeKey,
 } from '../utils/maintenanceUtils';
 import activityService from '../services/activity.service';
 
@@ -22,7 +26,14 @@ const DEFAULT_HEALTH_STATUS = {
   explanation: 'No recent diagnostic issues found. VehiCare will continue to provide preventive maintenance recommendations based on your vehicle.',
 };
 
-export const useMaintenanceRecommendations = () => {
+// Global in-memory cache to prevent flickering during vehicle switching
+const healthScoreMemoryCache = new Map();
+
+/**
+ * Core internal hook containing the authoritative vehicle health calculation
+ * and maintenance persistence logic.
+ */
+export const useMaintenanceRecommendationsInternal = () => {
   const { user, isAuthenticated } = useAuth();
   const userId = user?.id || user?.uid || null;
   const { activeVehicle, pendingVehicle, loading: vehicleLoading } = useVehicle();
@@ -33,10 +44,16 @@ export const useMaintenanceRecommendations = () => {
     return rawId !== null ? String(rawId) : null;
   }, [vehicleProfile]);
 
-  const storageKey = useMemo(() => {
+  const primaryStorageKey = useMemo(() => {
+    return activeVehicleId
+      ? `@vehicare_completed_maintenance_${userId || 'guest'}_${activeVehicleId}`
+      : '@vehicare_completed_maintenance';
+  }, [activeVehicleId, userId]);
+
+  const fallbackStorageKey = useMemo(() => {
     return activeVehicleId
       ? `@vehicare_completed_maintenance_${activeVehicleId}`
-      : '@vehicare_completed_maintenance';
+      : null;
   }, [activeVehicleId]);
 
   const hookCompletedRecs = useMemo(() => {
@@ -50,24 +67,67 @@ export const useMaintenanceRecommendations = () => {
 
   const [diagnostics, setDiagnostics] = useState([]);
   const [serviceHistory, setServiceHistory] = useState([]);
+  const [repairRecords, setRepairRecords] = useState([]);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
+
+  // In-memory / storage cached health score to prevent initial flash to 100
+  const [cachedHealthScore, setCachedHealthScore] = useState(() => {
+    if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
+      return healthScoreMemoryCache.get(activeVehicleId);
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!activeVehicleId) {
+      setCachedHealthScore(null);
+      return;
+    }
+    if (healthScoreMemoryCache.has(activeVehicleId)) {
+      setCachedHealthScore(healthScoreMemoryCache.get(activeVehicleId));
+    } else {
+      AsyncStorage.getItem(`@vehicare_cached_health_${activeVehicleId}`)
+        .then(val => {
+          if (!isCancelled && val !== null) {
+            const num = Number(val);
+            if (!isNaN(num)) {
+              healthScoreMemoryCache.set(activeVehicleId, num);
+              setCachedHealthScore(num);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeVehicleId]);
 
   // Load completed maintenance items for active vehicle
   useEffect(() => {
     let isCancelled = false;
     const loadCompletedState = async () => {
       try {
-        const saved = await AsyncStorage.getItem(storageKey);
-        if (!isCancelled) {
-          if (saved) {
-            const parsed = JSON.parse(saved);
+        let loadedKeys = [];
+        const savedPrimary = await AsyncStorage.getItem(primaryStorageKey);
+        if (savedPrimary) {
+          const parsed = JSON.parse(savedPrimary);
+          if (Array.isArray(parsed)) {
+            loadedKeys = parsed;
+          }
+        } else if (fallbackStorageKey) {
+          const savedFallback = await AsyncStorage.getItem(fallbackStorageKey);
+          if (savedFallback) {
+            const parsed = JSON.parse(savedFallback);
             if (Array.isArray(parsed)) {
-              setLocalCompletedIds(parsed);
-              return;
+              loadedKeys = parsed;
             }
           }
-          setLocalCompletedIds([]);
+        }
+        if (!isCancelled) {
+          setLocalCompletedIds(loadedKeys);
         }
       } catch (err) {
         console.warn('Failed to load vehicle completed maintenance state:', err);
@@ -78,26 +138,35 @@ export const useMaintenanceRecommendations = () => {
     return () => {
       isCancelled = true;
     };
-  }, [storageKey]);
+  }, [primaryStorageKey, fallbackStorageKey]);
 
-  // Save completed maintenance items for active vehicle
-  const saveCompletedState = async updatedIds => {
-    try {
-      setLocalCompletedIds(updatedIds);
-      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedIds));
-    } catch (err) {
-      console.warn('Failed to save vehicle completed maintenance state:', err);
-    }
-  };
+  // Save completed maintenance items for active vehicle (both user-scoped and vehicle-scoped)
+  const saveCompletedState = useCallback(
+    async updatedKeys => {
+      try {
+        setLocalCompletedIds(updatedKeys);
+        await AsyncStorage.setItem(primaryStorageKey, JSON.stringify(updatedKeys));
+        if (fallbackStorageKey) {
+          await AsyncStorage.setItem(fallbackStorageKey, JSON.stringify(updatedKeys));
+        }
+      } catch (err) {
+        console.warn('Failed to save vehicle completed maintenance state:', err);
+      }
+    },
+    [primaryStorageKey, fallbackStorageKey],
+  );
 
-  // Fetch diagnostics and service history scoped strictly to active vehicle
+  // Fetch diagnostics, repairs, and service history scoped strictly to active vehicle
   const fetchVehicleDiagnostics = useCallback(async () => {
     if (!vehicleProfile) {
       setDiagnostics([]);
       setServiceHistory([]);
+      setRepairRecords([]);
       setLoadingDiagnostics(false);
       return;
     }
+
+    setLoadingDiagnostics(true);
 
     const filterByVehicle = list =>
       (list || []).filter(item => {
@@ -141,21 +210,44 @@ export const useMaintenanceRecommendations = () => {
       setServiceHistory(initialServices);
       setDiagnostics(initialFiltered);
 
-      // Step 2: Background API sync (1.5s timeout)
+      // Step 2: Background API sync (2.0s timeout)
       if (isAuthenticated) {
         try {
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Diagnostics timeout')), 1500),
+            setTimeout(() => reject(new Error('Diagnostics sync timeout')), 2000),
           );
 
-          const apiDiags = await Promise.race([
-            vehicleApi.getDiagnosticsHistory(),
+          const [apiDiags, apiRepairs, apiMaintenance] = await Promise.race([
+            Promise.all([
+              vehicleApi.getDiagnosticsHistory(),
+              activeVehicleId ? vehicleApi.getRepairRecords({ vehicle_id: activeVehicleId }) : Promise.resolve([]),
+              activeVehicleId ? vehicleApi.getMaintenanceRecords({ vehicle_id: activeVehicleId }) : Promise.resolve([]),
+            ]),
             timeoutPromise,
           ]);
 
           if (Array.isArray(apiDiags) && apiDiags.length > 0) {
-            const apiFiltered = filterByVehicle(apiDiags);
-            setDiagnostics(apiFiltered);
+            setDiagnostics(filterByVehicle(apiDiags));
+          }
+          if (Array.isArray(apiRepairs) && apiRepairs.length > 0) {
+            setRepairRecords(filterByVehicle(apiRepairs));
+          }
+          if (Array.isArray(apiMaintenance) && apiMaintenance.length > 0) {
+            const completedBackendServices = filterByVehicle(apiMaintenance).filter(
+              m => (m.status || 'completed') === 'completed'
+            );
+            if (completedBackendServices.length > 0) {
+              setServiceHistory(prev => {
+                const combined = [...prev, ...completedBackendServices];
+                const seenIds = new Set();
+                return combined.filter(item => {
+                  const id = item.id || `${item.title}-${item.created_at}`;
+                  if (seenIds.has(id)) return false;
+                  seenIds.add(id);
+                  return true;
+                });
+              });
+            }
           }
         } catch (err) {
           console.warn('Silent API diagnostics check:', err?.message);
@@ -166,39 +258,73 @@ export const useMaintenanceRecommendations = () => {
     } finally {
       setLoadingDiagnostics(false);
     }
-  }, [vehicleProfile, activeVehicleId, isAuthenticated]);
+  }, [vehicleProfile, activeVehicleId, isAuthenticated, userId]);
 
   useEffect(() => {
     fetchVehicleDiagnostics();
   }, [fetchVehicleDiagnostics]);
 
-  // Compute recommendations for active vehicle
+  // Distinct Maintenance Tasks (Action-oriented Inspections & Tasks)
+  const maintenanceTasks = useMemo(
+    () => extractMaintenanceTasks(diagnostics, repairRecords, vehicleProfile),
+    [diagnostics, repairRecords, vehicleProfile],
+  );
+
+  // Distinct Smart Recommendations (Educational & Preventive Habits)
+  const smartRecommendations = useMemo(
+    () => extractSmartRecommendations(diagnostics, repairRecords, vehicleProfile),
+    [diagnostics, repairRecords, vehicleProfile],
+  );
+
+  // Compute baseline recommendations for active vehicle
   const baselineRecommendations = useMemo(
     () => getVehicleRecommendations(vehicleProfile),
     [vehicleProfile],
   );
 
   const diagnosticRecommendations = useMemo(
-    () => extractDiagnosticRecommendations(diagnostics),
-    [diagnostics],
+    () => maintenanceTasks,
+    [maintenanceTasks],
   );
 
   const allRecommendations = useMemo(
-    () => mergeRecommendations(diagnosticRecommendations, baselineRecommendations),
-    [diagnosticRecommendations, baselineRecommendations],
+    () => mergeRecommendations(diagnosticRecommendations, baselineRecommendations, vehicleProfile),
+    [diagnosticRecommendations, baselineRecommendations, vehicleProfile],
   );
 
-  // Set of completed item IDs for active vehicle
+  // Set of completed item IDs and normalized title keys for active vehicle
   const completedIdsSet = useMemo(() => {
-    const ids = new Set(localCompletedIds);
+    const ids = new Set();
+
+    if (Array.isArray(localCompletedIds)) {
+      localCompletedIds.forEach(key => {
+        if (typeof key === 'string' && key) {
+          ids.add(key);
+          const norm = normalizeKey(key);
+          if (norm) ids.add(norm);
+        }
+      });
+    }
 
     if (Array.isArray(hookCompletedRecs)) {
       hookCompletedRecs.forEach(item => {
-        if (typeof item === 'string') {
+        if (typeof item === 'string' && item) {
           ids.add(item);
+          const norm = normalizeKey(item);
+          if (norm) ids.add(norm);
         } else if (item && typeof item === 'object') {
-          if (item.id) ids.add(item.id);
-          else if (item.recommendationId) ids.add(item.recommendationId);
+          if (item.id) {
+            ids.add(String(item.id));
+            const norm = normalizeKey(item.id);
+            if (norm) ids.add(norm);
+          }
+          if (item.title) {
+            const norm = normalizeKey(item.title);
+            if (norm) ids.add(norm);
+          }
+          if (item.recommendationId) {
+            ids.add(String(item.recommendationId));
+          }
         }
       });
     }
@@ -206,68 +332,125 @@ export const useMaintenanceRecommendations = () => {
     return ids;
   }, [localCompletedIds, hookCompletedRecs]);
 
-  // Mark item as completed
+  // Checks if an item or ID is marked as completed
+  const isRecommendationCompleted = useCallback(
+    itemOrId => {
+      if (!itemOrId) return false;
+      if (typeof itemOrId === 'string') {
+        if (completedIdsSet.has(itemOrId)) return true;
+        const norm = normalizeKey(itemOrId);
+        return norm ? completedIdsSet.has(norm) : false;
+      }
+      if (typeof itemOrId === 'object') {
+        if (itemOrId.id && completedIdsSet.has(String(itemOrId.id))) return true;
+        if (itemOrId.title) {
+          const norm = normalizeKey(itemOrId.title);
+          if (norm && completedIdsSet.has(norm)) return true;
+        }
+        if (itemOrId.recommendationId && completedIdsSet.has(String(itemOrId.recommendationId))) return true;
+      }
+      return false;
+    },
+    [completedIdsSet],
+  );
+
+  // Mark item as completed across all screens, AsyncStorage, and backend
   const markAsDone = useCallback(
-    item => {
-      const id = item?.id || item;
+    async item => {
+      const id = typeof item === 'object' ? item.id : item;
       if (!id) return;
+      const title = typeof item === 'object' ? item.title : String(item);
+      const normKey = title ? normalizeKey(title) : null;
+
+      const keysToAdd = [String(id)];
+      if (normKey) keysToAdd.push(normKey);
+
       setLocalCompletedIds(prev => {
-        const updated = Array.from(new Set([...prev, id]));
-        saveCompletedState(updated);
-        return updated;
+        const next = Array.from(new Set([...prev, ...keysToAdd]));
+        saveCompletedState(next);
+        return next;
       });
 
-      const title = typeof item === 'object' ? item.title : 'Maintenance item';
       const isDiag = typeof item === 'object' && item.source === 'diagnostic';
-
       activityService.addActivity({
         type: 'maintenance_completed',
-        title: isDiag ? `Diagnostic Maintenance Completed` : `Maintenance Completed`,
+        title: isDiag ? 'Diagnostic Maintenance Completed' : 'Maintenance Completed',
         description: isDiag
           ? `Completed "${title}" based on a recent diagnosis.`
           : `Marked "${title}" as completed.`,
         vehicleId: activeVehicleId,
         vehicleName: vehicleProfile?.name || vehicleProfile?.make || 'Active Vehicle',
+        userId,
         metadata: {
           maintenanceId: id,
           diagnosisId: typeof item === 'object' ? item.diagnosisId : null,
           categoryId: typeof item === 'object' ? mapItemToCategoryId(item, vehicleProfile) : null,
         },
       });
+
+      if (isAuthenticated && activeVehicleId) {
+        try {
+          const numVehicleId = parseInt(activeVehicleId, 10);
+          if (!isNaN(numVehicleId)) {
+            await vehicleApi.createMaintenanceRecord({
+              vehicle_id: numVehicleId,
+              diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
+                ? parseInt(item.diagnosisId, 10)
+                : null,
+              title: title,
+              description: typeof item === 'object' ? item.description : null,
+              service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
+              status: 'completed',
+              performed_at: new Date().toISOString(),
+              urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
+              is_inspection: typeof item === 'object' ? Boolean(item.isInspection) : true,
+            });
+          }
+        } catch (backendErr) {
+          console.warn('Backend maintenance record persistence notice:', backendErr?.message);
+        }
+      }
     },
-    [saveCompletedState, activeVehicleId, vehicleProfile],
+    [saveCompletedState, activeVehicleId, vehicleProfile, isAuthenticated, userId],
   );
 
-  // Undo completed item
+  // Undo completed item across all screens and AsyncStorage
   const undo = useCallback(
-    itemId => {
-      if (!itemId) return;
+    itemOrId => {
+      if (!itemOrId) return;
+      const id = typeof itemOrId === 'object' ? itemOrId.id : itemOrId;
+      const title = typeof itemOrId === 'object' ? itemOrId.title : null;
+      const normKey = title
+        ? normalizeKey(title)
+        : (typeof itemOrId === 'string' ? normalizeKey(itemOrId) : null);
+
       setLocalCompletedIds(prev => {
-        const updated = prev.filter(id => id !== itemId);
-        saveCompletedState(updated);
-        return updated;
+        const next = prev.filter(key => key !== String(id) && key !== normKey);
+        saveCompletedState(next);
+        return next;
       });
 
       activityService.addActivity({
         type: 'maintenance_undone',
         title: 'Maintenance Reopened',
-        description: 'Reopened completed maintenance item.',
+        description: title ? `Reopened "${title}".` : 'Reopened completed maintenance item.',
         vehicleId: activeVehicleId,
         vehicleName: vehicleProfile?.name || vehicleProfile?.make || 'Active Vehicle',
+        userId,
       });
     },
-    [saveCompletedState, activeVehicleId, vehicleProfile],
+    [saveCompletedState, activeVehicleId, vehicleProfile, userId],
   );
 
   // Categorized Items
   const todoItems = useMemo(
-    () => allRecommendations.filter(item => !completedIdsSet.has(item.id)),
-    [allRecommendations, completedIdsSet],
+    () => allRecommendations.filter(item => !isRecommendationCompleted(item)),
+    [allRecommendations, isRecommendationCompleted],
   );
 
   // History Items for Active Vehicle
   const historyItems = useMemo(() => {
-    const completedRecs = allRecommendations.filter(item => completedIdsSet.has(item.id));
+    const completedRecs = allRecommendations.filter(item => isRecommendationCompleted(item));
     const merged = [...completedRecs, ...serviceHistory];
 
     merged.sort((a, b) => {
@@ -277,7 +460,7 @@ export const useMaintenanceRecommendations = () => {
     });
 
     return merged;
-  }, [allRecommendations, completedIdsSet, serviceHistory]);
+  }, [allRecommendations, isRecommendationCompleted, serviceHistory]);
 
   const diagnosticItems = useMemo(
     () => todoItems.filter(item => item.source === 'diagnostic'),
@@ -304,7 +487,6 @@ export const useMaintenanceRecommendations = () => {
     const activeCategoriesMap = new Map();
 
     if (hasDiagnostics) {
-      // 1. PRIMARY SOURCE: Build categories strictly from AI diagnostic recommendations!
       diagnosticRecommendations.forEach(item => {
         const catObj = getCategoryFromDiagnosticItem(item, vehicleProfile);
         if (catObj && catObj.id && !activeCategoriesMap.has(catObj.id)) {
@@ -313,21 +495,19 @@ export const useMaintenanceRecommendations = () => {
       });
     }
 
-    // 2. FALLBACK / PREVENTIVE: If no diagnostic categories exist, use vehicle-type baseline
     if (activeCategoriesMap.size === 0) {
       const fallbackList = getVehicleMaintenanceCategories(vehicleProfile);
       fallbackList.forEach(cat => activeCategoriesMap.set(cat.id, cat));
     }
 
-    // 3. Build rich category structure for UI
     const categoryList = Array.from(activeCategoriesMap.values()).map(cat => {
       const catItems = allRecommendations.filter(item => {
         const itemCat = getCategoryFromDiagnosticItem(item, vehicleProfile);
         return itemCat.id === cat.id;
       });
 
-      const catTodoItems = catItems.filter(item => !completedIdsSet.has(item.id));
-      const catHistoryItems = catItems.filter(item => completedIdsSet.has(item.id));
+      const catTodoItems = catItems.filter(item => !isRecommendationCompleted(item));
+      const catHistoryItems = catItems.filter(item => isRecommendationCompleted(item));
       const catDiagnosticItems = catTodoItems.filter(item => item.source === 'diagnostic');
       const catUrgentItems = catDiagnosticItems.filter(item => item.priority === 'Urgent');
 
@@ -390,7 +570,7 @@ export const useMaintenanceRecommendations = () => {
     categoryList.sort((a, b) => a.sortPriority - b.sortPriority);
 
     return categoryList;
-  }, [vehicleProfile, diagnosticRecommendations, allRecommendations, completedIdsSet]);
+  }, [vehicleProfile, diagnosticRecommendations, allRecommendations, isRecommendationCompleted]);
 
   // Calculate Maintenance Health & Status for Active Vehicle
   const healthStatus = useMemo(() => {
@@ -428,7 +608,7 @@ export const useMaintenanceRecommendations = () => {
     return DEFAULT_HEALTH_STATUS;
   }, [urgentDiagnosticItems, diagnosticItems, preventiveItems]);
 
-  const maintenanceHealth = useMemo(() => {
+  const calculatedScore = useMemo(() => {
     if (diagnosticItems.length === 0 && preventiveItems.length === 0) return 100;
     if (allRecommendations.length === 0) return 100;
     const penalty =
@@ -438,9 +618,42 @@ export const useMaintenanceRecommendations = () => {
     return Math.max(25, Math.min(100, 100 - penalty));
   }, [allRecommendations.length, urgentDiagnosticItems, diagnosticItems, preventiveItems]);
 
+  const maintenanceHealth = useMemo(() => {
+    // While initial diagnostics are loading for active vehicle, use cached score to prevent 100% flash
+    if (loadingDiagnostics && diagnostics.length === 0) {
+      if (typeof cachedHealthScore === 'number') {
+        return cachedHealthScore;
+      }
+      if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
+        return healthScoreMemoryCache.get(activeVehicleId);
+      }
+    }
+    return calculatedScore;
+  }, [loadingDiagnostics, diagnostics.length, cachedHealthScore, activeVehicleId, calculatedScore]);
+
+  // Keep memory and persistent health cache updated
+  useEffect(() => {
+    if (!loadingDiagnostics && activeVehicleId && typeof calculatedScore === 'number') {
+      healthScoreMemoryCache.set(activeVehicleId, calculatedScore);
+      AsyncStorage.setItem(`@vehicare_cached_health_${activeVehicleId}`, String(calculatedScore)).catch(() => {});
+    }
+  }, [loadingDiagnostics, activeVehicleId, calculatedScore]);
+
+  const resolvedTasks = useMemo(
+    () => maintenanceTasks.filter(item => item.isResolved),
+    [maintenanceTasks],
+  );
+
+  // Accurate loading flag: stays true while vehicle or initial vehicle diagnostics are loading
+  const loading = Boolean(vehicleLoading || (Boolean(vehicleProfile) && loadingDiagnostics && diagnostics.length === 0));
+
   return {
     vehicleProfile: vehicleProfile || null,
     activeVehicleId: activeVehicleId || null,
+    maintenanceTasks: Array.isArray(maintenanceTasks) ? maintenanceTasks : [],
+    smartRecommendations: Array.isArray(smartRecommendations) ? smartRecommendations : [],
+    resolvedTasks: Array.isArray(resolvedTasks) ? resolvedTasks : [],
+    repairRecords: Array.isArray(repairRecords) ? repairRecords : [],
     allRecommendations: Array.isArray(allRecommendations) ? allRecommendations : [],
     todoItems: Array.isArray(todoItems) ? todoItems : [],
     diagnosticItems: Array.isArray(diagnosticItems) ? diagnosticItems : [],
@@ -454,12 +667,29 @@ export const useMaintenanceRecommendations = () => {
     completedCount: Number.isInteger(completedCount) ? completedCount : 0,
     healthStatus: healthStatus || DEFAULT_HEALTH_STATUS,
     maintenanceHealth: typeof maintenanceHealth === 'number' ? maintenanceHealth : 100,
-    loading: !vehicleProfile && (loadingDiagnostics || vehicleLoading),
+    healthScore: typeof maintenanceHealth === 'number' ? maintenanceHealth : 100,
+    healthPercentage: typeof maintenanceHealth === 'number' ? Math.min(100, Math.max(0, Math.round(maintenanceHealth))) : 100,
+    loading,
     loadingDiagnostics: !!loadingDiagnostics,
     refresh: fetchVehicleDiagnostics,
+    refreshVehicleHealth: fetchVehicleDiagnostics,
+    completedRecommendationIds: completedIdsSet,
+    isRecommendationCompleted,
     markAsDone,
     undo,
   };
+};
+
+/**
+ * Public hook: prefers centralized context when inside VehicleHealthProvider,
+ * falls back to internal hook when rendered in isolation (e.g. unit tests).
+ */
+export const useMaintenanceRecommendations = () => {
+  const context = useContext(VehicleHealthContext);
+  if (context && context.allRecommendations !== undefined) {
+    return context;
+  }
+  return useMaintenanceRecommendationsInternal();
 };
 
 export default useMaintenanceRecommendations;

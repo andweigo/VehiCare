@@ -38,8 +38,13 @@ const PaymentModal = ({
   const [cvc, setCvc] = useState('135');
 
   // GCash Reference Number
-  const [gcashRefNumber, setGcashRefNumber] = useState('VEHICARE-DEMO-001');
+  const [gcashRefNumber, setGcashRefNumber] = useState('');
   const [copiedAccount, setCopiedAccount] = useState(false);
+
+  const handleAutoFillDemo = () => {
+    const demoRef = `DEMO-${Date.now().toString().slice(-6)}`;
+    setGcashRefNumber(demoRef);
+  };
 
   // Dynamic Price Formatting
   const priceFormatted = useMemo(() => {
@@ -69,7 +74,7 @@ const PaymentModal = ({
       onConfirmPayment({
         paymentMethod,
         cardholderName,
-        referenceNumber: paymentMethod === 'gcash' ? gcashRefNumber : null,
+        referenceNumber: paymentMethod === 'gcash' ? gcashRefNumber.trim() : null,
       });
     }
   };
@@ -429,9 +434,18 @@ const PaymentModal = ({
                   </Text>
 
                   <View style={styles.fieldGroup}>
-                    <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                      GCash Reference Number
-                    </Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={[styles.fieldLabel, { color: theme.text, marginBottom: 0 }]}>
+                        GCash Reference Number
+                      </Text>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={handleAutoFillDemo}
+                        style={{ paddingVertical: 2, paddingHorizontal: 8, backgroundColor: theme.surface, borderRadius: 6, borderWidth: 1, borderColor: theme.border }}
+                      >
+                        <Text style={{ fontSize: 11, color: theme.accent, fontWeight: '600' }}>Demo Ref</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TextInput
                       style={[
                         styles.textInput,
@@ -443,7 +457,7 @@ const PaymentModal = ({
                       ]}
                       value={gcashRefNumber}
                       onChangeText={setGcashRefNumber}
-                      placeholder="Enter reference number"
+                      placeholder="e.g. 1002 4587 9921"
                       placeholderTextColor={theme.placeholder}
                       autoCapitalize="characters"
                     />

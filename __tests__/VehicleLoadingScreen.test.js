@@ -19,12 +19,33 @@ jest.mock('../src/theme/ThemeContext', () => ({
   }),
 }));
 
+jest.mock('../src/context/AuthContext', () => ({
+  useAuth: () => ({ isAuthenticated: false, user: null }),
+}));
+
+jest.mock('../src/context/VehicleContext', () => ({
+  useVehicle: () => ({
+    activeVehicle: null,
+    setActiveVehicle: jest.fn(),
+    refreshActiveVehicle: jest.fn(),
+  }),
+}));
+
 import { Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 
 import VehicleLoadingScreen from '../src/screens/VehicleLoadingScreen';
 
 describe('VehicleLoadingScreen', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
   it('renders the loading UI', () => {
     let component;
 
@@ -35,7 +56,7 @@ describe('VehicleLoadingScreen', () => {
     });
 
     const hasHeading = component.root.findAllByType(Text).some(
-      node => node.props.children === 'Preparing your vehicle',
+      node => node.props.children === 'VehiCare.' || node.props.children === 'Smarter care starts here.',
     );
 
     expect(hasHeading).toBe(true);

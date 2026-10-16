@@ -493,6 +493,10 @@ const RegisterScreen = ({
 
   const handleRegister =
     async () => {
+      if (loading || googleLoading) {
+        return;
+      }
+
       const shouldShakeTerms =
         !acceptedTerms;
 
@@ -655,37 +659,39 @@ const RegisterScreen = ({
 
         await delay(1500);
 
-        if (result?.requiresOtp) {
-          navigation.replace('OtpVerification', {
-            email: result?.email || email.trim(),
-            purpose: 'registration',
-            redirectTo,
-          });
-          return;
-        }
+        if (navigation.isFocused && navigation.isFocused()) {
+          if (result?.requiresOtp) {
+            navigation.replace('OtpVerification', {
+              email: result?.email || email.trim(),
+              purpose: 'registration',
+              redirectTo,
+            });
+            return;
+          }
 
-        const shouldSkipVehicleSetup =
-          result?.hasAccountVehicles &&
-          redirectTo?.name ===
-            'VehicleDetails';
+          const shouldSkipVehicleSetup =
+            result?.hasAccountVehicles &&
+            redirectTo?.name ===
+              'VehicleDetails';
 
-        if (
-          shouldSkipVehicleSetup
-        ) {
-          navigation.replace(
-            'Dashboard',
-          );
-        } else if (
-          redirectTo?.name
-        ) {
-          navigation.replace(
-            redirectTo.name,
-            redirectTo.params,
-          );
-        } else {
-          navigation.replace(
-            'Dashboard',
-          );
+          if (
+            shouldSkipVehicleSetup
+          ) {
+            navigation.replace(
+              'Dashboard',
+            );
+          } else if (
+            redirectTo?.name
+          ) {
+            navigation.replace(
+              redirectTo.name,
+              redirectTo.params,
+            );
+          } else {
+            navigation.replace(
+              'Dashboard',
+            );
+          }
         }
       } catch (err) {
         showToast(
@@ -706,6 +712,10 @@ const RegisterScreen = ({
 
   const handleGoogleSignIn =
     async () => {
+      if (loading || googleLoading) {
+        return;
+      }
+
       if (
         typeof registerGoogle !==
         'function'
@@ -768,28 +778,30 @@ const RegisterScreen = ({
 
         await delay(1500);
 
-        const shouldSkipVehicleSetup =
-          result?.hasAccountVehicles &&
-          redirectTo?.name ===
-            'VehicleDetails';
+        if (navigation.isFocused && navigation.isFocused()) {
+          const shouldSkipVehicleSetup =
+            result?.hasAccountVehicles &&
+            redirectTo?.name ===
+              'VehicleDetails';
 
-        if (
-          shouldSkipVehicleSetup
-        ) {
-          navigation.replace(
-            'Dashboard',
-          );
-        } else if (
-          redirectTo?.name
-        ) {
-          navigation.replace(
-            redirectTo.name,
-            redirectTo.params,
-          );
-        } else {
-          navigation.replace(
-            'Dashboard',
-          );
+          if (
+            shouldSkipVehicleSetup
+          ) {
+            navigation.replace(
+              'Dashboard',
+            );
+          } else if (
+            redirectTo?.name
+          ) {
+            navigation.replace(
+              redirectTo.name,
+              redirectTo.params,
+            );
+          } else {
+            navigation.replace(
+              'Dashboard',
+            );
+          }
         }
       } catch (err) {
         const payload =

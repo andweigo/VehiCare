@@ -51,6 +51,9 @@
             background-color: #000000;
             color: #FFFFFF;
         }
+        [x-cloak] {
+            display: none !important;
+        }
         h1, h2, h3, h4, h5, h6, .font-heading {
             font-family: 'Outfit', sans-serif;
         }
@@ -85,12 +88,9 @@
 
                 <!-- Sidebar Top Header -->
                 <div class="flex h-16 items-center gap-3 px-5 border-b border-[#222222]">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F63B05] text-white font-heading font-extrabold text-lg shadow-md shadow-[#F63B05]/20">
-                        V
-                    </div>
+                    <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-9 w-9 rounded-xl object-contain" />
                     <div>
                         <div class="flex items-center gap-1.5">
-                            <span class="font-heading font-bold text-base tracking-tight text-white">VehiCare</span>
                             <span class="rounded bg-[#F63B05]/10 px-1.5 py-0.5 text-[9px] font-heading font-extrabold text-[#F63B05]">ADMIN</span>
                         </div>
                         <p class="text-[10px] text-[#666666] font-medium tracking-wide">Desktop Control Center</p>
@@ -165,6 +165,10 @@
                             <span>Service Referrals</span>
                         </a>
 
+                        <a href="{{ route('admin.feedback.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.feedback.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <span>Feedback</span>
+                        </a>
+
                         <!-- Maintenance -->
                         <a href="{{ route('admin.maintenance.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.maintenance.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
                             <svg class="h-4 w-4 {{ request()->routeIs('admin.maintenance.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -198,6 +202,23 @@
                     <!-- SYSTEM GROUP -->
                     <div>
                         <p class="px-3 text-[10px] font-heading font-bold tracking-wider text-[#666666] uppercase mb-1.5">System</p>
+
+                        <a href="{{ route('admin.notifications.index') }}" class="group flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.notifications.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <span>Admin Activity</span>
+                            <span data-admin-notification-badge class="hidden min-w-5 rounded-full bg-[#F63B05] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white" aria-live="polite"></span>
+                        </a>
+
+                        <a href="{{ route('admin.announcements.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.announcements.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <span>Announcements</span>
+                        </a>
+
+                        <a href="{{ route('admin.health.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.health.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <span>System Health</span>
+                        </a>
+
+                        <a href="{{ route('admin.audit.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.audit.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <span>Admin Audit</span>
+                        </a>
 
                         <!-- Settings -->
                         <a href="{{ route('admin.settings.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.settings.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
@@ -237,9 +258,7 @@
                 <div class="p-3 border-t border-[#222222] bg-[#181818]/60">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#222222] text-[#F63B05] font-heading font-bold text-xs border border-[#222222]">
-                                {{ strtoupper(substr(auth()->user()->name ?? 'A', 0, 1)) }}
-                            </div>
+                            <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-9 w-9 shrink-0 rounded-xl object-contain" />
                             <div class="min-w-0">
                                 <p class="text-xs font-heading font-bold text-white truncate">{{ auth()->user()->name ?? 'Administrator' }}</p>
                                 <p class="text-[10px] text-[#A1A1AA] truncate capitalize">{{ auth()->user()->role ?? 'Admin' }}</p>
@@ -270,7 +289,7 @@
                     </svg>
                 </button>
                 <div class="flex items-center gap-2">
-                    <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F63B05] text-white font-heading font-bold text-sm">V</div>
+                    <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-7 w-7 rounded-lg object-contain" />
                     <span class="font-heading font-bold text-sm text-white">VehiCare Admin</span>
                 </div>
             </div>
@@ -302,19 +321,17 @@
 
                     <!-- Notifications Bell Badge -->
                     <div class="relative">
-                        <button class="p-2 text-[#A1A1AA] hover:text-white transition-colors relative">
+                        <a href="{{ route('admin.notifications.index') }}" data-admin-notification-link class="block p-2 text-[#A1A1AA] hover:text-white transition-colors relative" aria-label="Admin activity notifications" title="Admin activity notifications">
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                             </svg>
-                            <span class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#F63B05]"></span>
-                        </button>
+                            <span data-admin-notification-badge class="hidden absolute -right-1 -top-1 min-w-5 rounded-full bg-[#F63B05] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow" aria-live="polite"></span>
+                        </a>
                     </div>
 
                     <!-- Admin Profile Badge -->
                     <div class="flex items-center gap-2 rounded-xl bg-[#181818] border border-[#222222] px-3 py-1.5">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-lg bg-[#222222] text-[#F63B05] text-[10px] font-heading font-bold">
-                            {{ strtoupper(substr(auth()->user()->name ?? 'A', 0, 1)) }}
-                        </div>
+                        <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-6 w-6 rounded-lg object-contain" />
                         <span class="text-xs font-heading font-semibold text-white">{{ auth()->user()->name ?? 'Admin' }}</span>
                     </div>
                 </div>
@@ -357,5 +374,56 @@
         </div>
     </div>
 
+    <script>
+        (() => {
+            const badges = document.querySelectorAll('[data-admin-notification-badge]');
+            const notificationLinks = document.querySelectorAll('[data-admin-notification-link]');
+            const unreadCountUrl = @json(route('admin.notifications.unread-count'));
+
+            const refreshUnreadCount = async () => {
+                try {
+                    const response = await fetch(unreadCountUrl, {
+                        credentials: 'same-origin',
+                        headers: { Accept: 'application/json' },
+                        cache: 'no-store',
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Unread count request failed (${response.status}).`);
+                    }
+
+                    const result = await response.json();
+                    const count = Number(result.unread_count);
+
+                    if (!Number.isInteger(count) || count < 0) {
+                        throw new Error('Unread count response was invalid.');
+                    }
+
+                    badges.forEach(badge => {
+                        badge.textContent = count > 99 ? '99+' : String(count);
+                        badge.classList.toggle('hidden', count === 0);
+                    });
+                    notificationLinks.forEach(link => {
+                        const label = count > 0
+                            ? `Admin activity notifications, ${count} unread`
+                            : 'Admin activity notifications';
+                        link.setAttribute('aria-label', label);
+                        link.title = label;
+                    });
+                } catch (error) {
+                    console.warn('[AdminNotifications] Unable to refresh unread count:', error);
+                }
+            };
+
+            refreshUnreadCount();
+            window.setInterval(refreshUnreadCount, 10000);
+            window.addEventListener('focus', refreshUnreadCount);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    refreshUnreadCount();
+                }
+            });
+        })();
+    </script>
 </body>
 </html>

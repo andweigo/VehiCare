@@ -150,11 +150,6 @@ const ProfileScreen = ({ navigation }) => {
   const handleSignOut = async () => {
     try {
       await logout();
-
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
     } catch (error) {
       console.error('Sign out failed:', error);
     }

@@ -48,22 +48,8 @@ class VehicleCorrectionRequestController extends Controller
                 $vehicle = $correctionRequest->vehicle;
                 $requestedValues = (array)$correctionRequest->requested_values;
 
-                // Step 3: Apply requested values to actual vehicle record
-                foreach ($requestedValues as $key => $value) {
-                    if (in_array($key, [
-                        'vehicle_type_id', 'vehicle_brand_id', 'vehicle_model_id', 'vehicle_year_id',
-                        'custom_brand', 'custom_model', 'custom_year', 'model_number'
-                    ])) {
-                        $vehicle->{$key} = $value;
-                    } elseif ($key === 'brand') {
-                        $vehicle->custom_brand = $value;
-                    } elseif ($key === 'model') {
-                        $vehicle->custom_model = $value;
-                    } elseif ($key === 'year') {
-                        $vehicle->custom_year = $value;
-                    }
-                }
-
+                // Step 3: Apply requested values to actual vehicle record safely
+                $vehicle->applyCorrectionValues($requestedValues);
                 $vehicle->save();
 
                 // Step 4: Update request status and metadata

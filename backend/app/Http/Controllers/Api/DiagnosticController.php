@@ -7,6 +7,7 @@ use App\Models\Diagnostic;
 use App\Models\Vehicle;
 use App\Notifications\HighSeverityDiagnosticAlert;
 use App\Services\AI\AIServiceClient;
+use App\Services\AI\AIServiceException;
 use App\Services\AIMediaValidationService;
 use App\Services\AIUsageService;
 use App\Services\GeminiService;
@@ -23,19 +24,22 @@ class DiagnosticController extends Controller
     protected AIUsageService $usageService;
     protected AIMediaValidationService $mediaValidationService;
     protected AIDiagnosticCacheService $cacheService;
+    protected \App\Services\EntitlementService $entitlementService;
 
     public function __construct(
         AIServiceClient $aiServiceClient,
         GeminiService $geminiService,
         AIUsageService $usageService,
         AIMediaValidationService $mediaValidationService,
-        AIDiagnosticCacheService $cacheService
+        AIDiagnosticCacheService $cacheService,
+        \App\Services\EntitlementService $entitlementService
     ) {
         $this->aiServiceClient = $aiServiceClient;
         $this->geminiService = $geminiService;
         $this->usageService = $usageService;
         $this->mediaValidationService = $mediaValidationService;
         $this->cacheService = $cacheService;
+        $this->entitlementService = $entitlementService;
     }
 
     protected function toSafeString($value, string $default = ''): string
@@ -74,6 +78,121 @@ class DiagnosticController extends Controller
         return $default;
     }
 
+    protected function ensurePendingMaintenanceRecords(
+        \App\Models\User $user,
+        Vehicle $vehicle,
+        Diagnostic $diagnostic
+    ): void {
+        foreach ($diagnostic->maintenance_tasks ?? [] as $task) {
+            $taskTitle = is_string($task) ? $task : ($task['title'] ?? '');
+            if (! is_string($taskTitle) || trim($taskTitle) === '') {
+                continue;
+            }
+
+            $cleanTitle = trim($taskTitle);
+            $subTitle = substr($cleanTitle, 0, 30);
+            $alreadyPending = \App\Models\MaintenanceRecord::where('user_id', $user->id)
+                ->where('vehicle_id', $vehicle->id)
+                ->where('status', 'pending')
+                ->where(function ($query) use ($cleanTitle, $subTitle) {
+                    $query->where('title', $cleanTitle)
+                        ->orWhere('title', 'like', '%' . $subTitle . '%');
+                })
+                ->exists();
+
+            if ($alreadyPending) {
+                continue;
+            }
+
+            $urgency = is_array($task) ? ($task['urgency'] ?? 'Routine') : 'Routine';
+            $dueDays = match (strtoupper((string) $urgency)) {
+                'IMMEDIATE' => 1,
+                'URGENT', 'HIGH' => 3,
+                'MODERATE', 'MEDIUM' => 7,
+                default => 14,
+            };
+
+            \App\Models\MaintenanceRecord::create([
+                'user_id' => $user->id,
+                'vehicle_id' => $vehicle->id,
+                'diagnostic_id' => $diagnostic->id,
+                'title' => $cleanTitle,
+                'description' => is_array($task) ? ($task['description'] ?? null) : null,
+                'service_type' => is_array($task) ? ($task['service_type'] ?? 'General Inspection') : 'General Inspection',
+                'status' => 'pending',
+                'is_inspection' => true,
+                'urgency' => $urgency,
+                'performed_at' => null,
+                'due_date' => now()->addDays($dueDays),
+                'cost' => 0,
+            ]);
+        }
+    }
+
+    protected function sanitizeDiagnosticState(mixed $state): array
+    {
+        if (is_string($state)) {
+            try {
+                $state = json_decode($state, true, 16, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'diagnostic_state' => ['The diagnostic conversation state is invalid.'],
+                ]);
+            }
+        }
+
+        if (! is_array($state)) {
+            return ['assessments' => []];
+        }
+
+        $sanitizeText = static function (mixed $value, int $limit): string {
+            if (! is_string($value)) {
+                return '';
+            }
+            $value = trim($value);
+            return function_exists('mb_substr') ? mb_substr($value, 0, $limit) : substr($value, 0, $limit);
+        };
+
+        $assessments = [];
+        $rawAssessments = is_array($state['assessments'] ?? null) ? $state['assessments'] : [];
+        foreach (array_slice($rawAssessments, -3) as $assessment) {
+            if (! is_array($assessment)) {
+                continue;
+            }
+            $assessments[] = [
+                'status' => ($assessment['status'] ?? null) === 'needs_clarification'
+                    ? 'needs_clarification'
+                    : 'diagnosis_ready',
+                'summary' => $sanitizeText($assessment['summary'] ?? null, 500),
+                'reported' => array_values(array_filter(array_map(
+                    fn ($value) => $sanitizeText($value, 200),
+                    array_slice(is_array($assessment['reported'] ?? null) ? $assessment['reported'] : [], 0, 5)
+                ))),
+                'observed' => array_values(array_filter(array_map(
+                    fn ($value) => $sanitizeText($value, 200),
+                    array_slice(is_array($assessment['observed'] ?? null) ? $assessment['observed'] : [], 0, 5)
+                ))),
+                'possible_causes' => array_values(array_filter(array_map(
+                    fn ($cause) => $sanitizeText(is_array($cause) ? ($cause['cause'] ?? null) : $cause, 200),
+                    array_slice(is_array($assessment['possible_causes'] ?? null) ? $assessment['possible_causes'] : [], 0, 5)
+                ))),
+                'clarification_questions' => array_values(array_filter(array_map(
+                    fn ($question) => $sanitizeText(is_array($question) ? ($question['question'] ?? null) : $question, 300),
+                    array_slice(is_array($assessment['clarification_questions'] ?? null) ? $assessment['clarification_questions'] : [], 0, 5)
+                ))),
+            ];
+        }
+
+        $sanitized = ['assessments' => $assessments];
+        if (strlen(json_encode($sanitized, JSON_INVALID_UTF8_SUBSTITUTE)) > 12000) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'diagnostic_state' => ['The diagnostic conversation state is too large.'],
+            ]);
+        }
+
+        return $sanitized;
+    }
+
     /**
      * Store and process AI request (conversation vs diagnostic) with atomic limit checks and video support.
      */
@@ -85,35 +204,79 @@ class DiagnosticController extends Controller
 
         Log::info('[DiagnosticController] Incoming AI request', [
             'user_id' => $user?->id,
-            'guest_uuid' => $guestUuid,
             'input_type' => $request->input('input_type', 'text'),
-            'symptoms' => $request->input('symptoms'),
             'gemini_configured' => $isGeminiConfigured,
         ]);
 
+        $usageStats = $this->usageService->getUsageStats($user, $guestUuid);
+        $mediaLimits = $usageStats['media'];
+
         $validated = $request->validate([
-            'vehicle_id' => 'nullable',
+            'vehicle_id' => 'nullable|integer|min:1',
+            'request_id' => 'nullable|string|min:1|max:80',
             'symptoms' => 'required|string|max:2000',
             'input_type' => 'nullable|string|in:text,image,voice,video,audio',
-            'image_base64' => 'nullable|string',
+            'image_base64' => ['nullable', 'string', 'max:' . ((int) $mediaLimits['max_image_mb'] * 1400)],
             'image_mime' => 'nullable|string|starts_with:image/',
-            'image' => 'nullable|image|max:10240',
-            'video_base64' => 'nullable|string',
+            'image' => ['nullable', 'image', 'max:' . ((int) $mediaLimits['max_image_mb'] * 1024)],
+            'video_base64' => ['nullable', 'string', 'max:' . ((int) $mediaLimits['max_video_mb'] * 1400)],
             'video_mime' => 'nullable|string',
-            'video_duration' => 'nullable|numeric',
-            'video' => 'nullable|file|mimes:mp4,mov,m4v,3gp|max:30720',
-            'audio_base64' => 'nullable|string',
+            'video_duration' => ['nullable', 'numeric', 'min:0', 'max:' . (int) $usageStats['video']['max_duration_seconds']],
+            'video' => ['nullable', 'file', 'mimes:mp4,mov,m4v,3gp', 'max:' . ((int) $mediaLimits['max_video_mb'] * 1024)],
+            'audio_base64' => ['nullable', 'string', 'max:' . ((int) $mediaLimits['max_audio_mb'] * 1400)],
             'audio_mime' => 'nullable|string|starts_with:audio/',
-            'audio_duration' => 'nullable|numeric',
-            'audio' => 'nullable|file|mimes:mp3,wav,m4a,aac,mp4,3gp,amr,ogg,oga|max:10240',
+            'audio_duration' => ['nullable', 'numeric', 'min:0', 'max:' . (int) $usageStats['media']['max_audio_sec']],
+            'audio' => ['nullable', 'file', 'mimes:mp3,wav,m4a,aac,mp4,3gp,amr,ogg,oga', 'max:' . ((int) $mediaLimits['max_audio_mb'] * 1024)],
             'vehicle_name' => 'nullable',
             'vehicle_type' => 'nullable',
             'history' => 'nullable|array',
+            'diagnostic_state' => 'nullable',
         ]);
+        $diagnosticState = $this->sanitizeDiagnosticState($validated['diagnostic_state'] ?? []);
 
-        // 1. Resolve plan and usage stats first (for media limit validation)
-        $usageStats = $this->usageService->getUsageStats($user, $guestUuid);
+        $vehicle = null;
+        $rawVehicleId = $request->input('vehicle_id');
+        $vehicleId = (is_numeric($rawVehicleId) && (int) $rawVehicleId > 0) ? (int) $rawVehicleId : null;
+        $entitlements = $this->entitlementService->getEntitlements($user);
+        if ($user) {
+            $vehicleQuery = $user->vehicles()
+                ->whereNull('archived_at')
+                ->with(['vehicleType', 'vehicleBrand', 'vehicleModel', 'vehicleYear']);
+            $freeEligibleVehicleId = $user->active_vehicle_id;
+            if ($entitlements['plan'] === 'free' && ! $freeEligibleVehicleId) {
+                $activeVehicleIds = (clone $vehicleQuery)->reorder()->limit(2)->pluck('id');
+                if ($activeVehicleIds->count() === 1) {
+                    $freeEligibleVehicleId = (int) $activeVehicleIds->first();
+                }
+            }
+            $eligibleVehicleId = $vehicleId
+                ?: ($entitlements['plan'] === 'free' ? $freeEligibleVehicleId : $user->active_vehicle_id);
+            if ($eligibleVehicleId) {
+                $vehicle = (clone $vehicleQuery)->findOrFail($eligibleVehicleId);
+                if ($entitlements['plan'] === 'free'
+                    && (int) $freeEligibleVehicleId !== (int) $vehicle->id) {
+                    return response()->json([
+                        'status' => 'error',
+                        'reason' => 'vehicle_not_eligible',
+                        'message' => 'Select your eligible active vehicle before requesting a diagnosis.',
+                    ], 403);
+                }
+            }
+        }
+
         $inputType = $validated['input_type'] ?? 'text';
+        $attachedMediaTypes = array_filter([
+            ($request->hasFile('video') || !empty($validated['video_base64'])) ? 'video' : null,
+            ($request->hasFile('image') || !empty($validated['image_base64'])) ? 'image' : null,
+            ($request->hasFile('audio') || !empty($validated['audio_base64'])) ? 'audio' : null,
+        ]);
+        if (count($attachedMediaTypes) > 1) {
+            return response()->json([
+                'status' => 'error',
+                'reason' => 'conflicting_media_inputs',
+                'message' => 'Submit one media type per diagnostic request.',
+            ], 422);
+        }
 
         $mediaBase64 = null;
         $mediaMime = 'image/jpeg';
@@ -242,14 +405,64 @@ class DiagnosticController extends Controller
             }
         }
 
+        $requestId = $validated['request_id'] ?? (string) \Illuminate\Support\Str::uuid();
+        $payloadHash = hash('sha256', serialize([
+            'vehicle_id' => $vehicle?->id,
+            'vehicle_name' => $vehicle ? null : $request->input('vehicle_name'),
+            'vehicle_type' => $vehicle ? null : $request->input('vehicle_type'),
+            'symptoms' => $validated['symptoms'],
+            'input_type' => $inputType,
+            'media_sha256' => $mediaBase64 ? hash('sha256', $mediaBase64) : null,
+            'media_mime' => $mediaMime,
+            'video_duration' => $validated['video_duration'] ?? null,
+            'audio_duration' => $validated['audio_duration'] ?? null,
+            'history' => $validated['history'] ?? [],
+            'diagnostic_state' => $diagnosticState,
+            'language' => $request->header('X-User-Language', 'en'),
+        ]));
+
         // 2. ATOMIC USAGE EVALUATION & RESERVATION
         $reservation = $this->usageService->evaluateAndReserve(
             $user,
             $guestUuid,
             $inputType,
             $mediaSizeBytes,
-            $videoDurationSec
+            $videoDurationSec,
+            $requestId,
+            $payloadHash
         );
+
+        if (($reservation['reason'] ?? null) === 'request_id_reused') {
+            if ($tempStoredPath && Storage::disk('public')->exists($tempStoredPath)) {
+                Storage::disk('public')->delete($tempStoredPath);
+            }
+            return response()->json([
+                'status' => 'error',
+                'reason' => 'request_id_reused',
+                'message' => 'This request identifier was already used for a different diagnostic request.',
+            ], 409);
+        }
+
+        if (($reservation['reason'] ?? null) === 'request_in_progress') {
+            if ($tempStoredPath && Storage::disk('public')->exists($tempStoredPath)) {
+                Storage::disk('public')->delete($tempStoredPath);
+            }
+            return response()->json([
+                'status' => 'error',
+                'reason' => 'request_in_progress',
+                'message' => 'This diagnostic request is still processing. Please retry shortly using the same request.',
+            ], 409);
+        }
+
+        if (isset($reservation['replay'])) {
+            if ($tempStoredPath && Storage::disk('public')->exists($tempStoredPath)) {
+                Storage::disk('public')->delete($tempStoredPath);
+            }
+            return response()->json([
+                'status' => 'success',
+                'data' => $reservation['replay'],
+            ], 200);
+        }
 
         if (!$reservation['allowed']) {
             // Clean up temp stored file if limit reached
@@ -265,6 +478,9 @@ class DiagnosticController extends Controller
                 'used' => $reservation['used'],
                 'limit' => $reservation['limit'],
                 'remaining' => 0,
+                'exhausted' => true,
+                'period' => $reservation['period'] ?? ($user ? 'monthly' : 'total'),
+                'reset_at' => $reservation['reset_at'] ?? null,
                 'message' => $user
                     ? 'You have reached your AI consultation limit for this period.'
                     : 'You have used all 5 guest AI consultations.',
@@ -273,15 +489,62 @@ class DiagnosticController extends Controller
 
         $logId = $reservation['log_id'];
 
-        // Resolve active vehicle
-        $vehicle = null;
-        $rawVehicleId = $request->input('vehicle_id');
-        $vehicleId = (is_numeric($rawVehicleId) && (int) $rawVehicleId > 0) ? (int) $rawVehicleId : null;
-
-        if ($vehicleId) {
-            $vehicle = Vehicle::with(['vehicleType', 'vehicleBrand', 'vehicleModel', 'vehicleYear'])->find($vehicleId);
-        } elseif ($user && $user->active_vehicle_id) {
-            $vehicle = Vehicle::with(['vehicleType', 'vehicleBrand', 'vehicleModel', 'vehicleYear'])->find($user->active_vehicle_id);
+        $existingDiagnostic = Diagnostic::where('request_key', $reservation['request_key'])
+            ->with(['vehicle.vehicleType', 'vehicle.vehicleBrand', 'vehicle.vehicleModel', 'vehicle.vehicleYear'])
+            ->first();
+        if ($existingDiagnostic) {
+            if ($tempStoredPath && Storage::disk('public')->exists($tempStoredPath)) {
+                Storage::disk('public')->delete($tempStoredPath);
+            }
+            $recoveredVehicle = $existingDiagnostic->vehicle;
+            if ($user && $recoveredVehicle) {
+                $this->ensurePendingMaintenanceRecords($user, $recoveredVehicle, $existingDiagnostic);
+            }
+            $responseData = [
+                'type' => 'diagnostic',
+                'id' => $existingDiagnostic->id,
+                'plan_tier' => $existingDiagnostic->plan_tier,
+                'entitlements' => $entitlements,
+                'status' => 'diagnosis_ready',
+                'vehicle' => $recoveredVehicle ? [
+                    'id' => $recoveredVehicle->id,
+                    'name' => trim(($recoveredVehicle->custom_brand ?: $recoveredVehicle->vehicleBrand?->name ?: '') . ' ' . ($recoveredVehicle->custom_model ?: $recoveredVehicle->vehicleModel?->name ?: '')),
+                    'type' => $recoveredVehicle->vehicleType?->name,
+                    'year' => $recoveredVehicle->custom_year ?: $recoveredVehicle->vehicleYear?->year,
+                ] : null,
+                'symptoms' => $existingDiagnostic->symptoms,
+                'input_type' => $existingDiagnostic->input_type,
+                'summary' => $existingDiagnostic->summary,
+                'confidence' => $existingDiagnostic->confidence,
+                'severity' => $existingDiagnostic->severity,
+                'urgency' => $existingDiagnostic->urgency,
+                'possible_causes' => $existingDiagnostic->possible_causes,
+                'recommended_actions' => $existingDiagnostic->recommended_actions,
+                'maintenance_tasks' => $existingDiagnostic->maintenance_tasks,
+                'smart_recommendations' => $existingDiagnostic->smart_recommendations,
+                'repair_guidance' => $existingDiagnostic->repair_guidance,
+                'cost_breakdown' => $existingDiagnostic->cost_breakdown,
+                'history_insights' => $existingDiagnostic->history_insights,
+                'clarification_questions' => $existingDiagnostic->clarification_questions,
+                'estimated_cost' => [
+                    'min' => $existingDiagnostic->estimated_cost_min,
+                    'max' => $existingDiagnostic->estimated_cost_max,
+                    'currency' => $existingDiagnostic->currency,
+                ],
+                'professional_help' => [
+                    'recommended' => $existingDiagnostic->professional_help_recommended,
+                    'reason' => $existingDiagnostic->professional_help_reason,
+                    'priority' => $existingDiagnostic->professional_help_priority,
+                    'severity' => $existingDiagnostic->professional_help_priority,
+                ],
+                'ai_source' => 'recovered',
+                'media_fallback' => false,
+                'media_notice' => null,
+                'remaining_consultations' => $reservation['remaining'],
+                'created_at' => $existingDiagnostic->created_at->toIso8601String(),
+            ];
+            $this->usageService->markAsSuccessful($logId, $responseData);
+            return response()->json(['status' => 'success', 'data' => $responseData], 200);
         }
 
         $vehicleInfo = [
@@ -293,14 +556,15 @@ class DiagnosticController extends Controller
             'preferred_language' => $request->header('X-User-Language', 'en'),
         ];
 
-        Log::info('[DiagnosticController] PIPELINE FLOW: MOBILE INPUT -> LARAVEL REQUEST -> GEMINI REQUEST', [
-            'symptoms' => $validated['symptoms'],
+        Log::info('[DiagnosticController] AI request prepared', [
             'input_type' => $inputType,
             'user_id' => $user?->id,
-            'guest_uuid' => $guestUuid,
-            'vehicle_info' => $vehicleInfo,
+            'has_vehicle' => $vehicle !== null,
             'history_turns' => count($validated['history'] ?? []),
         ]);
+
+        // Resolve entitlements and authorized historical context
+        $historicalContext = $this->entitlementService->getAuthorizedHistoricalContext($user, $vehicle);
 
         try {
             $analysis = $this->aiServiceClient->analyzeSymptoms(
@@ -310,46 +574,98 @@ class DiagnosticController extends Controller
                 $mediaMime,
                 $inputType,
                 $validated['history'] ?? [],
-                null,
-                $user?->id
+                $requestId,
+                $user?->id,
+                $entitlements,
+                $historicalContext,
+                $diagnosticState
             );
+            if (($analysis['status'] ?? null) === 'temporarily_busy') {
+                throw new AIServiceException(
+                    'AI_SERVICE_BUSY',
+                    'VehiCare AI is currently handling several requests. Please try again shortly.',
+                    true,
+                    503
+                );
+            }
             $aiSource = $analysis['ai_source'] ?? 'gemini';
 
             $intentType = strtolower($analysis['type'] ?? 'conversation');
 
             // Conversation Intent
             if ($intentType !== 'diagnostic') {
-                return response()->json([
-                    'status' => 'success',
-                    'data' => [
+                $responseData = [
                         'type' => 'conversation',
                         'response' => $analysis['response'] ?? 'I am here to assist with your vehicle.',
+                        'plan_tier' => $entitlements['plan'],
+                        'entitlements' => $entitlements,
                         'ai_source' => $aiSource,
+                        'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
+                        'media_notice' => $analysis['media_notice'] ?? null,
                         'remaining_consultations' => $reservation['remaining'],
-                    ]
-                ], 200);
+                    ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
+            }
+
+            if (($analysis['status'] ?? null) === 'needs_clarification') {
+                $responseData = [
+                        ...$analysis,
+                        'type' => 'diagnostic',
+                        'plan_tier' => $entitlements['plan'],
+                        'entitlements' => $entitlements,
+                        'remaining_consultations' => $reservation['remaining'],
+                    ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
+            }
+
+            if (($analysis['status'] ?? null) !== 'diagnosis_ready') {
+                throw new AIServiceException(
+                    'INVALID_AI_RESPONSE',
+                    'The AI response could not be validated. Please retry the request.',
+                    false,
+                    502
+                );
             }
 
             // Diagnostic Intent
-            $estCostMin = (float) ($analysis['estimated_cost']['min'] ?? 1000);
-            $estCostMax = (float) ($analysis['estimated_cost']['max'] ?? 3500);
+            $costBreakdown = is_array($analysis['cost_breakdown'] ?? null) ? $analysis['cost_breakdown'] : null;
+            $hasItemizedCost = isset($costBreakdown['parts']['min'], $costBreakdown['parts']['max'])
+                && isset($costBreakdown['labor']['min'], $costBreakdown['labor']['max']);
+            $estCostMin = $hasItemizedCost
+                ? (float) $costBreakdown['parts']['min'] + (float) $costBreakdown['labor']['min']
+                : (float) ($analysis['estimated_cost']['min'] ?? 0);
+            $estCostMax = $hasItemizedCost
+                ? (float) $costBreakdown['parts']['max'] + (float) $costBreakdown['labor']['max']
+                : (float) ($analysis['estimated_cost']['max'] ?? 0);
             $currencyStr = $this->toSafeString($analysis['estimated_cost']['currency'] ?? 'PHP', 'PHP');
             $proHelpRec = (bool) ($analysis['professional_help']['recommended'] ?? false);
             $proHelpReason = $this->toSafeString($analysis['professional_help']['reason'] ?? '', '');
             $proHelpPriority = $this->toSafeString($analysis['professional_help']['priority'] ?? $analysis['professional_help']['severity'] ?? $analysis['severity'] ?? 'MODERATE', 'MODERATE');
 
-            $rawConfidence = $analysis['confidence'] ?? 'MODERATE';
-            $numericConfidence = match (strtoupper($this->toSafeString($rawConfidence, 'MODERATE'))) {
-                'HIGH' => 90,
-                'MODERATE' => 75,
-                'LOW' => 50,
-                'INSUFFICIENT' => 30,
-                default => is_numeric($rawConfidence) ? (int) $rawConfidence : 75,
-            };
+            $rawConfidence = $analysis['confidence'] ?? null;
+            if (is_array($rawConfidence) && is_numeric($rawConfidence['score'] ?? null)) {
+                $numericConfidence = max(0, min(100, (int) round((float) $rawConfidence['score'])));
+            } else {
+                $confidenceLevel = strtoupper($this->toSafeString(
+                    is_array($rawConfidence) ? ($rawConfidence['level'] ?? null) : $rawConfidence,
+                    'INSUFFICIENT'
+                ));
+                $numericConfidence = match ($confidenceLevel) {
+                    'VERY_HIGH' => 95,
+                    'HIGH' => 85,
+                    'MEDIUM', 'MODERATE' => 65,
+                    'LOW' => 40,
+                    default => is_numeric($rawConfidence) ? max(0, min(100, (int) $rawConfidence)) : 15,
+                };
+            }
 
             $diagnostic = Diagnostic::create([
+                'request_key' => $reservation['request_key'],
                 'user_id' => $user?->id,
                 'vehicle_id' => $vehicle?->id,
+                'plan_tier' => $entitlements['plan'],
                 'input_type' => $inputType,
                 'symptoms' => $this->toSafeString($validated['symptoms']),
                 'image_path' => ($inputType === 'image' && $tempStoredPath) ? Storage::url($tempStoredPath) : null,
@@ -359,6 +675,12 @@ class DiagnosticController extends Controller
                 'urgency' => $this->toSafeString($analysis['urgency'] ?? 'Inspection recommended.', 'Inspection recommended.'),
                 'possible_causes' => is_array($analysis['possible_causes'] ?? null) ? $analysis['possible_causes'] : [],
                 'recommended_actions' => is_array($analysis['recommended_actions'] ?? null) ? $analysis['recommended_actions'] : [],
+                'maintenance_tasks' => is_array($analysis['maintenance_tasks'] ?? null) ? $analysis['maintenance_tasks'] : [],
+                'smart_recommendations' => is_array($analysis['smart_recommendations'] ?? null) ? $analysis['smart_recommendations'] : [],
+                'repair_guidance' => is_array($analysis['repair_guidance'] ?? null) ? $analysis['repair_guidance'] : null,
+                'cost_breakdown' => $costBreakdown,
+                'history_insights' => !empty($analysis['history_insights']) ? $this->toSafeString($analysis['history_insights']) : null,
+                'clarification_questions' => is_array($analysis['clarification_questions'] ?? null) ? $analysis['clarification_questions'] : [],
                 'estimated_cost_min' => $estCostMin,
                 'estimated_cost_max' => $estCostMax,
                 'currency' => $currencyStr,
@@ -367,26 +689,34 @@ class DiagnosticController extends Controller
                 'professional_help_priority' => $proHelpPriority,
             ]);
 
+            // Automatically register pending inspection tasks for the vehicle without duplicating
+            if ($user && $vehicle && !empty($diagnostic->maintenance_tasks)) {
+                $this->ensurePendingMaintenanceRecords($user, $vehicle, $diagnostic);
+            }
+
             if ($user && in_array($diagnostic->severity, ['HIGH', 'CRITICAL'])) {
                 try {
                     $user->notify(new HighSeverityDiagnosticAlert($diagnostic));
                 } catch (\Throwable $e) {
-                    Log::warning('[DiagnosticController] Notification failed: ' . $e->getMessage());
+                    Log::warning('[DiagnosticController] Notification delivery failed.', [
+                        'exception' => get_class($e),
+                    ]);
                 }
             }
 
             Log::info('[DiagnosticController] Diagnostic response generated successfully', [
                 'id' => $diagnostic->id,
+                'plan_tier' => $diagnostic->plan_tier,
                 'severity' => $diagnostic->severity,
                 'status' => $analysis['status'] ?? 'diagnosis_ready',
                 'ai_source' => $aiSource,
             ]);
 
-            return response()->json([
-                'status' => 'success',
-                'data' => [
+            $responseData = [
                     'type' => 'diagnostic',
                     'id' => $diagnostic->id,
+                    'plan_tier' => $diagnostic->plan_tier,
+                    'entitlements' => $entitlements,
                     'status' => $analysis['status'] ?? 'diagnosis_ready',
                     'vehicle' => $vehicle ? [
                         'id' => $vehicle->id,
@@ -402,7 +732,12 @@ class DiagnosticController extends Controller
                     'urgency' => $diagnostic->urgency,
                     'possible_causes' => $diagnostic->possible_causes,
                     'recommended_actions' => $diagnostic->recommended_actions,
-                    'clarification_questions' => $analysis['clarification_questions'] ?? [],
+                    'maintenance_tasks' => $diagnostic->maintenance_tasks,
+                    'smart_recommendations' => $diagnostic->smart_recommendations,
+                    'repair_guidance' => $diagnostic->repair_guidance,
+                    'cost_breakdown' => $diagnostic->cost_breakdown,
+                    'history_insights' => $diagnostic->history_insights,
+                    'clarification_questions' => $diagnostic->clarification_questions ?: ($analysis['clarification_questions'] ?? []),
                     'estimated_cost' => [
                         'min' => $diagnostic->estimated_cost_min,
                         'max' => $diagnostic->estimated_cost_max,
@@ -415,23 +750,38 @@ class DiagnosticController extends Controller
                         'severity' => $diagnostic->professional_help_priority,
                     ],
                     'ai_source' => $aiSource,
+                    'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
+                    'media_notice' => $analysis['media_notice'] ?? null,
                     'remaining_consultations' => $reservation['remaining'],
                     'created_at' => $diagnostic->created_at->toIso8601String(),
-                ]
-            ], 200);
+                ];
+            $this->usageService->markAsSuccessful($logId, $responseData);
+            return response()->json(['status' => 'success', 'data' => $responseData], 200);
         } catch (\Throwable $e) {
             Log::error('[DiagnosticController] Exception during AI processing', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+                'exception' => get_class($e),
             ]);
-            $this->usageService->markAsFailed($logId);
+
+            $isAiServiceError = $e instanceof AIServiceException;
+            $errorCode = $isAiServiceError ? $e->errorCode : 'AI_SERVICE_UNAVAILABLE';
+            $this->usageService->markAsFailed($logId, $errorCode);
+            $message = $isAiServiceError
+                ? $e->getMessage()
+                : 'VehiCare AI is temporarily unavailable. Please try again.';
+            $retryable = $isAiServiceError ? $e->retryable : true;
 
             return response()->json([
+                'success' => false,
                 'status' => 'error',
-                'reason' => 'ai_service_unavailable',
-                'message' => 'VehiCare AI error: ' . $e->getMessage(),
-            ], 500);
+                'reason' => $errorCode,
+                'message' => $message,
+                'error' => [
+                    'code' => $errorCode,
+                    'message' => $message,
+                    'retryable' => $retryable,
+                    'details' => $isAiServiceError ? $e->details : null,
+                ],
+            ], $isAiServiceError ? $e->httpStatus : 503);
         } finally {
             // Delete temp video file if uploaded
             if ($inputType === 'video' && $tempStoredPath && Storage::disk('public')->exists($tempStoredPath)) {

@@ -222,6 +222,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
   const {
     activeVehicle: accountActive,
     setActiveVehicle,
+    refreshActiveVehicle,
   } = useVehicle();
 
   /*
@@ -314,7 +315,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
     );
 
   const canAddVehicle =
-    vehicleCount < vehicleLimit;
+    activeVehicleCount < vehicleLimit;
 
   /*
    * ============================================
@@ -966,6 +967,8 @@ const MyVehiclesScreen = ({ navigation, route }) => {
                 : prev,
           );
 
+          await refreshActiveVehicle();
+
           setConfirmVisible(
             false,
           );
@@ -977,7 +980,8 @@ const MyVehiclesScreen = ({ navigation, route }) => {
 
           Alert.alert(
             'Unable to Restore',
-            'Something went wrong while restoring this vehicle. Please try again.',
+            error?.response?.data?.message ||
+              'Something went wrong while restoring this vehicle. Please try again.',
           );
         }
 
@@ -993,7 +997,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
         'archive'
       ) {
         try {
-          await vehicleApi.deleteVehicle(
+          const archiveRes = await vehicleApi.deleteVehicle(
             confirmVehicle.id,
           );
 
@@ -1033,6 +1037,15 @@ const MyVehiclesScreen = ({ navigation, route }) => {
                 : prev,
           );
 
+          await refreshActiveVehicle();
+
+          if (archiveRes?.data?.active_vehicle_id !== undefined && user && typeof updateUser === 'function') {
+            await updateUser({
+              ...user,
+              active_vehicle_id: archiveRes.data.active_vehicle_id,
+            });
+          }
+
           setConfirmVisible(
             false,
           );
@@ -1048,7 +1061,8 @@ const MyVehiclesScreen = ({ navigation, route }) => {
 
           Alert.alert(
             'Unable to Archive',
-            'Something went wrong while archiving this vehicle. Please try again.',
+            error?.response?.data?.message ||
+              'Something went wrong while archiving this vehicle. Please try again.',
           );
         }
       }

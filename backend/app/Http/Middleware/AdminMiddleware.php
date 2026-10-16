@@ -13,7 +13,7 @@ class AdminMiddleware
     {
         $user = Auth::user();
 
-        if (! $user || $user->role !== 'admin' || ! $user->is_active) {
+        if (! $user || ! $user->isAdmin() || ! $user->isActive()) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'message' => 'Unauthorized.',

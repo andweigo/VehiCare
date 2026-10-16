@@ -127,6 +127,7 @@ const SubscriptionManagementCard = ({
             'Vehicle Limit',
             `${vehicleLimit} vehicles`,
           )}
+          {renderInfoRow('auto-awesome', 'AI Consultation Quota', '100 / month')}
 
           {onChangeBilling && (
             <View style={styles.actionSection}>
@@ -175,6 +176,7 @@ const SubscriptionManagementCard = ({
             'Vehicle Limit',
             `${vehicleLimit} vehicle`,
           )}
+          {renderInfoRow('auto-awesome', 'AI Consultation Quota', '20 / month')}
           {isExpired &&
             renderInfoRow(
               'calendar-month',
@@ -211,7 +213,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardTitle: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 16,
     letterSpacing: -0.2,
   },

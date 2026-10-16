@@ -5,6 +5,17 @@ import { getRecentActivitiesStorageKey } from './storageService';
 const MAX_STORAGE_LIMIT = 50;
 
 /**
+ * Low-value/ephemeral interaction types that should NOT pollute the recent activity summary.
+ */
+const IGNORED_TYPES = new Set([
+  'chat_question',
+  'chat_started',
+  'navigation',
+  'screen_view',
+  'data_refresh',
+]);
+
+/**
  * Service to manage cross-app user activity timeline
  */
 export const activityService = {
@@ -18,7 +29,8 @@ export const activityService = {
       if (json) {
         const parsed = JSON.parse(json);
         if (Array.isArray(parsed)) {
-          return parsed;
+          // Filter out noisy/ephemeral types from legacy or current data
+          return parsed.filter(item => item && !IGNORED_TYPES.has(item.type));
         }
       }
       return [];
@@ -49,7 +61,7 @@ export const activityService = {
     userId = null,
     metadata = {},
   }) {
-    if (!type || !title) {
+    if (!type || !title || IGNORED_TYPES.has(type)) {
       return null;
     }
 

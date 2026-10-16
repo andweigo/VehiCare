@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\NhtsaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\VehicleValidationController;
+use App\Http\Controllers\Api\FeedbackController;
 
 try {
     Broadcast::routes(['middleware' => ['auth:sanctum']]);
@@ -23,6 +24,8 @@ Route::get('/health', function () {
         'message' => 'VehiCare API is running',
     ]);
 });
+
+Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('throttle:5,1');
 
 Route::post('/vehicles/validate', [VehicleValidationController::class, 'validate']);
 Route::get('/models/{modelId}/validated-years', [VehicleValidationController::class, 'getValidatedYears']);

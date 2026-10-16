@@ -15,6 +15,32 @@
             </div>
         </div>
 
+        <form method="GET" action="{{ route('admin.diagnostics.index') }}" class="grid gap-3 rounded-xl border border-[#222222] bg-[#111111] p-4 sm:grid-cols-4">
+            <input type="search" name="search" value="{{ request('search') }}" placeholder="Search diagnostic summary or symptoms"
+                class="rounded-xl border border-[#222222] bg-[#181818] px-3 py-2 text-xs text-white placeholder-[#666666]">
+            <select name="severity" class="rounded-xl border border-[#222222] bg-[#181818] px-3 py-2 text-xs text-white">
+                <option value="">All severities</option>
+                @foreach(['LOW', 'MODERATE', 'HIGH', 'CRITICAL'] as $severityOption)
+                    <option value="{{ $severityOption }}" {{ request('severity') === $severityOption ? 'selected' : '' }}>{{ $severityOption }}</option>
+                @endforeach
+            </select>
+            <select name="input_type" class="rounded-xl border border-[#222222] bg-[#181818] px-3 py-2 text-xs text-white">
+                <option value="">All input types</option>
+                @foreach(['text', 'image', 'voice'] as $inputType)
+                    <option value="{{ $inputType }}" {{ request('input_type') === $inputType ? 'selected' : '' }}>{{ ucfirst($inputType) }}</option>
+                @endforeach
+            </select>
+            <div class="flex gap-2">
+                <select name="plan_tier" class="min-w-0 flex-1 rounded-xl border border-[#222222] bg-[#181818] px-3 py-2 text-xs text-white">
+                    <option value="">All plans</option>
+                    @foreach(['guest', 'free', 'premium'] as $planTier)
+                        <option value="{{ $planTier }}" {{ request('plan_tier') === $planTier ? 'selected' : '' }}>{{ ucfirst($planTier) }}</option>
+                    @endforeach
+                </select>
+                <button type="submit" class="rounded-xl bg-[#F63B05] px-3 py-2 text-xs font-semibold text-white">Filter</button>
+            </div>
+        </form>
+
         <!-- Diagnostics Table -->
         <div class="overflow-hidden rounded-xl border border-[#222222] bg-[#111111]">
             <div class="overflow-x-auto">
@@ -44,12 +70,12 @@
                             <tr class="hover:bg-[#181818]/60 transition">
                                 <td class="px-4 py-3.5 font-heading font-bold text-white">
                                     #{{ $d->id }}
+                                    <div class="mt-1 text-[9px] font-normal uppercase text-[#666666]">{{ $d->plan_tier ?? 'free' }} · {{ $d->input_type ?? 'text' }}</div>
                                 </td>
                                 <td class="px-4 py-3.5">
                                     <div class="font-heading font-medium text-white">
                                         {{ $d->user?->name ?? 'Guest User' }}
                                     </div>
-                                    <p class="text-[10px] text-[#666666]">{{ $d->user?->email ?? 'No email' }}</p>
                                 </td>
                                 <td class="px-4 py-3.5">
                                     <div class="flex items-center gap-2">

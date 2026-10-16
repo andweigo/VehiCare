@@ -1,4 +1,4 @@
-﻿
+
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import OnboardingPagination from '../components/OnboardingPagination';
 import OnboardingSlide from '../components/OnboardingSlide';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
 const slides = [
@@ -42,6 +43,7 @@ const INTRO_DURATION = 1800;
 const WelcomeScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
+  const { continueAsGuest } = useAuth();
 
   const [introComplete, setIntroComplete] = useState(false);
   const [showAuthActions, setShowAuthActions] = useState(false);
@@ -227,7 +229,11 @@ const WelcomeScreen = ({ navigation }) => {
   // =========================
 
   const handleContinueAsGuest = () => {
-    navigation.navigate('VehicleDetails');
+    if (typeof continueAsGuest === 'function') {
+      continueAsGuest();
+    } else {
+      navigation.navigate('VehicleDetails');
+    }
   };
 
   const handleSignIn = () => {

@@ -9,6 +9,7 @@ use App\Services\RepairShopService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class RepairShopController extends Controller
 {
@@ -74,8 +75,14 @@ class RepairShopController extends Controller
     public function createReferral(Request $request)
     {
         $validated = $request->validate([
-            'diagnostic_id' => 'nullable|exists:diagnostics,id',
-            'repair_shop_id' => 'nullable|exists:repair_shops,id',
+            'diagnostic_id' => [
+                'nullable',
+                Rule::exists('diagnostics', 'id')->where(fn ($query) => $query->where('user_id', Auth::id())),
+            ],
+            'repair_shop_id' => [
+                'nullable',
+                Rule::exists('repair_shops', 'id')->where(fn ($query) => $query->where('is_active', true)),
+            ],
             'shop_name' => 'required|string|max:255',
             'shop_address' => 'nullable|string|max:255',
             'shop_phone' => 'nullable|string|max:50',

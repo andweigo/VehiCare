@@ -99,9 +99,11 @@ export const getVehicleIconName = vehicleTypeValue => {
  */
 export const getVehicleRecommendations = vehicleProfile => {
   const normalizedType = resolveVehicleTypeString(vehicleProfile).toLowerCase();
+  const isMotorcycle = normalizedType.includes('moto') || normalizedType.includes('motor') || normalizedType.includes('scooter');
+  const isBicycle = !isMotorcycle && (normalizedType.includes('bicycle') || normalizedType.includes('bike') || normalizedType.includes('cycle'));
 
   // BICYCLE / BIKE
-  if (normalizedType.includes('bike') || normalizedType.includes('bicycle') || normalizedType.includes('cycle')) {
+  if (isBicycle) {
     return [
       {
         id: 'check-tire-pressure',
@@ -412,63 +414,151 @@ export const mapSeverityToPriority = severityStr => {
 };
 
 /**
- * Convert diagnostic records into deterministic maintenance items.
+ * Check if a maintenance task has been confirmed repaired by user or mechanic.
  */
-export const extractDiagnosticRecommendations = diagnoses => {
-  if (!Array.isArray(diagnoses) || diagnoses.length === 0) {
+export const isRepairConfirmedForTask = (task, confirmedRepairs = []) => {
+  if (!task || !Array.isArray(confirmedRepairs) || confirmedRepairs.length === 0) {
+    return null;
+  }
+
+  const taskDiagId = String(task.diagnosisId || '');
+  const taskText = `${task.title || ''} ${task.description || ''} ${task.relatedProblem || ''}`.toLowerCase();
+
+  for (const repair of confirmedRepairs) {
+    const status = String(repair.status || 'completed').toLowerCase();
+    if (status !== 'completed') continue;
+
+    // Direct diagnosis foreign key match
+    const repDiagId = String(repair.diagnostic_id || repair.diagnosticId || '');
+    if (repDiagId && taskDiagId && repDiagId === taskDiagId) {
+      return repair;
+    }
+
+    // Component keyword match
+    const repText = `${repair.title || ''} ${repair.problem || ''} ${repair.solution || ''}`.toLowerCase();
+    const keywords = ['battery', 'brake', 'pad', 'rotor', 'starter', 'relay', 'alternator', 'chain', 'tire', 'oil', 'cable', 'plug', 'derailleur', 'spoke'];
+    for (const kw of keywords) {
+      if (taskText.includes(kw) && repText.includes(kw)) {
+        return repair;
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Filter out vehicle-incompatible recommendations (e.g. no engine oil on bicycles).
+ */
+export const isTaskCompatibleWithVehicle = (text, vehicleProfile) => {
+  const vType = resolveVehicleTypeString(vehicleProfile).toLowerCase();
+  const isMotorcycle = vType.includes('moto') || vType.includes('motor') || vType.includes('scooter');
+  const isBicycle = !isMotorcycle && (vType.includes('bike') || vType.includes('bicycle') || vType.includes('cycle'));
+  if (!isBicycle) return true;
+
+  const t = String(text || '').toLowerCase();
+  const incompatible = [
+    'engine oil', 'motor oil', 'spark plug', 'transmission', 'radiator',
+    'coolant', 'carburetor', 'fuel injection', 'alternator', 'exhaust',
+    'starter motor', 'oil filter', 'starter relay', 'battery voltage',
+  ];
+  return !incompatible.some(kw => t.includes(kw));
+};
+
+/**
+ * Extract action-oriented maintenance and inspection tasks from diagnoses.
+ * Represents uncertain AI diagnoses as INSPECTIONS, never unverified confirmed repairs.
+ * Deduplicates equivalent unresolved tasks and filters out confirmed repairs.
+ */
+export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehicleProfile = {}) => {
+  if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
     return [];
   }
 
-  const recommendations = [];
+  const tasks = [];
+  const seenKeys = new Set();
 
-  diagnoses.forEach(diag => {
+  diagnostics.forEach(diag => {
     const norm = normalizeDiagnosticRecord(diag);
     if (!norm) return;
 
-    const { priority, scoreImpact, sortOrder } = mapSeverityToPriority(norm.severity);
+    // Check if diagnostic has structured maintenance_tasks from AI service
+    const rawAiTasks = Array.isArray(diag.maintenance_tasks)
+      ? diag.maintenance_tasks
+      : (Array.isArray(diag.raw?.maintenance_tasks) ? diag.raw.maintenance_tasks : []);
 
-    let rawActions = [];
-    if (norm.recommendedActions && norm.recommendedActions.length > 0) {
-      rawActions = norm.recommendedActions.map(a =>
-        typeof a === 'string' ? a : a?.action || a?.text || a?.title || String(a),
-      );
-    } else if (norm.possibleCauses && norm.possibleCauses.length > 0) {
-      const firstCause =
-        typeof norm.possibleCauses[0] === 'string'
-          ? norm.possibleCauses[0]
-          : norm.possibleCauses[0]?.cause || norm.possibleCauses[0]?.name || 'component issue';
-      rawActions = [`Inspect ${firstCause.toLowerCase()}`];
-    } else if (norm.troubleshootingSteps && norm.troubleshootingSteps.length > 0) {
-      const firstStep =
-        typeof norm.troubleshootingSteps[0] === 'string'
-          ? norm.troubleshootingSteps[0]
-          : norm.troubleshootingSteps[0]?.step || norm.troubleshootingSteps[0]?.text || 'Verify issue';
-      rawActions = [firstStep];
+    let taskItems = [];
+
+    if (rawAiTasks.length > 0) {
+      taskItems = rawAiTasks.map((t, idx) => {
+        const title = typeof t === 'string' ? t : (t.title || `Inspect ${norm.problem}`);
+        const serviceType = typeof t === 'object' && t.service_type ? t.service_type : 'General Inspection';
+        const description = typeof t === 'object' && t.description ? t.description : `Recommended inspection for ${norm.problem}`;
+        const urgency = typeof t === 'object' && t.urgency ? t.urgency : (norm.severity === 'high' || norm.severity === 'critical' ? 'Urgent' : 'Routine');
+        return {
+          title: title.trim(),
+          serviceType,
+          description,
+          urgency,
+          isInspection: true,
+          index: idx,
+        };
+      });
     } else {
-      rawActions = [`Inspect ${norm.problem.toLowerCase()}`];
+      // Legacy fallback
+      const { priority } = mapSeverityToPriority(norm.severity);
+      let actionTitle = `Inspect ${norm.problem}`;
+      if (norm.possibleCauses && norm.possibleCauses.length > 0) {
+        const first = norm.possibleCauses[0];
+        const causeName = typeof first === 'string' ? first : (first.cause || first.name || '');
+        if (causeName) actionTitle = `Inspect ${causeName.toLowerCase()}`;
+      } else if (norm.recommendedActions && norm.recommendedActions.length > 0) {
+        const first = norm.recommendedActions[0];
+        const actName = typeof first === 'string' ? first : (first.action || first.title || '');
+        if (actName) actionTitle = actName;
+      }
+      taskItems = [{
+        title: actionTitle,
+        serviceType: 'General Inspection',
+        description: `Inspect and verify suspected causes for ${norm.problem}.`,
+        urgency: priority,
+        isInspection: true,
+        index: 0,
+      }];
     }
 
-    rawActions.forEach((actionText, index) => {
-      if (!actionText || typeof actionText !== 'string' || !actionText.trim()) return;
-
-      // Clean leading "Step 1:", "Step 2.", "Step 4:", "1.", "2)", etc.
-      let cleanTitle = actionText.trim().replace(/^(step\s*\d+[\s\:\.\-]*|\d+[\s\:\.\-]+)/i, '').trim();
+    taskItems.forEach(item => {
+      let cleanTitle = item.title.replace(/^(step\s*\d+[\s\:\.\-]*|\d+[\s\:\.\-]+)/i, '').trim();
       if (cleanTitle) {
         cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
       } else {
-        cleanTitle = actionText.trim();
+        cleanTitle = item.title;
       }
 
-      const { category, icon } = getCategoryAndIconFromAction(cleanTitle, norm.problem);
+      if (!isTaskCompatibleWithVehicle(`${cleanTitle} ${item.description}`, vehicleProfile)) {
+        return;
+      }
 
-      recommendations.push({
-        id: `diagnostic-${norm.id}-${index}`,
-        type: 'diagnostic',
+      const dedupKey = normalizeKey(cleanTitle);
+      if (seenKeys.has(dedupKey)) {
+        return;
+      }
+      seenKeys.add(dedupKey);
+
+      const { category, icon } = getCategoryAndIconFromAction(cleanTitle, norm.problem);
+      const { scoreImpact, sortOrder } = mapSeverityToPriority(item.urgency || norm.severity);
+
+      const taskObj = {
+        id: `maint-task-${norm.id}-${item.index}`,
+        type: 'maintenance_task',
         title: cleanTitle,
-        description: `Recommended action for ${norm.problem}. Verify components and address early.`,
+        serviceType: item.serviceType || 'General Inspection',
+        description: item.description,
         category,
         icon,
-        priority,
+        priority: item.urgency || 'Routine',
+        urgency: item.urgency || 'Routine',
+        isInspection: true,
         scoreImpact,
         sortOrder,
         source: 'diagnostic',
@@ -476,11 +566,176 @@ export const extractDiagnosticRecommendations = diagnoses => {
         relatedProblem: norm.problem,
         createdAt: norm.createdAt,
         diagnosticRecord: norm,
+      };
+
+      const confirmedRepair = isRepairConfirmedForTask(taskObj, confirmedRepairs);
+      if (confirmedRepair) {
+        taskObj.isResolved = true;
+        taskObj.resolvedBy = confirmedRepair.title || 'Completed Repair';
+        taskObj.resolvedAt = confirmedRepair.performed_at || confirmedRepair.created_at;
+      } else {
+        taskObj.isResolved = false;
+      }
+
+      tasks.push(taskObj);
+    });
+  });
+
+  return tasks;
+};
+
+/**
+ * Extract educational preventive guidance (Smart Recommendations).
+ * Explains practical habits, checks, and precautions to reduce recurrence risks.
+ */
+export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], vehicleProfile = {}) => {
+  const recommendations = [];
+  const seenKeys = new Set();
+  const vType = resolveVehicleTypeString(vehicleProfile).toLowerCase();
+  const isMotorcycle = vType.includes('moto') || vType.includes('motor') || vType.includes('scooter');
+  const isBicycle = !isMotorcycle && (vType.includes('bike') || vType.includes('bicycle') || vType.includes('cycle'));
+
+  // 1. Diagnostic-Driven Smart Recommendations (educational & preventive)
+  (diagnostics || []).forEach(diag => {
+    const norm = normalizeDiagnosticRecord(diag);
+    if (!norm) return;
+
+    const rawAiRecs = Array.isArray(diag.smart_recommendations)
+      ? diag.smart_recommendations
+      : (Array.isArray(diag.raw?.smart_recommendations) ? diag.raw.smart_recommendations : []);
+
+    let recItems = [];
+
+    if (rawAiRecs.length > 0) {
+      recItems = rawAiRecs.map((r, idx) => {
+        if (typeof r === 'string') {
+          return {
+            title: r,
+            problem: norm.problem,
+            preventive_action: r,
+            reason: 'Helps prevent recurring component stress and premature wear.',
+            warning_signs: 'Watch for unusual sounds, handling changes, or indicator lights.',
+            safety_precaution: 'Consult a professional if abnormal behavior returns.',
+            index: idx,
+          };
+        }
+        return {
+          title: r.title || `Prevent ${norm.problem}`,
+          problem: r.problem || norm.problem,
+          preventive_action: r.preventive_action || r.action || r.title,
+          reason: r.reason || 'Protects components from recurring failure.',
+          warning_signs: r.warning_signs || 'Monitor for early warning signs.',
+          safety_precaution: r.safety_precaution || 'Seek technician inspection if needed.',
+          index: idx,
+        };
+      });
+    } else {
+      const pLower = norm.problem.toLowerCase();
+      let habitTitle = `Preventive Habits for ${norm.problem}`;
+      let preventiveAction = `Perform periodic visual checks on related components.`;
+      let reason = `Early detection prevents minor wear from escalating into severe damage.`;
+      let warningSigns = `Pay attention to unusual noises, vibration, or performance changes.`;
+      let safetyPrecaution = `If symptoms recur, obtain a professional inspection.`;
+
+      if (pLower.includes('start') || pLower.includes('click') || pLower.includes('battery')) {
+        if (isMotorcycle) {
+          habitTitle = 'Prevent Battery Drain & Terminal Corrosion';
+          preventiveAction = 'Use a trickle charger during extended parking and inspect terminal tightness.';
+          reason = 'Motorcycle batteries have small ampere-hour capacity and lose charge quickly during idle periods.';
+          warningSigns = 'Dim headlights on key turn, sluggish starter click, or flickering dash.';
+          safetyPrecaution = 'Do not jump-start motorcycle with running automotive jumper cables (too high current).';
+        } else if (!isBicycle) {
+          habitTitle = 'Battery Maintenance & Cranking Health';
+          preventiveAction = 'Keep battery terminals clean and verify resting voltage stays above 12.6V.';
+          reason = 'Ensures alternator and starter solenoid receive adequate cranking amperage.';
+          warningSigns = 'Slow engine crank on cold mornings or clicking sound from relay.';
+          safetyPrecaution = 'Wear eye protection and avoid sparks near lead-acid batteries.';
+        }
+      } else if (pLower.includes('brake') || pLower.includes('squeak') || pLower.includes('grind')) {
+        habitTitle = isBicycle ? 'Bicycle Brake Pad Alignment & Cable Tension' : 'Brake System Wear Monitoring';
+        preventiveAction = isBicycle
+          ? 'Check rim brake pad alignment with the wheel rim and verify cable tension.'
+          : 'Inspect pad friction material thickness and avoid sudden high-speed braking when possible.';
+        reason = 'Prevents metal-to-metal contact that damages rotors/rims and increases stopping distance.';
+        warningSigns = 'High-pitched squealing, grinding, or soft/spongy lever or pedal feel.';
+        safetyPrecaution = 'If braking distance increases noticeably, inspect or replace pads before riding.';
+      }
+
+      recItems = [{
+        title: habitTitle,
+        problem: norm.problem,
+        preventive_action: preventiveAction,
+        reason,
+        warning_signs: warningSigns,
+        safety_precaution: safetyPrecaution,
+        index: 0,
+      }];
+    }
+
+    recItems.forEach(r => {
+      if (!isTaskCompatibleWithVehicle(`${r.title} ${r.preventive_action} ${r.reason}`, vehicleProfile)) {
+        return;
+      }
+
+      const key = normalizeKey(r.title);
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+
+      const { category, icon } = getCategoryAndIconFromAction(r.title, r.problem);
+      recommendations.push({
+        id: `smart-rec-${norm.id}-${r.index}`,
+        type: 'smart_recommendation',
+        title: r.title,
+        problem: r.problem,
+        description: r.preventive_action,
+        preventive_action: r.preventive_action,
+        reason: r.reason,
+        warning_signs: r.warning_signs,
+        safety_precaution: r.safety_precaution,
+        category,
+        icon,
+        priority: 'Important',
+        scoreImpact: 5,
+        sortOrder: 2,
+        source: 'diagnostic',
+        diagnosisId: norm.id,
+        relatedProblem: r.problem,
+        createdAt: norm.createdAt,
       });
     });
   });
 
+  // 2. Merge baseline preventive maintenance routines
+  const baseline = getVehicleRecommendations(vehicleProfile);
+  baseline.forEach(item => {
+    if (!isTaskCompatibleWithVehicle(`${item.title} ${item.description}`, vehicleProfile)) {
+      return;
+    }
+
+    const key = normalizeKey(item.title);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      recommendations.push({
+        ...item,
+        type: 'preventive',
+        preventive_action: item.description,
+        reason: 'Regular routine check for optimal vehicle safety and longevity.',
+        warning_signs: 'Inspect regularly before warning symptoms develop.',
+        safety_precaution: 'Follow standard vehicle maintenance safety protocols.',
+        sortOrder: item.priority === 'Important' ? 4 : 5,
+      });
+    }
+  });
+
+  recommendations.sort((a, b) => (a.sortOrder || 3) - (b.sortOrder || 3));
   return recommendations;
+};
+
+/**
+ * Backwards-compatible alias for existing components.
+ */
+export const extractDiagnosticRecommendations = (diagnostics, confirmedRepairs = [], vehicleProfile = {}) => {
+  return extractMaintenanceTasks(diagnostics, confirmedRepairs, vehicleProfile);
 };
 
 /**
@@ -490,7 +745,7 @@ export const normalizeKey = str => {
   return `${str || ''}`
     .toLowerCase()
     .replace(/^(check|inspect|verify|clean|monitor|have)\s+/, '')
-    .replace(/\s+(condition|system|level|pads|terminals|pressure|wear)$/, '')
+    .replace(/\s+(condition|system|level|pads|terminals|pressure|wear|alignment)$/, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
 };
@@ -498,10 +753,11 @@ export const normalizeKey = str => {
 /**
  * Merge diagnostic maintenance items with preventive maintenance routines.
  */
-export const mergeRecommendations = (diagnosticRecs, baselineRecs) => {
+export const mergeRecommendations = (diagnosticRecs, baselineRecs, vehicleProfile = {}) => {
   const mergedMap = new Map();
 
   (diagnosticRecs || []).forEach(item => {
+    if (!isTaskCompatibleWithVehicle(item.title, vehicleProfile)) return;
     const key = normalizeKey(item.title);
     if (!mergedMap.has(key)) {
       mergedMap.set(key, item);
@@ -509,6 +765,7 @@ export const mergeRecommendations = (diagnosticRecs, baselineRecs) => {
   });
 
   (baselineRecs || []).forEach(item => {
+    if (!isTaskCompatibleWithVehicle(item.title, vehicleProfile)) return;
     const key = normalizeKey(item.title);
     if (!mergedMap.has(key)) {
       const sortOrder = item.priority === 'Important' ? 4 : 5;

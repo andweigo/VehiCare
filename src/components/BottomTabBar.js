@@ -1,6 +1,8 @@
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
+  DeviceEventEmitter,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,7 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
-import notificationService from '../services/notificationService';
+import notificationService, { NOTIFICATION_READ_STATE_CHANGED } from '../services/notificationService';
 import { useTheme } from '../theme/ThemeContext';
 
 const tabs = [
@@ -27,21 +29,76 @@ const BottomTabBar = ({ activeTab, onTabPress, isSidebarOpen }) => {
   const { isOpen: sidebarOpenFromContext } = useSidebar();
   const sidebarOpen = isSidebarOpen !== undefined ? isSidebarOpen : sidebarOpenFromContext;
   const [unread, setUnread] = useState(0);
+  const mountedRef = useRef(false);
+  const currentUserIdRef = useRef(user?.id);
+  const inFlightRef = useRef(null);
+  const loadUnreadRef = useRef(null);
+  currentUserIdRef.current = user?.id;
 
   const loadUnread = useCallback(async () => {
-    try {
-      const items = await notificationService.fetchNotifications();
-      setUnread(items.filter(i => !i.isRead).length);
-    } catch (err) {
-      // ignore
+    const userId = user?.id;
+    if (!userId) {
+      if (mountedRef.current) setUnread(0);
+      return;
     }
+
+    if (inFlightRef.current) {
+      if (inFlightRef.current.userId === userId) {
+        await inFlightRef.current.promise;
+        return;
+      }
+
+      await inFlightRef.current.promise;
+      if (mountedRef.current) loadUnreadRef.current?.();
+      return;
+    }
+
+    const request = notificationService.getUnreadCount();
+    const entry = { userId, promise: request };
+    inFlightRef.current = entry;
+
+    try {
+      const count = await request;
+      if (mountedRef.current && currentUserIdRef.current === userId && count !== null) {
+        setUnread(count);
+      }
+    } finally {
+      if (inFlightRef.current === entry) {
+        inFlightRef.current = null;
+      }
+      if (mountedRef.current && currentUserIdRef.current !== userId) {
+        loadUnreadRef.current?.();
+      }
+    }
+  }, [user?.id]);
+  loadUnreadRef.current = loadUnread;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
     loadUnread();
     const timer = setInterval(loadUnread, 10000);
-    return () => clearInterval(timer);
-  }, [activeTab, loadUnread]);
+    const appStateSubscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        loadUnread();
+      }
+    });
+    const readStateSubscription = DeviceEventEmitter.addListener(
+      NOTIFICATION_READ_STATE_CHANGED,
+      loadUnread,
+    );
+
+    return () => {
+      clearInterval(timer);
+      appStateSubscription.remove();
+      readStateSubscription.remove();
+    };
+  }, [loadUnread]);
 
   useRealtimeUpdates(user?.id, {
     'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated': loadUnread,
@@ -76,7 +133,7 @@ const BottomTabBar = ({ activeTab, onTabPress, isSidebarOpen }) => {
                 />
                 {tab.key === 'Notifications' && unread > 0 && (
                   <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                    <Text style={styles.badgeText}>{unread > 9 ? '9+' : `${unread}`}</Text>
+                    <Text style={styles.badgeText}>{unread > 99 ? '99+' : `${unread}`}</Text>
                   </View>
                 )}
               </View>

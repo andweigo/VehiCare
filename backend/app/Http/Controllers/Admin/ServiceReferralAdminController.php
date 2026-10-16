@@ -10,7 +10,13 @@ class ServiceReferralAdminController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ServiceReferral::with(['user', 'diagnostic', 'repairShop']);
+        $query = ServiceReferral::with([
+            'user',
+            'diagnostic.vehicle.vehicleType',
+            'diagnostic.vehicle.vehicleBrand',
+            'diagnostic.vehicle.vehicleModel',
+            'repairShop',
+        ]);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

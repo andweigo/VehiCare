@@ -82,3 +82,17 @@ backend/test-token.php
 .tmp/
 .DS_Store
 Thumbs.db
+
+# Local certificates
+certs/
+
+# Accidental local command artifacts
+/powershell.cmd
+/backend/first())
+/backend/first()]
+/backend/powershell.cmd
+/vehicare-ai-service/powershell.cmd
+/vehicare-ai-service/{
+
+# Generated project structure listing
+/vehicare-structure.txt

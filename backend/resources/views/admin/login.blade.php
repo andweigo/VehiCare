@@ -46,11 +46,8 @@
         
         <!-- Logo Header -->
         <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F63B05] text-white font-heading font-extrabold text-xl shadow-md shadow-[#F63B05]/20">
-                V
-            </div>
+            <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-10 w-10 rounded-xl object-contain" />
             <div>
-                <span class="font-heading font-bold text-lg text-white">VehiCare</span>
                 <p class="text-[10px] text-[#A1A1AA] font-heading font-semibold tracking-wider uppercase">ADMIN DASHBOARD</p>
             </div>
         </div>

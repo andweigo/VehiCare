@@ -237,11 +237,7 @@ const SettingsScreen = ({ navigation }) => {
               icon: 'rate-review',
               title: 'Send Feedback',
               subtitle: 'Tell us how we can improve',
-              onPress: () =>
-                Alert.alert(
-                  'Feedback',
-                  'Open feedback form'
-                ),
+              onPress: () => navigation.navigate('SendFeedback'),
               theme,
             })}
 
@@ -258,11 +254,7 @@ const SettingsScreen = ({ navigation }) => {
               icon: 'report-problem',
               title: 'Report a Problem',
               subtitle: 'Report an issue with the app',
-              onPress: () =>
-                Alert.alert(
-                  'Report a Problem',
-                  'Report a problem'
-                ),
+              onPress: () => navigation.navigate('ReportProblem'),
               theme,
             })}
           </View>

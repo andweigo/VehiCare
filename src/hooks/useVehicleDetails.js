@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react';
 import vehicleApi from '../api/vehicleApi';
+import activityService from '../services/activity.service';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
 
@@ -91,8 +92,14 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
   const [savingVehicle, setSavingVehicle] =
     useState(false);
 
-  const { token } = useAuth();
-  const { savePendingVehicle, setActiveVehicle } = useVehicle();
+  const { token, user } = useAuth();
+  const {
+    savePendingVehicle,
+    setActiveVehicle,
+    refreshActiveVehicle,
+    activeVehicle,
+    vehicles,
+  } = useVehicle();
 
   /*
    * =========================
@@ -853,10 +860,50 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
               response,
             );
 
-            /*
-             * Do NOT automatically set new vehicles as active.
-             * Users should decide when to activate vehicles.
-             */
+            const savedVehicle = response?.vehicle || response?.data || response;
+
+            const isFirstOrNoActive =
+              !activeVehicle ||
+              !Array.isArray(vehicles) ||
+              vehicles.length === 0;
+
+            if (savedVehicle && typeof savedVehicle === 'object') {
+              if (isFirstOrNoActive || mode === 'correct') {
+                setActiveVehicle(savedVehicle);
+
+                if (savedVehicle.id) {
+                  try {
+                    await vehicleApi.setActiveVehicle(savedVehicle.id);
+                  } catch (activeErr) {
+                    // Non-fatal if backend does not require explicit active call
+                  }
+                }
+              }
+
+              if (typeof refreshActiveVehicle === 'function') {
+                try {
+                  await refreshActiveVehicle();
+                } catch (refreshErr) {
+                  console.warn('refreshActiveVehicle failed after saveVehicle:', refreshErr);
+                }
+              }
+
+              const vName = [
+                savedVehicle?.vehicle_year?.year || savedVehicle?.custom_year || year,
+                savedVehicle?.vehicle_brand?.name || savedVehicle?.custom_brand || brand,
+                savedVehicle?.vehicle_model?.name || savedVehicle?.custom_model || model,
+              ].filter(Boolean).join(' ') || 'Vehicle';
+
+              activityService.addActivity({
+                type: mode === 'correct' ? 'vehicle_updated' : 'vehicle_added',
+                title: mode === 'correct' ? 'Vehicle Updated' : 'Vehicle Added',
+                description: mode === 'correct' ? `Updated profile for ${vName}.` : `Added ${vName} to your garage.`,
+                vehicleId: savedVehicle?.id || null,
+                vehicleName: vName,
+                userId: user?.id || user?.uid,
+              });
+            }
+
             return response;
           } catch (error) {
             console.warn('Backend save failed for authenticated user.', error?.message || error);
@@ -875,6 +922,15 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
         if (mode === 'correct') {
           await savePendingVehicle(guestVehiclePayload);
 
+          const vName = [year, brand, model].filter(Boolean).join(' ') || 'Vehicle';
+          activityService.addActivity({
+            type: 'vehicle_updated',
+            title: 'Vehicle Updated',
+            description: `Updated profile for ${vName}.`,
+            vehicleName: vName,
+            userId: user?.id || user?.uid,
+          });
+
           return {
             ...guestVehiclePayload,
             savedLocally: true,
@@ -886,6 +942,15 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
         );
 
         await savePendingVehicle(guestVehiclePayload);
+
+        const guestVName = [year, brand, model].filter(Boolean).join(' ') || 'Vehicle';
+        activityService.addActivity({
+          type: 'vehicle_added',
+          title: 'Vehicle Added',
+          description: `Added ${guestVName} to your garage.`,
+          vehicleName: guestVName,
+          userId: user?.id || user?.uid,
+        });
 
         return {
           ...guestVehiclePayload,

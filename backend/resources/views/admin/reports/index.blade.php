@@ -25,23 +25,45 @@
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
-                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Connected Vehicles</span>
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Saved Vehicles</span>
                 <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['total_vehicles'] ?? 0) }}</p>
-                <p class="text-[11px] text-[#32D583] font-medium">Fleet Size</p>
+                <p class="text-[11px] text-[#32D583] font-medium">{{ number_format($stats['active_vehicles']) }} active · {{ number_format($stats['archived_vehicles']) }} archived</p>
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
-                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Correction Submissions</span>
-                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['correction_requests'] ?? 0) }}</p>
-                <p class="text-[11px] text-[#F59E0B] font-medium">{{ $stats['pending_requests'] ?? 0 }} Pending Review</p>
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Diagnostic Records</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['diagnostics']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">Persisted diagnostics, not all consultations</p>
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
-                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Data Integrity</span>
-                <p class="text-base font-heading font-bold text-[#32D583] flex items-center gap-1.5">
-                    <span class="h-2 w-2 rounded-full bg-[#32D583] animate-pulse"></span> Verified Real-time
-                </p>
-                <p class="text-[11px] text-[#666666]">Live DB Connections</p>
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">AI Requests</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['ai_successful'] + $stats['ai_failed']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">{{ number_format($stats['ai_successful']) }} successful · {{ number_format($stats['ai_failed']) }} failed</p>
+            </div>
+
+            <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Payments</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['pending_payments']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">Pending verification · {{ number_format($stats['approved_payments']) }} approved</p>
+            </div>
+
+            <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Repair Directory</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['active_repair_shops']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">Active shops available to discovery</p>
+            </div>
+
+            <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Service Referral History</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['service_referrals']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">Retained user-selected shop records</p>
+            </div>
+
+            <div class="rounded-xl border border-[#222222] bg-[#111111] p-4 space-y-2">
+                <span class="text-[10px] font-heading font-bold uppercase text-[#A1A1AA]">Maintenance History</span>
+                <p class="text-2xl font-heading font-extrabold text-white">{{ number_format($stats['maintenance_records']) }}</p>
+                <p class="text-[11px] text-[#A1A1AA] font-medium">User-owned records retained</p>
             </div>
         </div>
 

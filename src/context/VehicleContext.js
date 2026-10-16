@@ -70,8 +70,9 @@ export const VehicleProvider = ({ children }) => {
     if (activeVehicleId) {
       const matchedVehicle = vehicleList.find(
         vehicle =>
-          String(vehicle.id) ===
-          String(activeVehicleId),
+          String(vehicle.id) === String(activeVehicleId) &&
+          !vehicle.isArchived &&
+          !vehicle.archived_at,
       );
 
       if (matchedVehicle) {
@@ -79,7 +80,15 @@ export const VehicleProvider = ({ children }) => {
       }
     }
 
-    return vehicleList[0];
+    const explicitlyActive = vehicleList.find(
+      v => Boolean(v?.is_active || v?.isActive || v?.active) && !v?.isArchived && !v?.archived_at,
+    );
+    if (explicitlyActive) {
+      return explicitlyActive;
+    }
+
+    const firstNonArchived = vehicleList.find(v => !v?.isArchived && !v?.archived_at);
+    return firstNonArchived || null;
   };
 
   /*
@@ -166,6 +175,15 @@ export const VehicleProvider = ({ children }) => {
       return null;
     }
 
+    if (selectedVehicle.isArchived || selectedVehicle.archived_at) {
+      console.warn(
+        'Cannot set archived vehicle as active:',
+        vehicleId,
+      );
+
+      return null;
+    }
+
     /*
     |--------------------------------------------------------------------------
     | UPDATE GLOBAL LOCAL STATE
@@ -178,16 +196,15 @@ export const VehicleProvider = ({ children }) => {
     |--------------------------------------------------------------------------
     | BACKEND PERSISTENCE
     |--------------------------------------------------------------------------
-    |
-    | Your current vehicleApi does not show an
-    | endpoint for updating active_vehicle_id.
-    |
-    | Do NOT call an unknown API method here.
-    |
-    | Once your Laravel endpoint exists, this is
-    | where it should be called.
-    |
     */
+    try {
+      await vehicleApi.setActiveVehicle(vehicleId);
+    } catch (error) {
+      console.warn(
+        'Unable to persist active vehicle to backend:',
+        error?.message || error,
+      );
+    }
 
     return selectedVehicle;
   };
@@ -347,6 +364,7 @@ export const VehicleProvider = ({ children }) => {
         */
 
         vehicles,
+        setVehicles,
         activeVehicle,
         pendingVehicle,
         loading,

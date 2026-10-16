@@ -28,8 +28,6 @@ class RepairShopService
         $category = $this->normalizeCategory($vehicleType);
 
         Log::info('[RepairShopService] Processing nearby shop request', [
-            'latitude' => $latitude,
-            'longitude' => $longitude,
             'radius_km' => $radiusKm,
             'vehicle_type' => $vehicleType,
             'category' => $category,
@@ -38,6 +36,8 @@ class RepairShopService
         // Query only active administrator-managed repair shops
         $shops = RepairShop::query()
             ->where('is_active', true)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
             ->get()
             ->filter(function ($shop) use ($category) {
                 if (empty($category) || $category === 'all') {

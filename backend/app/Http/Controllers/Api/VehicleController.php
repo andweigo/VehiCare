@@ -8,9 +8,11 @@ use App\Models\VehicleBrand;
 use App\Models\VehicleCorrectionRequest;
 use App\Models\VehicleModel;
 use App\Models\VehicleType;
+use App\Models\User;
 use App\Notifications\VehicleCorrectionRequestCompleted;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class VehicleController extends Controller
 {
@@ -167,37 +169,45 @@ class VehicleController extends Controller
         ]);
 
         $user = $request->user();
-        if ($user) {
-            $user->checkSubscriptionStatus();
-        }
+        $result = DB::transaction(function () use ($user, $validated) {
+            $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $lockedUser->checkSubscriptionStatus();
+            $vehicleAllowance = $lockedUser->vehicleAllowance();
 
-        $vehicleCount = $user->vehicles()->count();
-        if ($vehicleCount >= $user->vehicle_limit) {
+            if ($lockedUser->activeVehicles()->count() >= $vehicleAllowance) {
+                return ['allowed' => false, 'allowance' => $vehicleAllowance];
+            }
+
+            $vehicle = $lockedUser->vehicles()->create($validated);
+            $hasActiveVehicle = $lockedUser->active_vehicle_id
+                && $lockedUser->activeVehicles()->whereKey($lockedUser->active_vehicle_id)->exists();
+            if (! $hasActiveVehicle) {
+                $lockedUser->active_vehicle_id = $vehicle->id;
+                $lockedUser->save();
+            }
+
+            return [
+                'allowed' => true,
+                'vehicle' => $vehicle->load([
+                    'vehicleType',
+                    'vehicleBrand',
+                    'vehicleModel',
+                    'vehicleYear',
+                ]),
+            ];
+        }, 3);
+
+        if (! $result['allowed']) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Your current plan allows only '.$user->vehicle_limit.' vehicle(s). Upgrade to add more vehicles.',
+                'message' => 'Your current plan allows only '.$result['allowance'].' active vehicle(s). Upgrade to add more vehicles.',
             ], 422);
         }
-
-        $vehicle = $user->vehicles()
-            ->create($validated);
-
-        if (! $user->active_vehicle_id) {
-            $user->active_vehicle_id = $vehicle->id;
-            $user->save();
-        }
-
-        $vehicle->load([
-            'vehicleType',
-            'vehicleBrand',
-            'vehicleModel',
-            'vehicleYear',
-        ]);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Vehicle saved successfully.',
-            'data' => $vehicle,
+            'data' => $result['vehicle'],
         ], 201);
     }
 
@@ -257,6 +267,13 @@ class VehicleController extends Controller
         $vehicle = $request->user()
             ->vehicles()
             ->findOrFail($validated['vehicle_id']);
+
+        if ($vehicle->archived_at) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An archived vehicle cannot be set as the active vehicle.',
+            ], 422);
+        }
 
         $user = $request->user();
         $user->active_vehicle_id = $vehicle->id;
@@ -346,6 +363,26 @@ class VehicleController extends Controller
         }
 
         $allowedFields = (array) $correctionRequest->requested_fields;
+        $expandedAllowedFields = $allowedFields;
+        if (in_array('vehicle_model_id', $allowedFields) && !in_array('custom_model', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'custom_model';
+        }
+        if (in_array('custom_model', $allowedFields) && !in_array('vehicle_model_id', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'vehicle_model_id';
+        }
+        if (in_array('vehicle_brand_id', $allowedFields) && !in_array('custom_brand', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'custom_brand';
+        }
+        if (in_array('custom_brand', $allowedFields) && !in_array('vehicle_brand_id', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'vehicle_brand_id';
+        }
+        if (in_array('vehicle_year_id', $allowedFields) && !in_array('custom_year', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'custom_year';
+        }
+        if (in_array('custom_year', $allowedFields) && !in_array('vehicle_year_id', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'vehicle_year_id';
+        }
+
         $changedFields = [];
 
         foreach ($validated as $field => $value) {
@@ -371,7 +408,7 @@ class VehicleController extends Controller
             ], 422);
         }
 
-        $unauthorizedFields = array_diff($changedFields, $allowedFields);
+        $unauthorizedFields = array_diff($changedFields, $expandedAllowedFields);
 
         if (! empty($unauthorizedFields)) {
             return response()->json([
@@ -381,7 +418,7 @@ class VehicleController extends Controller
             ], 403);
         }
 
-        $vehicle->fill($validated);
+        $vehicle->applyCorrectionValues($validated);
         $vehicle->save();
 
         $correctionRequest->status = 'completed';
@@ -406,7 +443,8 @@ class VehicleController extends Controller
 
     public function destroy(Request $request, $id): JsonResponse
     {
-        $vehicle = $request->user()
+        $user = $request->user();
+        $vehicle = $user
             ->vehicles()
             ->findOrFail($id);
 
@@ -414,43 +452,112 @@ class VehicleController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Vehicle already archived.',
+                'data' => [
+                    'archived_at' => $vehicle->archived_at,
+                    'active_vehicle_id' => $user->active_vehicle_id,
+                ],
             ]);
         }
 
-        $vehicle->archived_at = now();
-        $vehicle->save();
+        $nextActiveVehicle = null;
+
+        DB::transaction(function () use ($user, $vehicle, &$nextActiveVehicle) {
+            $vehicle->archived_at = now();
+            $vehicle->save();
+
+            if ((int) $user->active_vehicle_id === (int) $vehicle->id) {
+                $nextActiveVehicle = $user->activeVehicles()
+                    ->where('id', '!=', $vehicle->id)
+                    ->latest()
+                    ->first();
+
+                $user->active_vehicle_id = $nextActiveVehicle?->id;
+                $user->save();
+            }
+        });
 
         return response()->json([
             'status' => 'success',
             'message' => 'Vehicle archived successfully.',
             'data' => [
                 'archived_at' => $vehicle->archived_at,
+                'active_vehicle_id' => $user->active_vehicle_id,
+                'next_active_vehicle' => $nextActiveVehicle ? $nextActiveVehicle->load([
+                    'vehicleType',
+                    'vehicleBrand',
+                    'vehicleModel',
+                    'vehicleYear',
+                ]) : null,
             ],
         ]);
     }
 
     public function unarchive(Request $request, $id): JsonResponse
     {
-        $vehicle = $request->user()
-            ->vehicles()
-            ->findOrFail($id);
+        $user = $request->user();
+        $result = DB::transaction(function () use ($user, $id) {
+            $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $lockedUser->checkSubscriptionStatus();
+            $vehicle = $lockedUser->vehicles()->lockForUpdate()->findOrFail($id);
 
-        if (! $vehicle->archived_at) {
+            if (! $vehicle->archived_at) {
+                return [
+                    'status' => 'already_active',
+                    'active_vehicle_id' => $lockedUser->active_vehicle_id,
+                ];
+            }
+
+            $vehicleAllowance = $lockedUser->vehicleAllowance();
+            if ($lockedUser->activeVehicles()->count() >= $vehicleAllowance) {
+                return [
+                    'status' => 'limit',
+                    'allowance' => $vehicleAllowance,
+                ];
+            }
+
+            $vehicle->archived_at = null;
+            $vehicle->save();
+
+            $hasActive = $lockedUser->active_vehicle_id
+                && $lockedUser->activeVehicles()->whereKey($lockedUser->active_vehicle_id)->exists();
+            if (! $hasActive) {
+                $lockedUser->active_vehicle_id = $vehicle->id;
+                $lockedUser->save();
+            }
+
+            return [
+                'status' => 'unarchived',
+                'vehicle' => $vehicle->load([
+                    'vehicleType',
+                    'vehicleBrand',
+                    'vehicleModel',
+                    'vehicleYear',
+                ]),
+                'active_vehicle_id' => $lockedUser->active_vehicle_id,
+            ];
+        }, 3);
+
+        if ($result['status'] === 'limit') {
             return response()->json([
-                'status' => 'success',
-                'message' => 'Vehicle is already active.',
-            ]);
+                'status' => 'error',
+                'message' => 'Your current plan allows only '.$result['allowance'].' active vehicle(s). Upgrade to unarchive or add more vehicles.',
+            ], 422);
         }
 
-        $vehicle->archived_at = null;
-        $vehicle->save();
+        $responseData = [
+            'archived_at' => null,
+            'active_vehicle_id' => $result['active_vehicle_id'],
+        ];
+        if ($result['status'] === 'unarchived') {
+            $responseData['vehicle'] = $result['vehicle'];
+        }
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Vehicle unarchived successfully.',
-            'data' => [
-                'archived_at' => $vehicle->archived_at,
-            ],
+            'message' => $result['status'] === 'already_active'
+                ? 'Vehicle is already active.'
+                : 'Vehicle unarchived successfully.',
+            'data' => $responseData,
         ]);
     }
 }

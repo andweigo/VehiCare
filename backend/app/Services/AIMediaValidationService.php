@@ -62,6 +62,15 @@ class AIMediaValidationService
         ?int $durationSeconds,
         array $tierAudioConfig
     ): array {
+        $maxMb = $tierAudioConfig['max_audio_mb'] ?? 10;
+        if ($fileSizeBytes > $maxMb * 1024 * 1024) {
+            return [
+                'valid' => false,
+                'error' => 'audio_too_large',
+                'message' => "This audio recording is too large. Your plan allows recordings up to {$maxMb} MB.",
+            ];
+        }
+
         $maxSec = $tierAudioConfig['max_audio_sec'] ?? 60;
         if ($durationSeconds !== null && $durationSeconds > $maxSec) {
             return [

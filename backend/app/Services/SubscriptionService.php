@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Events\PaymentStatusUpdated;
+use App\Models\ManualPremiumGrant;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\PaymentApprovedNotification;
@@ -16,6 +17,12 @@ use Illuminate\Validation\ValidationException;
 
 class SubscriptionService
 {
+    public function __construct(
+        private readonly ?AdminNotificationService $adminNotifications = null,
+        private readonly ?AdminActionAuditService $auditLog = null,
+    ) {
+    }
+
     /**
      * Evaluate and update subscription expiration if past.
      */
@@ -74,10 +81,17 @@ class SubscriptionService
         }
 
         $amount = Payment::getPriceForCycle($normalizedCycle);
-        $generatedReference = $this->generateUniqueReference();
-        $finalReference = $referenceNumber && trim($referenceNumber) !== ''
-            ? trim($referenceNumber)
-            : $generatedReference;
+        if ($referenceNumber && trim($referenceNumber) !== '') {
+            $trimmedRef = trim($referenceNumber);
+            if (Payment::where('reference_number', $trimmedRef)->exists()) {
+                throw ValidationException::withMessages([
+                    'payment' => ["The payment reference number '{$trimmedRef}' has already been submitted. Please check your transaction receipt and enter a unique reference number."],
+                ]);
+            }
+            $finalReference = $trimmedRef;
+        } else {
+            $finalReference = $this->generateUniqueReference();
+        }
 
         $payment = DB::transaction(function () use ($user, $normalizedPlan, $normalizedCycle, $normalizedMethod, $amount, $finalReference) {
             $payment = Payment::create([
@@ -119,13 +133,32 @@ class SubscriptionService
         }
 
         $approvedPayment = DB::transaction(function () use ($payment, $admin) {
+            $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            if (! $payment->isPending()) {
+                throw ValidationException::withMessages([
+                    'payment' => ["Cannot approve payment with status '{$payment->status}'."],
+                ]);
+            }
+
             $now = Carbon::now();
             $cycle = $payment->billing_cycle;
 
+            $user = User::whereKey($payment->user_id)->lockForUpdate()->firstOrFail();
+            $user->checkSubscriptionStatus();
+            $periodStartsAt = $user->subscription_plan === User::SUBSCRIPTION_PREMIUM
+                && $user->subscription_expires_at
+                && $user->subscription_expires_at->isFuture()
+                    ? $user->subscription_expires_at->copy()
+                    : $now->copy();
+
             if ($cycle === User::SUBSCRIPTION_CYCLE_MONTHLY) {
-                $expiresAt = $now->copy()->addMonth();
+                $expiresAt = $periodStartsAt->copy()->addMonth();
+            } elseif ($cycle === User::SUBSCRIPTION_CYCLE_YEARLY) {
+                $expiresAt = $periodStartsAt->copy()->addYear();
             } else {
-                $expiresAt = $now->copy()->addYear();
+                throw ValidationException::withMessages([
+                    'billing_cycle' => ['The payment has an unsupported billing cycle.'],
+                ]);
             }
 
             $payment->update([
@@ -135,12 +168,19 @@ class SubscriptionService
                 'admin_id' => $admin->id,
             ]);
 
-            $user = $payment->user;
+            $user->manualPremiumGrants()
+                ->where('status', ManualPremiumGrant::STATUS_ACTIVE)
+                ->update([
+                    'status' => ManualPremiumGrant::STATUS_SUPERSEDED,
+                    'ended_at' => $now,
+                ]);
+
             $user->update([
                 'subscription_plan' => User::SUBSCRIPTION_PREMIUM,
                 'subscription_status' => User::SUBSCRIPTION_STATUS_ACTIVE,
                 'subscription_cycle' => $cycle,
-                'subscription_started_at' => $now,
+                'subscription_source' => 'payment',
+                'subscription_started_at' => $periodStartsAt,
                 'subscription_expires_at' => $expiresAt,
                 'vehicle_limit' => User::VEHICLE_LIMIT_PREMIUM,
             ]);
@@ -156,6 +196,16 @@ class SubscriptionService
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
         }
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            "payment-approved:{$approvedPayment->id}",
+            'Payment approved',
+            'A subscription payment was approved.',
+            ['payment_id' => $approvedPayment->id, 'user_id' => $approvedPayment->user_id],
+        );
+        $this->recordAdminAction($admin, 'payment_approved', 'payment', $approvedPayment->id, [
+            'user_id' => $approvedPayment->user_id,
+            'billing_cycle' => $approvedPayment->billing_cycle,
+        ]);
 
         return $approvedPayment;
     }
@@ -201,6 +251,15 @@ class SubscriptionService
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
         }
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            "payment-rejected:{$rejectedPayment->id}",
+            'Payment rejected',
+            'A subscription payment was rejected.',
+            ['payment_id' => $rejectedPayment->id, 'user_id' => $rejectedPayment->user_id],
+        );
+        $this->recordAdminAction($admin, 'payment_rejected', 'payment', $rejectedPayment->id, [
+            'user_id' => $rejectedPayment->user_id,
+        ]);
 
         return $rejectedPayment;
     }
@@ -216,12 +275,13 @@ class SubscriptionService
             ]);
         }
 
-        $refundedPayment = DB::transaction(function () use ($payment) {
+        $refundedPayment = DB::transaction(function () use ($payment, $admin) {
             $now = Carbon::now();
 
             $payment->update([
                 'refund_status' => Payment::REFUND_REFUNDED,
                 'refunded_at' => $now,
+                'admin_id' => $admin->id,
             ]);
 
             $user = $payment->user;
@@ -236,8 +296,175 @@ class SubscriptionService
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
         }
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            "refund-completed:{$refundedPayment->id}",
+            'Refund completed',
+            'A payment refund was marked complete.',
+            ['payment_id' => $refundedPayment->id, 'user_id' => $refundedPayment->user_id],
+        );
+        $this->recordAdminAction($admin, 'refund_completed', 'payment', $refundedPayment->id, [
+            'user_id' => $refundedPayment->user_id,
+        ]);
 
         return $refundedPayment;
+    }
+
+    public function grantManualPremium(User $user, User $admin, string $billingCycle, string $reason): ManualPremiumGrant
+    {
+        $billingCycle = strtolower(trim($billingCycle));
+        $reason = trim($reason);
+
+        if (! in_array($billingCycle, [User::SUBSCRIPTION_CYCLE_MONTHLY, User::SUBSCRIPTION_CYCLE_YEARLY], true)) {
+            throw ValidationException::withMessages([
+                'billing_cycle' => ['Choose a monthly or yearly Premium grant period.'],
+            ]);
+        }
+
+        if ($reason === '') {
+            throw ValidationException::withMessages([
+                'reason' => ['A reason is required for a manual Premium grant.'],
+            ]);
+        }
+
+        $grant = DB::transaction(function () use ($user, $admin, $billingCycle, $reason) {
+            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $user->checkSubscriptionStatus();
+
+            if ($user->subscription_plan === User::SUBSCRIPTION_PREMIUM) {
+                throw ValidationException::withMessages([
+                    'subscription' => ['This account already has Premium access. Wait for it to expire before granting manual Premium.'],
+                ]);
+            }
+
+            $grantedAt = Carbon::now();
+            $expiresAt = $billingCycle === User::SUBSCRIPTION_CYCLE_MONTHLY
+                ? $grantedAt->copy()->addMonth()
+                : $grantedAt->copy()->addYear();
+
+            $grant = ManualPremiumGrant::create([
+                'user_id' => $user->id,
+                'admin_id' => $admin->id,
+                'billing_cycle' => $billingCycle,
+                'reason' => $reason,
+                'status' => ManualPremiumGrant::STATUS_ACTIVE,
+                'granted_at' => $grantedAt,
+                'expires_at' => $expiresAt,
+            ]);
+
+            $user->update([
+                'subscription_plan' => User::SUBSCRIPTION_PREMIUM,
+                'subscription_status' => User::SUBSCRIPTION_STATUS_ACTIVE,
+                'subscription_cycle' => $billingCycle,
+                'subscription_source' => 'manual',
+                'subscription_started_at' => $grantedAt,
+                'subscription_expires_at' => $expiresAt,
+                'vehicle_limit' => User::VEHICLE_LIMIT_PREMIUM,
+            ]);
+
+            return $grant->fresh(['admin', 'user']);
+        });
+
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            "premium-granted:{$grant->id}",
+            'Manual Premium access granted',
+            'An administrator granted manual Premium access.',
+            ['grant_id' => $grant->id, 'user_id' => $grant->user_id],
+        );
+        $this->recordAdminAction($admin, 'premium_granted', 'subscription', $grant->id, [
+            'user_id' => $grant->user_id,
+            'billing_cycle' => $grant->billing_cycle,
+        ]);
+
+        return $grant;
+    }
+
+    public function revokePremium(User $user, User $admin, string $reason): void
+    {
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw ValidationException::withMessages([
+                'reason' => ['A reason is required to revoke Premium access.'],
+            ]);
+        }
+
+        $user->refresh()->checkSubscriptionStatus();
+
+        DB::transaction(function () use ($user, $admin, $reason) {
+            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            if ($user->subscription_plan !== User::SUBSCRIPTION_PREMIUM) {
+                throw ValidationException::withMessages([
+                    'subscription' => ['This account does not have active Premium access to revoke.'],
+                ]);
+            }
+
+            if ($user->subscription_source === 'manual') {
+                $grant = $user->manualPremiumGrants()
+                    ->where('status', ManualPremiumGrant::STATUS_ACTIVE)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $grant) {
+                    throw ValidationException::withMessages([
+                        'subscription' => ['No active manual Premium grant is available to revoke.'],
+                    ]);
+                }
+
+                $grant->update([
+                    'status' => ManualPremiumGrant::STATUS_REVOKED,
+                    'revoked_by' => $admin->id,
+                    'revocation_reason' => $reason,
+                    'ended_at' => Carbon::now(),
+                ]);
+            } elseif ($user->subscription_source === 'payment') {
+                $payment = Payment::where('user_id', $user->id)
+                    ->where('status', Payment::STATUS_APPROVED)
+                    ->whereNull('subscription_revoked_at')
+                    ->orderByDesc('verified_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $payment) {
+                    throw ValidationException::withMessages([
+                        'subscription' => ['No active payment-verified subscription record is available to revoke.'],
+                    ]);
+                }
+
+                $payment->update([
+                    'subscription_revoked_at' => Carbon::now(),
+                    'subscription_revoked_by' => $admin->id,
+                    'subscription_revocation_reason' => $reason,
+                ]);
+            } else {
+                throw ValidationException::withMessages([
+                    'subscription' => ['This legacy Premium subscription has no verifiable source record and cannot be revoked through this action.'],
+                ]);
+            }
+
+            $user->update([
+                'subscription_plan' => User::SUBSCRIPTION_FREE,
+                'subscription_status' => User::SUBSCRIPTION_STATUS_NONE,
+                'subscription_cycle' => null,
+                'subscription_source' => 'none',
+                'subscription_started_at' => null,
+                'subscription_expires_at' => null,
+                'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
+            ]);
+        });
+
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            'premium-revoked:' . $user->id . ':' . now()->timestamp,
+            'Premium access revoked',
+            'An administrator revoked Premium access.',
+            ['user_id' => $user->id],
+        );
+        $this->recordAdminAction($admin, 'premium_revoked', 'subscription', $user->id);
+    }
+
+    private function recordAdminAction(User $admin, string $action, string $subjectType, int|string $subjectId, array $metadata = []): void
+    {
+        ($this->auditLog ?? app(AdminActionAuditService::class))
+            ->record($admin, $action, $subjectType, $subjectId, $metadata);
     }
 
     /**

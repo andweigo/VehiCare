@@ -53,7 +53,7 @@
                                 </td>
                                 <td class="px-4 py-3 text-[#666666]">{{ optional($admin->created_at)->format('M d, Y') ?? '—' }}</td>
                                 <td class="px-4 py-3 text-right space-x-2">
-                                    <form action="{{ route('admin.admins.toggle', $admin->id) }}" method="POST" class="inline">
+                                    <form action="{{ route('admin.admins.toggle', $admin->id) }}" method="POST" class="inline" onsubmit="{{ $admin->is_active ? "return confirm('Disable this administrator account?');" : '' }}">
                                         @csrf
                                         <button type="submit" class="rounded bg-[#181818] border border-[#222222] hover:border-white px-2.5 py-1 text-[11px] font-heading font-semibold text-white transition">
                                             {{ $admin->is_active ? 'Disable' : 'Enable' }}

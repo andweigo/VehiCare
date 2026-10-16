@@ -13,6 +13,7 @@ class RepairRecord extends Model
     protected $fillable = [
         'user_id',
         'vehicle_id',
+        'diagnostic_id',
         'title',
         'description',
         'problem',
@@ -35,5 +36,10 @@ class RepairRecord extends Model
     public function vehicle(): BelongsTo
     {
         return $this->belongsTo(Vehicle::class);
+    }
+
+    public function diagnostic(): BelongsTo
+    {
+        return $this->belongsTo(Diagnostic::class);
     }
 }

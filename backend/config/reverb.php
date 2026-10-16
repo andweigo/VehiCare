@@ -1,5 +1,21 @@
 <?php
 
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    explode(',', env('REVERB_ALLOWED_ORIGINS', 'localhost,127.0.0.1'))
+)));
+
+if (env('APP_ENV', 'production') === 'production'
+    && env('BROADCAST_CONNECTION', 'log') === 'reverb'
+    && (! env('REVERB_APP_KEY')
+        || ! env('REVERB_APP_SECRET')
+        || env('REVERB_APP_KEY') === 'vehicare_key_2026'
+        || env('REVERB_APP_SECRET') === 'vehicare_secret_2026'
+        || $allowedOrigins === []
+        || in_array('*', $allowedOrigins, true))) {
+    throw new RuntimeException('Production Reverb credentials must be set to non-development values.');
+}
+
 return [
 
     'default' => env('REVERB_SERVER', 'reverb'),
@@ -48,7 +64,7 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'http'),
                     'useTLS' => env('REVERB_SCHEME', 'http') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                'allowed_origins' => $allowedOrigins,
                 'ping_interval' => (int) env('REVERB_APP_PING_INTERVAL', 60),
                 'max_message_size' => (int) env('REVERB_APP_MAX_MESSAGE_SIZE', 10000),
             ],

@@ -57,24 +57,10 @@ class GeminiService
             );
         }
 
-        $vName = trim(
-            ($vehicleInfo['brand'] ?? 'Vehicle') .
-            ' ' .
-            ($vehicleInfo['model'] ?? '')
-        );
-
         Log::info('[Gemini] Diagnosis request started', [
             'Model' => $this->primaryModel,
-            'Vehicle' => trim(
-                $vName . ' ' . ($vehicleInfo['year'] ?? '')
-            ),
             'History turns' => count($history),
             'Has media' => $hasMedia,
-            'Current user message received' => mb_substr(
-                $userMessage,
-                0,
-                100
-            ),
         ]);
 
         /*
@@ -118,9 +104,7 @@ class GeminiService
             $rawText = $this->extractResponseText($response);
 
             if ($rawText === null || trim($rawText) === '') {
-                Log::error('[Gemini] Gemini response contained no text.', [
-                    'response' => $response,
-                ]);
+                Log::error('[Gemini] Gemini response contained no text.');
 
                 return $this->generateRuleBasedFallback(
                     $vehicleInfo,
@@ -129,10 +113,7 @@ class GeminiService
                 );
             }
 
-            Log::info('[Gemini] Raw response received', [
-                'model' => $this->primaryModel,
-                'preview' => mb_substr($rawText, 0, 300),
-            ]);
+            Log::info('[Gemini] Response received', ['model' => $this->primaryModel]);
 
             /*
              * Parse AI JSON.
@@ -152,13 +133,6 @@ class GeminiService
                         'type' => $parsed['type'] ?? null,
                         'status' => $parsed['status'] ?? null,
                         'confidence' => $parsed['confidence'] ?? null,
-                        'response_preview' => mb_substr(
-                            $parsed['response']
-                                ?? $parsed['summary']
-                                ?? '',
-                            0,
-                            150
-                        ),
                     ]
                 );
 
@@ -171,7 +145,6 @@ class GeminiService
             Log::error('[Gemini] Exception during Gemini request', [
                 'model' => $this->primaryModel,
                 'class' => get_class($e),
-                'message' => $e->getMessage(),
             ]);
         }
 
@@ -263,7 +236,9 @@ class GeminiService
                 return $data;
             }
         } catch (\Throwable $e) {
-            Log::warning('[Gemini] Exception during vehicle validation: ' . $e->getMessage());
+            Log::warning('[Gemini] Vehicle validation request failed.', [
+                'exception' => get_class($e),
+            ]);
         }
 
         return null;
@@ -368,11 +343,6 @@ class GeminiService
             Log::info('[Gemini] HTTP response received', [
                 'status' => $response->status(),
                 'successful' => $response->successful(),
-                'body_preview' => mb_substr(
-                    $response->body(),
-                    0,
-                    500
-                ),
             ]);
 
             /*
@@ -398,18 +368,12 @@ class GeminiService
             Log::error('[Gemini] Gemini API error', [
                 'model' => $model,
                 'status' => $response->status(),
-                'body' => mb_substr(
-                    $response->body(),
-                    0,
-                    3000
-                ),
             ]);
 
         } catch (\Throwable $e) {
             Log::error('[Gemini] HTTP exception', [
                 'model' => $model,
                 'class' => get_class($e),
-                'message' => $e->getMessage(),
             ]);
         }
 

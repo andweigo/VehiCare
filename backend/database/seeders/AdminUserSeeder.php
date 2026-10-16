@@ -11,7 +11,7 @@ class AdminUserSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'admin@vehicare.local'],
+            ['email' => User::protectedAdminEmail()],
             [
                 'name' => 'VehiCare Admin',
                 'role' => User::ROLE_ADMIN,

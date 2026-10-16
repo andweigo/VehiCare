@@ -2,6 +2,11 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Admin\AdminManagementController;
+use App\Http\Controllers\Admin\FeedbackAdminController;
+use App\Http\Controllers\Admin\AdminNotificationController;
+use App\Http\Controllers\Admin\AnnouncementAdminController;
+use App\Http\Controllers\Admin\SystemHealthAdminController;
+use App\Http\Controllers\Admin\AdminAuditController;
 use App\Http\Controllers\Admin\AiActivityAdminController;
 use App\Http\Controllers\Admin\DiagnosticsAdminController;
 use App\Http\Controllers\Admin\MaintenanceAdminController;
@@ -34,6 +39,10 @@ Route::get('/admin/login', [AdminController::class, 'loginView'])
 
 Route::post('/admin/login', [AdminController::class, 'login'])
     ->name('admin.login.submit');
+
+Route::get('/admin/logo.png', static function () {
+    return response()->file(base_path('../src/assets/logo.png'));
+})->name('admin.logo');
 
 Route::post('/admin/logout', [AdminController::class, 'logout'])
     ->name('admin.logout');
@@ -121,10 +130,31 @@ Route::middleware(['web', 'auth', 'admin'])
         Route::get('/reports', [ReportsAdminController::class, 'index'])
             ->name('admin.reports.index');
 
+        Route::get('/feedback', [FeedbackAdminController::class, 'index'])
+            ->name('admin.feedback.index');
+        Route::put('/feedback/{feedback}', [FeedbackAdminController::class, 'update'])
+            ->name('admin.feedback.update');
+        Route::get('/notifications', [AdminNotificationController::class, 'index'])
+            ->name('admin.notifications.index');
+        Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount'])
+            ->name('admin.notifications.unread-count');
+        Route::post('/notifications/{id}/read', [AdminNotificationController::class, 'markAsRead'])
+            ->name('admin.notifications.read');
+        Route::get('/announcements', [AnnouncementAdminController::class, 'index'])
+            ->name('admin.announcements.index');
+        Route::post('/announcements', [AnnouncementAdminController::class, 'store'])
+            ->name('admin.announcements.store');
+        Route::get('/health', [SystemHealthAdminController::class, 'index'])
+            ->name('admin.health.index');
+        Route::get('/audit', [AdminAuditController::class, 'index'])
+            ->name('admin.audit.index');
+
 
         // SYSTEM
         Route::get('/settings', [SettingsAdminController::class, 'index'])
             ->name('admin.settings.index');
+        Route::put('/settings/ai-limits', [SettingsAdminController::class, 'updateAiLimits'])
+            ->name('admin.settings.ai-limits.update');
 
         Route::get('/correction-requests', [VehicleCorrectionRequestController::class, 'index'])
             ->name('admin.correction-requests.index');
@@ -145,6 +175,12 @@ Route::middleware(['web', 'auth', 'admin'])
 
         Route::post('/subscriptions/{id}', [SubscriptionController::class, 'update'])
             ->name('admin.subscriptions.update');
+
+        Route::post('/users/{id}/premium-grant', [SubscriptionController::class, 'grantPremium'])
+            ->name('admin.users.premium.grant');
+
+        Route::post('/users/{id}/premium-revoke', [SubscriptionController::class, 'revokePremium'])
+            ->name('admin.users.premium.revoke');
 
 
         // PAYMENTS

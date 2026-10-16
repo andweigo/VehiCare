@@ -134,7 +134,15 @@
                                     {{ $payment->reference_number }}
                                 </td>
                                 <td class="px-4 py-3">
-                                    @if($payment->status === 'approved')
+                                    @if($payment->subscription_revoked_at)
+                                        <span class="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-heading font-bold text-rose-400">
+                                            ACCESS REVOKED
+                                        </span>
+                                        <div class="mt-1 max-w-xs text-[10px] text-[#A1A1AA]">
+                                            By {{ $payment->subscriptionRevokedBy?->name ?? 'Former administrator' }}:
+                                            {{ $payment->subscription_revocation_reason }}
+                                        </div>
+                                    @elseif($payment->status === 'approved')
                                         <span class="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-heading font-bold text-emerald-400">
                                             ✓ APPROVED
                                         </span>
@@ -352,7 +360,9 @@
 
                 // Payment Status Badge
                 let statusBadge = '';
-                if (p.status === 'approved') {
+                if (p.subscription_revoked_at) {
+                    statusBadge = `<span class="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-heading font-bold text-rose-400">ACCESS REVOKED</span><div class="mt-1 max-w-xs text-[10px] text-[#A1A1AA]">By ${escapeHtml(p.subscription_revoked_by?.name || 'Former administrator')}: ${escapeHtml(p.subscription_revocation_reason || '')}</div>`;
+                } else if (p.status === 'approved') {
                     statusBadge = `<span class="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-heading font-bold text-emerald-400">✓ APPROVED</span>`;
                 } else if (p.status === 'rejected') {
                     statusBadge = `<span class="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-heading font-bold text-rose-400">✕ REJECTED</span>`;
@@ -435,6 +445,16 @@
             }).join('');
 
             tbody.innerHTML = rowsHtml;
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            })[character]);
         }
 
         const csrfToken = '{{ csrf_token() }}';

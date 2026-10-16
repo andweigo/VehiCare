@@ -171,8 +171,9 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   categoryText: {
-    fontFamily: 'Inter-Medium',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 10,
+    letterSpacing: 0.4,
   },
   distanceBadge: {
     flexDirection: 'row',
@@ -183,7 +184,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   distanceText: {
-    fontFamily: 'Inter-Bold',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 11,
   },
   servicesWrap: {

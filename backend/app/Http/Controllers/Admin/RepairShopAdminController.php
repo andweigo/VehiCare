@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\RepairShop;
+use App\Services\AdminActionAuditService;
 use Illuminate\Http\Request;
 
 class RepairShopAdminController extends Controller
@@ -87,7 +88,7 @@ class RepairShopAdminController extends Controller
         $category = $validated['vehicle_category'] ?? $validated['type'] ?? 'car';
         $contact = $validated['contact_number'] ?? $validated['phone_number'] ?? null;
 
-        RepairShop::create([
+        $shop = RepairShop::create([
             'name' => $validated['name'],
             'type' => $category,
             'vehicle_category' => $category,
@@ -102,6 +103,7 @@ class RepairShopAdminController extends Controller
             'rating' => 4.8,
             'is_certified' => true,
         ]);
+        app(AdminActionAuditService::class)->record($request->user(), 'repair_shop_created', 'repair_shop', $shop->id);
 
         return redirect()->route('admin.repair-shops.index')
             ->with('status', 'Repair shop created successfully and added to directory.');
@@ -151,7 +153,10 @@ class RepairShopAdminController extends Controller
             'phone_number' => $contact,
             'operating_hours' => $validated['operating_hours'] ?? null,
             'source' => 'admin',
-            'is_active' => $request->has('is_active') ? (bool)$request->is_active : false,
+            'is_active' => $request->has('is_active') ? (bool) $request->is_active : $shop->is_active,
+        ]);
+        app(AdminActionAuditService::class)->record($request->user(), 'repair_shop_updated', 'repair_shop', $shop->id, [
+            'is_active' => (bool) $shop->is_active,
         ]);
 
         return redirect()->route('admin.repair-shops.index')
@@ -161,11 +166,14 @@ class RepairShopAdminController extends Controller
     /**
      * Toggle repair shop activation state (activate / deactivate).
      */
-    public function toggle($id)
+    public function toggle(Request $request, $id)
     {
         $shop = RepairShop::findOrFail($id);
         $shop->is_active = !$shop->is_active;
         $shop->save();
+        app(AdminActionAuditService::class)->record($request->user(), 'repair_shop_status_changed', 'repair_shop', $shop->id, [
+            'is_active' => (bool) $shop->is_active,
+        ]);
 
         $statusLabel = $shop->is_active ? 'activated' : 'deactivated';
 
@@ -176,11 +184,12 @@ class RepairShopAdminController extends Controller
     /**
      * Remove the specified repair shop from directory storage.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $shop = RepairShop::findOrFail($id);
         $shopName = $shop->name;
         $shop->delete();
+        app(AdminActionAuditService::class)->record($request->user(), 'repair_shop_deleted', 'repair_shop', $shop->id);
 
         return redirect()->route('admin.repair-shops.index')
             ->with('status', "Repair shop '{$shopName}' removed from directory.");

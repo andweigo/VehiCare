@@ -1,4 +1,5 @@
 import vehicleApi from '../api/vehicleApi';
+import { clearGuestVehicle, getGuestVehicle } from './storageService';
 
 /*
 |--------------------------------------------------------------------------
@@ -6,11 +7,42 @@ import vehicleApi from '../api/vehicleApi';
 |--------------------------------------------------------------------------
 |
 | Guest vehicles are managed in React context state only.
-| This service no longer depends on AsyncStorage for guest
-| vehicle persistence.
+| This service provides synchronization and account transfer helpers.
 |
 |--------------------------------------------------------------------------
 */
+
+export const syncPendingGuestVehicleToServer = async () => {
+  const guestVehicle = await getGuestVehicle();
+  if (!guestVehicle) {
+    return null;
+  }
+
+  const existingVehicles = await vehicleApi.getMyVehicles();
+  if (Array.isArray(existingVehicles) && existingVehicles.length > 0) {
+    await clearGuestVehicle();
+    return null;
+  }
+
+  const payload = {
+    vehicle_type_id: guestVehicle.vehicle_type_id ?? null,
+    vehicle_type: guestVehicle.vehicle_type ?? null,
+    vehicle_brand_id: guestVehicle.vehicle_brand_id ?? null,
+    vehicle_brand: guestVehicle.vehicle_brand ?? null,
+    vehicle_model_id: guestVehicle.vehicle_model_id ?? null,
+    vehicle_model: guestVehicle.vehicle_model ?? null,
+    vehicle_year_id: guestVehicle.vehicle_year_id ?? null,
+    vehicle_year: guestVehicle.vehicle_year ?? null,
+    custom_brand: guestVehicle.custom_brand ?? null,
+    custom_model: guestVehicle.custom_model ?? null,
+    custom_year: guestVehicle.custom_year ?? null,
+    model_number: guestVehicle.model_number ?? null,
+  };
+
+  const saved = await vehicleApi.saveVehicle(payload);
+  await clearGuestVehicle();
+  return saved;
+};
 
 export const transferGuestVehicleToAccount =
   async vehicle => {
@@ -54,4 +86,5 @@ export const transferGuestVehicleToAccount =
 
 export default {
   transferGuestVehicleToAccount,
+  syncPendingGuestVehicleToServer,
 };

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
     Animated,
+    BackHandler,
     StyleSheet,
     Text,
     View,
@@ -11,6 +12,8 @@ import LottieView from 'lottie-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+import { useAuth } from '../context/AuthContext';
+import { useVehicle } from '../context/VehicleContext';
 import { useTheme } from '../theme/ThemeContext';
 
 const CHECKLIST_STEPS = [
@@ -29,8 +32,10 @@ const getProgressStepIndex = value => {
   return 4;
 };
 
-const VehicleLoadingScreen = ({ navigation }) => {
+const VehicleLoadingScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
+  const { isAuthenticated } = useAuth();
+  const { activeVehicle, setActiveVehicle, refreshActiveVehicle } = useVehicle();
 
   const accent = theme.accent || '#F63B05';
 
@@ -55,6 +60,30 @@ const VehicleLoadingScreen = ({ navigation }) => {
     useState(0);
 
   const previousStepIndex = useRef(0);
+
+  useEffect(() => {
+    const passedVehicle = route?.params?.vehicle;
+    if (passedVehicle && !activeVehicle) {
+      const target = passedVehicle?.vehicle || passedVehicle?.data || passedVehicle;
+      if (target && typeof target === 'object') {
+        setActiveVehicle(target);
+      }
+    }
+
+    if (isAuthenticated && typeof refreshActiveVehicle === 'function') {
+      refreshActiveVehicle().catch(err => {
+        console.warn('VehicleLoading background refresh error:', err?.message || err);
+      });
+    }
+  }, [route?.params?.vehicle, activeVehicle, isAuthenticated, setActiveVehicle, refreshActiveVehicle]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      return true;
+    });
+
+    return () => backHandler.remove();
+  }, []);
 
   useEffect(() => {
     let redirectTimer = null;
@@ -171,7 +200,10 @@ const VehicleLoadingScreen = ({ navigation }) => {
         setPercent(100);
 
         dashboardDelayTimer = setTimeout(() => {
-          navigation.replace('Dashboard');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Dashboard' }],
+          });
         }, 800);
       }
     });

@@ -169,11 +169,11 @@ npm install
 Ensure `backend/.env` points to the AI service port (`5000`):
 ```env
 AI_SERVICE_URL=http://127.0.0.1:5000
-AI_SERVICE_SECRET=vehicare_internal_ai_secret_key_2026
+AI_SERVICE_SECRET=replace_with_a_random_shared_secret
 ```
 Ensure `vehicare-ai-service/.env` has the matching secret:
 ```env
-AI_SERVICE_SECRET=vehicare_internal_ai_secret_key_2026
+AI_SERVICE_SECRET=replace_with_a_random_shared_secret
 ```
 
 ### Step 9 — Install React Native Mobile Dependencies

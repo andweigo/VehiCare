@@ -42,13 +42,18 @@ class MaintenanceController extends Controller
 
         $validated = $request->validate([
             'vehicle_id' => 'required|integer|exists:vehicles,id',
+            'diagnostic_id' => 'nullable|integer|exists:diagnostics,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'service_type' => 'nullable|string|max:100',
+            'status' => 'nullable|string|in:pending,in_progress,completed,cancelled',
             'performed_at' => 'nullable|date',
+            'due_date' => 'nullable|date',
             'cost' => 'nullable|numeric|min:0',
             'odometer' => 'nullable|integer|min:0',
             'notes' => 'nullable|string',
+            'is_inspection' => 'nullable|boolean',
+            'urgency' => 'nullable|string|max:30',
         ]);
 
         $ownsVehicle = $user->vehicles()->where('id', $validated['vehicle_id'])->exists();
@@ -59,13 +64,18 @@ class MaintenanceController extends Controller
         $record = MaintenanceRecord::create([
             'user_id' => $user->id,
             'vehicle_id' => $validated['vehicle_id'],
+            'diagnostic_id' => $validated['diagnostic_id'] ?? null,
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'service_type' => $validated['service_type'] ?? 'General Inspection',
+            'status' => $validated['status'] ?? 'completed',
             'performed_at' => $validated['performed_at'] ?? now(),
+            'due_date' => $validated['due_date'] ?? null,
             'cost' => $validated['cost'] ?? 0,
             'odometer' => $validated['odometer'] ?? null,
             'notes' => $validated['notes'] ?? null,
+            'is_inspection' => $validated['is_inspection'] ?? true,
+            'urgency' => $validated['urgency'] ?? 'Routine',
         ]);
 
         $record->load(['vehicle.vehicleBrand', 'vehicle.vehicleModel', 'vehicle.vehicleYear']);
@@ -116,10 +126,14 @@ class MaintenanceController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
             'service_type' => 'nullable|string|max:100',
+            'status' => 'nullable|string|in:pending,in_progress,completed,cancelled',
             'performed_at' => 'nullable|date',
+            'due_date' => 'nullable|date',
             'cost' => 'nullable|numeric|min:0',
             'odometer' => 'nullable|integer|min:0',
             'notes' => 'nullable|string',
+            'is_inspection' => 'nullable|boolean',
+            'urgency' => 'nullable|string|max:30',
         ]);
 
         $record->update($validated);

@@ -23,6 +23,9 @@ import NeedHelpSignInModal from '../components/NeedHelpSignInModal';
 import RecentActivityCard from '../components/RecentActivityCard';
 import Sidebar from '../components/Sidebar';
 import VehicleHealthCard from '../components/VehicleHealthCard';
+import AIUsageCard from '../components/AIUsageCard';
+import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
+import { useAIUsage } from '../context/AIUsageContext';
 
 import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
@@ -80,33 +83,39 @@ const getVehicleIconName = vehicleType => {
 const DashboardScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { isOpen, openSidebar } = useSidebar();
-
+  const { isAuthenticated, loginGoogle } = useAuth();
+  const {
+    activeVehicle,
+    pendingVehicle,
+    refreshActiveVehicle,
+  } = useVehicle();
+  const { usage, isDetailsModalVisible, openDetailsModal, closeDetailsModal, refreshUsage } = useAIUsage();
 
   const [requestedFeature, setRequestedFeature] = useState('');
   const [requestedRoute, setRequestedRoute] = useState(null);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
 
-  const helpSignInModal =
-    useNeedHelpSignInModal();
-
-  const {
-    isAuthenticated,
-    loginGoogle,
-  } = useAuth();
-
-  const {
-    activeVehicle,
-    pendingVehicle,
-  } = useVehicle();
-
+  const helpSignInModal = useNeedHelpSignInModal();
   const { recentActivities, refreshActivities } = useRecentActivities(3);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       refreshActivities();
+      if (typeof refreshUsage === 'function') {
+        refreshUsage();
+      }
+      if (isAuthenticated && !activeVehicle && typeof refreshActiveVehicle === 'function') {
+        refreshActiveVehicle();
+      }
     });
     return unsubscribe;
-  }, [navigation, refreshActivities]);
+  }, [navigation, refreshActivities, refreshUsage, isAuthenticated, activeVehicle, refreshActiveVehicle]);
+
+  useEffect(() => {
+    if (isAuthenticated && !activeVehicle && typeof refreshActiveVehicle === 'function') {
+      refreshActiveVehicle();
+    }
+  }, [isAuthenticated, activeVehicle, refreshActiveVehicle]);
 
   const vehicleProfile =
     activeVehicle || pendingVehicle;
@@ -662,6 +671,16 @@ const DashboardScreen = ({ navigation }) => {
             />
 
             {/* ==================================================
+                AI USAGE QUOTA CARD
+            ================================================== */}
+
+            <AIUsageCard
+              onPress={openDetailsModal}
+              onViewDetails={openDetailsModal}
+              onUpgrade={() => navigation.navigate('ManagePlan')}
+            />
+
+            {/* ==================================================
                 VEHICLE HEALTH
             ================================================== */}
 
@@ -906,6 +925,27 @@ const DashboardScreen = ({ navigation }) => {
           );
         }}
       />
+
+      {/* ==================================================
+          AI USAGE DETAILS MODAL
+      ================================================== */}
+      <AIUsageDetailsModal
+        visible={isDetailsModalVisible}
+        onClose={closeDetailsModal}
+        usage={usage}
+        onUpgrade={() => {
+          closeDetailsModal();
+          navigation.navigate('ManagePlan');
+        }}
+        onCreateAccount={() => {
+          closeDetailsModal();
+          navigation.navigate('Register');
+        }}
+        onSignIn={() => {
+          closeDetailsModal();
+          navigation.navigate('Login');
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -1014,7 +1054,7 @@ const styles = StyleSheet.create({
 
   vehicleName: {
     fontFamily:
-      'Outfit-SemiBold',
+      'Outfit-Bold',
     fontSize: 18,
     marginBottom: 2,
   },
@@ -1079,7 +1119,7 @@ const styles = StyleSheet.create({
 
   aiTitle: {
     fontFamily:
-      'Outfit-SemiBold',
+      'Outfit-Bold',
     fontSize: 19,
   },
 
@@ -1101,7 +1141,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontFamily:
-      'Outfit-SemiBold',
+      'Outfit-Bold',
     fontSize: 20,
   },
 
@@ -1144,7 +1184,7 @@ const styles = StyleSheet.create({
 
   infoTitle: {
     fontFamily:
-      'Outfit-SemiBold',
+      'Outfit-Bold',
     fontSize: 16,
   },
 
@@ -1194,8 +1234,8 @@ const styles = StyleSheet.create({
 
   statValue: {
     fontFamily:
-      'Outfit-SemiBold',
-    fontSize: 14,
+      'Outfit-Bold',
+    fontSize: 15,
   },
 
   statLabel: {

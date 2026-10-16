@@ -10,10 +10,14 @@ use Illuminate\Http\Request;
 class SubscriptionController extends Controller
 {
     protected SubscriptionService $subscriptionService;
+    protected \App\Services\EntitlementService $entitlementService;
 
-    public function __construct(SubscriptionService $subscriptionService)
-    {
+    public function __construct(
+        SubscriptionService $subscriptionService,
+        \App\Services\EntitlementService $entitlementService
+    ) {
         $this->subscriptionService = $subscriptionService;
+        $this->entitlementService = $entitlementService;
     }
 
     /**
@@ -25,7 +29,7 @@ class SubscriptionController extends Controller
             'plan' => ['required', 'string', 'in:premium'],
             'billing_cycle' => ['required', 'string', 'in:monthly,yearly'],
             'payment_method' => ['nullable', 'string', 'in:card,gcash'],
-            'reference_number' => ['nullable', 'string', 'max:100'],
+            'reference_number' => ['nullable', 'string', 'max:100', 'unique:payments,reference_number'],
         ]);
 
         $user = $request->user();
@@ -74,6 +78,7 @@ class SubscriptionController extends Controller
     {
         $user = $request->user();
         $state = $this->subscriptionService->getSubscriptionState($user);
+        $entitlements = $this->entitlementService->getEntitlements($state['user']);
 
         return response()->json([
             'status' => 'success',
@@ -84,6 +89,7 @@ class SubscriptionController extends Controller
                 'started_at' => $state['user']->subscription_started_at?->toIso8601String(),
                 'expires_at' => $state['user']->subscription_expires_at?->toIso8601String(),
             ],
+            'entitlements' => $entitlements,
             'restriction_state' => $state['restriction_state'],
             'can_submit_payment' => $state['can_submit_payment'],
             'active_payment' => $state['active_payment'],

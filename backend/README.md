@@ -36,6 +36,49 @@ delivery still fails. A successful SMTP submission means Gmail accepted the
 message for processing; also check Spam and verify that the Gmail account has
 not blocked the message.
 
+## Admin module deployment notes
+
+The admin modules add migrations for subscription provenance and manual grants,
+AI request telemetry and runtime limits, feedback, admin notification
+deduplication, announcements, and administrator action history. Back up the
+database and inspect the migration ledger and affected tables before applying
+them. If a MySQL migration previously failed, do not assume its DDL was rolled
+back; confirm whether its columns or tables were partially created first.
+
+Announcement scheduling and delivery require two persistent processes:
+
+- Run Laravel's scheduler every minute (`php artisan schedule:run` from cron
+  or the host scheduler). It publishes due notices and redispatches published
+  notices that still have recipients awaiting delivery.
+- Run a queue worker for the configured queue (`php artisan queue:work
+  --queue=default`). The default queue connection is `database`; this repository
+  includes the jobs-table migration. Keep the worker supervised in production.
+  The development `composer dev` process already includes a queue listener.
+  Confirm the deployed `QUEUE_CONNECTION` is an asynchronous driver: a `sync`
+  connection processes jobs inside the publishing request and defeats the
+  asynchronous delivery behavior. No queue or environment setting is changed
+  by this code.
+
+Immediate announcements are queued after saving; they are not delivered in the
+admin HTTP request. Delivery is retryable and idempotent per announcement/user.
+Announcements only go to active accounts with in-app notifications enabled at
+delivery time. Changing that preference does not delete or hide notifications
+already delivered; it controls later delivery attempts. Free and Premium
+audiences are snapshotted when delivery begins, using the same plan and expiry
+rules as `User::checkSubscriptionStatus()`; recipients created after publication
+are excluded.
+
+Selected-user announcements require the `announcement_recipients` migration.
+Production Reverb deployments must set `REVERB_APP_KEY`, `REVERB_APP_SECRET`,
+and a comma-separated `REVERB_ALLOWED_ORIGINS` value; wildcard origins and
+development credentials are not accepted as a production Reverb configuration.
+
+Admin runtime AI settings only adjust consultation and supported media limits.
+Values are persisted in the database and are bounded by the request/API upload
+ceilings. Do not roll back migrations containing feedback, announcement,
+notification-delivery, audit, or completed AI-usage history without exporting
+that history first.
+
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
 
 - [Simple, fast routing engine](https://laravel.com/docs/routing).

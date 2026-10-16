@@ -177,55 +177,65 @@ const DashboardVehicleProfileModal = ({
             VehiCare recommendations.
           </Text>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-              Vehicle
-            </Text>
+          {!(vehicleProfile && Object.keys(normalizedVehicle).length > 0 && (vehicleBrand !== 'Unknown' || vehicleModel !== 'Unknown' || vehicleTypeLabel !== 'Unknown')) ? (
+            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
+                No active vehicle profile is currently loaded.{'\n'}Tap "Manage My Vehicles" below to select your vehicle.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  Vehicle
+                </Text>
 
-            <Text style={[styles.fieldValue, { color: theme.text }]}>
-              {vehicleName}
-            </Text>
-          </View>
+                <Text style={[styles.fieldValue, { color: theme.text }]}>
+                  {vehicleName}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-              Type
-            </Text>
+              <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  Type
+                </Text>
 
-            <Text style={[styles.fieldValue, { color: theme.text }]}>
-              {vehicleTypeLabel}
-            </Text>
-          </View>
+                <Text style={[styles.fieldValue, { color: theme.text }]}>
+                  {vehicleTypeLabel}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-              Brand
-            </Text>
+              <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  Brand
+                </Text>
 
-            <Text style={[styles.fieldValue, { color: theme.text }]}>
-              {vehicleBrand}
-            </Text>
-          </View>
+                <Text style={[styles.fieldValue, { color: theme.text }]}>
+                  {vehicleBrand}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-              Model
-            </Text>
+              <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  Model
+                </Text>
 
-            <Text style={[styles.fieldValue, { color: theme.text }]}>
-              {vehicleModel}
-            </Text>
-          </View>
+                <Text style={[styles.fieldValue, { color: theme.text }]}>
+                  {vehicleModel}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-              Year
-            </Text>
+              <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                  Year
+                </Text>
 
-            <Text style={[styles.fieldValue, { color: theme.text }]}>
-              {vehicleYear}
-            </Text>
-          </View>
+                <Text style={[styles.fieldValue, { color: theme.text }]}>
+                  {vehicleYear}
+                </Text>
+              </View>
+            </>
+          )}
 
           {/* Manage My Vehicles */}
           <View style={styles.actionsRow}>

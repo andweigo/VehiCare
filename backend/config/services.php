@@ -47,7 +47,8 @@ return [
 
     'ai_service' => [
         'url' => env('AI_SERVICE_URL', 'http://127.0.0.1:5000'),
-        'secret' => env('AI_SERVICE_SECRET', 'vehicare_internal_ai_secret_key_2026'),
+        'secret' => env('AI_SERVICE_SECRET'),
+        'timeout' => (int) env('AI_SERVICE_TIMEOUT', 360),
     ],
 
     'ai_limits' => [
@@ -56,14 +57,16 @@ return [
             'period' => 'total',
             'max_image_mb' => (int) env('AI_MEDIA_MAX_IMAGE_SIZE_GUEST', 5),
             'max_video_mb' => (int) env('AI_MEDIA_MAX_VIDEO_SIZE_GUEST', 10),
+            'max_audio_mb' => (int) env('AI_MEDIA_MAX_AUDIO_SIZE_GUEST', 10),
             'max_video_sec' => (int) env('AI_MEDIA_MAX_VIDEO_DURATION_GUEST', 20),
             'max_audio_sec' => (int) env('AI_MEDIA_MAX_AUDIO_DURATION_GUEST', 30),
         ],
         'free' => [
-            'limit' => (int) env('FREE_AI_MONTHLY_LIMIT', 10),
+            'limit' => (int) env('FREE_AI_MONTHLY_LIMIT', 20),
             'period' => 'monthly',
             'max_image_mb' => (int) env('AI_MEDIA_MAX_IMAGE_SIZE_FREE', 10),
             'max_video_mb' => (int) env('AI_MEDIA_MAX_VIDEO_SIZE_FREE', 15),
+            'max_audio_mb' => (int) env('AI_MEDIA_MAX_AUDIO_SIZE_FREE', 10),
             'max_video_sec' => (int) env('AI_MEDIA_MAX_VIDEO_DURATION_FREE', 30),
             'max_audio_sec' => (int) env('AI_MEDIA_MAX_AUDIO_DURATION_FREE', 60),
         ],
@@ -72,6 +75,7 @@ return [
             'period' => 'monthly',
             'max_image_mb' => (int) env('AI_MEDIA_MAX_IMAGE_SIZE_PREMIUM', 15),
             'max_video_mb' => (int) env('AI_MEDIA_MAX_VIDEO_SIZE_PREMIUM', 30),
+            'max_audio_mb' => (int) env('AI_MEDIA_MAX_AUDIO_SIZE_PREMIUM', 10),
             'max_video_sec' => (int) env('AI_MEDIA_MAX_VIDEO_DURATION_PREMIUM', 60),
             'max_audio_sec' => (int) env('AI_MEDIA_MAX_AUDIO_DURATION_PREMIUM', 120),
         ],

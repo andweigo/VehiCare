@@ -16,6 +16,14 @@ class DiagnosticsAdminController extends Controller
             $query->where('severity', $request->severity);
         }
 
+        if ($request->filled('input_type')) {
+            $query->where('input_type', $request->input_type);
+        }
+
+        if ($request->filled('plan_tier')) {
+            $query->where('plan_tier', $request->plan_tier);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {

@@ -144,7 +144,7 @@ const VehicleHealthCard = ({ onPress }) => {
   // ==========================================
 
   const progress = useRef(
-    new Animated.Value(0),
+    new Animated.Value(percentage),
   ).current;
 
   useEffect(() => {
@@ -152,11 +152,9 @@ const VehicleHealthCard = ({ onPress }) => {
       return;
     }
 
-    progress.setValue(0);
-
     Animated.timing(progress, {
       toValue: percentage,
-      duration: 900,
+      duration: 600,
       useNativeDriver: false,
     }).start();
   }, [percentage, loading, progress]);
@@ -525,7 +523,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontFamily: 'Outfit-ExtraBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 16,
     lineHeight: 20,
   },
@@ -688,7 +686,7 @@ const styles = StyleSheet.create({
   },
 
   loadingTitle: {
-    fontFamily: 'Outfit-ExtraBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 16,
     lineHeight: 20,
   },

@@ -676,34 +676,62 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
                       ]}
                     >
                       {isDiagnostic
-                        ? 'AI DIAGNOSTIC'
+                        ? (item.isInspection ? 'INSPECTION TASK' : 'AI DIAGNOSTIC')
                         : 'ROUTINE MAINTENANCE'}
                     </Text>
                   </View>
 
-                  <View
-                    style={[
-                      styles.priorityBadge,
-                      {
-                        backgroundColor:
-                          priority.background,
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name={priority.icon}
-                      size={12}
-                      color={priority.color}
-                    />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {item.isResolved ? (
+                      <View
+                        style={[
+                          styles.priorityBadge,
+                          {
+                            backgroundColor: 'rgba(50, 213, 131, 0.15)',
+                            marginRight: 6,
+                          },
+                        ]}
+                      >
+                        <Icon
+                          name="check-circle"
+                          size={12}
+                          color="#32D583"
+                        />
+                        <Text
+                          style={[
+                            styles.priorityText,
+                            { color: '#32D583' },
+                          ]}
+                        >
+                          RESOLVED
+                        </Text>
+                      </View>
+                    ) : null}
 
-                    <Text
+                    <View
                       style={[
-                        styles.priorityText,
-                        { color: priority.color },
+                        styles.priorityBadge,
+                        {
+                          backgroundColor:
+                            priority.background,
+                        },
                       ]}
                     >
-                      {priority.label}
-                    </Text>
+                      <Icon
+                        name={priority.icon}
+                        size={12}
+                        color={priority.color}
+                      />
+
+                      <Text
+                        style={[
+                          styles.priorityText,
+                          { color: priority.color },
+                        ]}
+                      >
+                        {priority.label}
+                      </Text>
+                    </View>
                   </View>
                 </View>
 
@@ -989,7 +1017,7 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
                     },
                   ]}
                   activeOpacity={0.7}
-                  onPress={() => undo(item.id)}
+                  onPress={() => undo(item)}
                 >
                   <Text
                     style={[

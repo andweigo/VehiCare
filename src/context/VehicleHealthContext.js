@@ -1,48 +1,40 @@
 import {
   createContext,
   useContext,
+  useMemo,
 } from 'react';
 
 import { useVehicle } from './VehicleContext';
+import { useMaintenanceRecommendationsInternal } from '../hooks/useMaintenanceRecommendations';
 
-const VehicleHealthContext =
-  createContext(null);
+export const VehicleHealthContext = createContext(null);
 
 /*
 |--------------------------------------------------------------------------
 | PROVIDER
 |--------------------------------------------------------------------------
+| Centralizes vehicle state, calculated health scores, and maintenance 
+| recommendation persistence so that all screens stay 100% in sync without flickering.
 */
 
 export const VehicleHealthProvider = ({
   children,
 }) => {
-  const {
-    activeVehicle,
-    pendingVehicle,
-    loading,
-    setActiveVehicle,
-    savePendingVehicle,
-    clearPendingVehicle,
-    refreshPendingVehicle,
-    refreshActiveVehicle,
-    claimPendingVehicle,
-  } = useVehicle();
+  const vehicleState = useVehicle();
+  const maintenanceHealthState = useMaintenanceRecommendationsInternal();
+
+  const value = useMemo(
+    () => ({
+      ...vehicleState,
+      ...maintenanceHealthState,
+      // Combine loading indicators accurately
+      loading: Boolean(vehicleState.loading || maintenanceHealthState.loading),
+    }),
+    [vehicleState, maintenanceHealthState],
+  );
 
   return (
-    <VehicleHealthContext.Provider
-      value={{
-        activeVehicle,
-        pendingVehicle,
-        loading,
-        setActiveVehicle,
-        savePendingVehicle,
-        clearPendingVehicle,
-        refreshPendingVehicle,
-        refreshActiveVehicle,
-        claimPendingVehicle,
-      }}
-    >
+    <VehicleHealthContext.Provider value={value}>
       {children}
     </VehicleHealthContext.Provider>
   );
@@ -54,20 +46,16 @@ export const VehicleHealthProvider = ({
 |--------------------------------------------------------------------------
 */
 
-export const useVehicleHealthContext =
-  () => {
-    const context =
-      useContext(
-        VehicleHealthContext,
-      );
+export const useVehicleHealthContext = () => {
+  const context = useContext(VehicleHealthContext);
 
-    if (!context) {
-      throw new Error(
-        'useVehicleHealthContext must be used inside VehicleHealthProvider',
-      );
-    }
+  if (!context) {
+    throw new Error(
+      'useVehicleHealthContext must be used inside VehicleHealthProvider',
+    );
+  }
 
-    return context;
-  };
+  return context;
+};
 
 export default VehicleHealthProvider;

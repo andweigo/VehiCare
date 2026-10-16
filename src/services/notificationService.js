@@ -1,5 +1,8 @@
 import apiClient from '../api/apiClient';
+import { DeviceEventEmitter } from 'react-native';
 import { getToken } from '../services/storageService';
+
+export const NOTIFICATION_READ_STATE_CHANGED = 'notificationReadStateChanged';
 
 const resolveCategory = (type, data = {}) => {
   if (data?.category) {
@@ -8,6 +11,9 @@ const resolveCategory = (type, data = {}) => {
 
   const t = String(type || '').toLowerCase();
 
+  if (t.includes('announcement')) {
+    return 'Announcements';
+  }
   if (t.includes('vehicle') || t.includes('edit')) {
     return 'Vehicle';
   }
@@ -86,18 +92,20 @@ export const getUnreadCount = async () => {
     }
 
     const response = await apiClient.get('/notifications/unread-count');
-    return response?.data?.data?.unread_count || 0;
+    const count = response?.data?.data?.unread_count;
+    return Number.isInteger(count) && count >= 0 ? count : null;
   } catch (err) {
     if (err?.response?.status !== 401) {
       console.warn('[notificationService] Failed to fetch unread count:', err?.message);
     }
-    return 0;
+    return null;
   }
 };
 
 export const markAsRead = async id => {
   try {
     await apiClient.patch(`/notifications/${id}/read`);
+    DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
     return true;
   } catch (err) {
     console.warn('[notificationService] Failed to mark notification as read:', err?.message);
@@ -108,6 +116,7 @@ export const markAsRead = async id => {
 export const markAllAsRead = async () => {
   try {
     await apiClient.patch('/notifications/read-all');
+    DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
     return true;
   } catch (err) {
     console.warn('[notificationService] Failed to mark all as read:', err?.message);

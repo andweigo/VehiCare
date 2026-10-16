@@ -25,7 +25,7 @@ import {
   getVehicleDisplayName,
 } from '../utils/vehicleDisplay';
 import {
-  extractDiagnosticRecommendations,
+  extractSmartRecommendations,
   getHealthBarColor,
   getVehicleIconName,
   getVehicleRecommendations,
@@ -55,9 +55,13 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     healthStatus,
     completedRecommendations,
     loading: healthLoading,
+    isRecommendationCompleted: isRecCompletedContext,
+    markAsDone: markAsDoneContext,
+    undo: undoContext,
   } = useVehicleHealth();
 
   const [diagnostics, setDiagnostics] = useState([]);
+  const [repairRecords, setRepairRecords] = useState([]);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
   const [diagnosticError, setDiagnosticError] = useState(null);
 
@@ -170,12 +174,20 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
       if (isAuthenticated) {
         try {
-          const apiDiags = await vehicleApi.getDiagnosticsHistory();
+          const [apiDiags, apiRepairs] = await Promise.all([
+            vehicleApi.getDiagnosticsHistory(),
+            activeVehicleId ? vehicleApi.getRepairRecords({ vehicle_id: activeVehicleId }) : Promise.resolve([]),
+          ]);
+
           if (Array.isArray(apiDiags) && apiDiags.length > 0) {
             records = apiDiags;
           } else {
             const histRes = await vehicleApi.getHistory({ type: 'diagnosis' });
             records = histRes?.data || [];
+          }
+
+          if (Array.isArray(apiRepairs) && apiRepairs.length > 0) {
+            setRepairRecords(apiRepairs);
           }
         } catch (err) {
           console.warn('API error fetching diagnostics:', err?.message);
@@ -220,7 +232,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     } finally {
       setLoadingDiagnostics(false);
     }
-  }, [vehicleProfile, activeVehicleId, isAuthenticated]);
+  }, [vehicleProfile, activeVehicleId, isAuthenticated, user]);
 
   useEffect(() => {
     fetchVehicleDiagnostics();
@@ -228,23 +240,13 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   /*
   |--------------------------------------------------------------------------
-  | RECOMMENDATION COMPUTE & MERGE
+  | SMART PREVENTIVE RECOMMENDATION COMPUTE
   |--------------------------------------------------------------------------
   */
 
-  const baselineRecommendations = useMemo(
-    () => getVehicleRecommendations(vehicleProfile),
-    [vehicleProfile],
-  );
-
-  const diagnosticRecommendations = useMemo(
-    () => extractDiagnosticRecommendations(diagnostics),
-    [diagnostics],
-  );
-
   const recommendations = useMemo(
-    () => mergeRecommendations(diagnosticRecommendations, baselineRecommendations),
-    [diagnosticRecommendations, baselineRecommendations],
+    () => extractSmartRecommendations(diagnostics, repairRecords, vehicleProfile),
+    [diagnostics, repairRecords, vehicleProfile],
   );
 
   /*
@@ -276,22 +278,41 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   }, [completedRecommendations, localCompletedIds]);
 
   const isRecommendationCompleted = useCallback(
-    id => completedRecommendationIds.has(id),
-    [completedRecommendationIds],
+    itemOrId => {
+      if (typeof isRecCompletedContext === 'function') {
+        return isRecCompletedContext(itemOrId);
+      }
+      const id = typeof itemOrId === 'object' ? itemOrId?.id : itemOrId;
+      return completedRecommendationIds.has(id);
+    },
+    [isRecCompletedContext, completedRecommendationIds],
   );
 
-  const completeRecommendation = useCallback(item => {
-    const id = item?.id;
-    if (!id) return;
+  const completeRecommendation = useCallback(
+    item => {
+      if (!item) return;
+      if (typeof markAsDoneContext === 'function') {
+        markAsDoneContext(item);
+      } else {
+        const id = item?.id || item;
+        setLocalCompletedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+      }
+    },
+    [markAsDoneContext],
+  );
 
-    setLocalCompletedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
-  }, []);
-
-  const undoRecommendation = useCallback(id => {
-    if (!id) return;
-
-    setLocalCompletedIds(prev => prev.filter(itemId => itemId !== id));
-  }, []);
+  const undoRecommendation = useCallback(
+    itemOrId => {
+      if (!itemOrId) return;
+      if (typeof undoContext === 'function') {
+        undoContext(itemOrId);
+      } else {
+        const id = typeof itemOrId === 'object' ? itemOrId?.id : itemOrId;
+        setLocalCompletedIds(prev => prev.filter(itemId => itemId !== id));
+      }
+    },
+    [undoContext],
+  );
 
   useEffect(() => {
     Animated.timing(itemOpacity, {
@@ -302,7 +323,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   }, [itemOpacity]);
 
   const completedCount = recommendations.filter(recommendation =>
-    isRecommendationCompleted(recommendation.id),
+    isRecommendationCompleted(recommendation),
   ).length;
 
   const progressPercentage = recommendations.length
@@ -442,11 +463,47 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                 color: theme.textSecondary,
               },
             ]}
-            numberOfLines={3}
+            numberOfLines={4}
             ellipsizeMode="tail"
           >
-            {item.description}
+            {item.preventive_action || item.description}
           </Text>
+
+          {item.reason ? (
+            <View style={{ backgroundColor: theme.border || '#292929', borderRadius: 8, padding: 10, marginTop: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Icon name="psychology" size={15} color={theme.accent} style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.accent, letterSpacing: 0.5 }}>
+                  PREVENTIVE REASON
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: theme.text, lineHeight: 17 }}>
+                {item.reason}
+              </Text>
+
+              {item.warning_signs ? (
+                <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.1)' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
+                    WARNING SIGNS TO MONITOR:
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 16 }}>
+                    {item.warning_signs}
+                  </Text>
+                </View>
+              ) : null}
+
+              {item.safety_precaution ? (
+                <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.1)' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#FF5A5F', marginBottom: 2 }}>
+                    SAFETY BOUNDARY:
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 16 }}>
+                    {item.safety_precaution}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {item.source === 'diagnostic' ? (
             <TouchableOpacity
@@ -492,7 +549,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                 />
                 <TouchableOpacity
                   style={styles.undoButton}
-                  onPress={() => undoRecommendation(item.id)}
+                  onPress={() => undoRecommendation(item)}
                   accessibilityRole="button"
                   accessibilityLabel={`Undo ${item.title}`}
                 >
@@ -822,7 +879,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
               Recent diagnostic recommendations are temporarily unavailable. Showing preventive maintenance recommendations instead.
             </Text>
           </View>
-        ) : !loadingDiagnostics && diagnosticRecommendations.length === 0 ? (
+        ) : !loadingDiagnostics && recommendations.length === 0 ? (
           <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <Icon name="check-circle-outline" size={20} color={theme.accent} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
@@ -1438,7 +1495,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   recommendationTitle: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 15,
     lineHeight: 20,
   },
@@ -1604,7 +1661,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalSectionHeading: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 13.5,
   },
   modalBodyText: {
@@ -1669,7 +1726,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modalActionPrimaryText: {
-    fontFamily: 'Outfit-Bold',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 13,
     color: '#FFFFFF',
   },
@@ -1684,7 +1741,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   modalActionSecondaryText: {
-    fontFamily: 'Outfit-Bold',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 13,
   },
 });

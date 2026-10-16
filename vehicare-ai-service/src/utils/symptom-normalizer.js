@@ -7,8 +7,8 @@ export const normalizeText = (text) => {
 
   let normalized = text.toLowerCase().trim();
 
-  // Strip punctuation and non-alphanumeric chars (preserving spaces)
-  normalized = normalized.replace(/[^\w\s]/gi, ' ');
+  // Strip punctuation and symbols while preserving Unicode letters and digits across English and Filipino
+  normalized = normalized.replace(/[^\p{L}\p{N}\s]/gu, ' ');
 
   // Collapse multiple whitespaces
   normalized = normalized.replace(/\s+/g, ' ').trim();
@@ -30,5 +30,55 @@ export const hashMedia = (mediaBase64) => {
   if (!mediaBase64 || typeof mediaBase64 !== 'string') return null;
   const cleanBase64 = mediaBase64.replace(/^data:[^;]+;base64,/i, '').trim();
   if (!cleanBase64) return null;
-  return crypto.createHash('sha256').update(cleanBase64).digest('hex').substring(0, 16);
+  return crypto.createHash('sha256').update(cleanBase64).digest('hex');
+};
+
+/**
+ * Check if a query is a context-dependent follow-up question (e.g. "what should I do next?").
+ * These must not be cached without conversation history to prevent cross-user context pollution.
+ */
+export const isContextDependentFollowUp = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const normalized = normalizeText(text);
+  const followUpPhrases = [
+    'what next',
+    'what should i do next',
+    'what to do next',
+    'what now',
+    'what should i do now',
+    'how about that',
+    'what about that',
+    'tell me more',
+    'and then',
+    'why is that',
+    'what else',
+    'explain more',
+    'how do i do that',
+    'ano susunod',
+    'anong gagawin ko',
+    'ano sunod',
+  ];
+
+  return followUpPhrases.some((phrase) => normalized === phrase || normalized.startsWith(`${phrase} `));
+};
+
+/**
+ * Check if a query or diagnosis represents repair guidance (e.g. "how to repair", "how to fix").
+ */
+export const isRepairGuideIntent = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase();
+  const repairPatterns = [
+    'how to repair',
+    'how to fix',
+    'repair guide',
+    'repair steps',
+    'step by step repair',
+    'replacement guide',
+    'how to replace',
+    'paano ayusin',
+    'paano palitan',
+    'diy repair',
+  ];
+  return repairPatterns.some((pattern) => lower.includes(pattern));
 };

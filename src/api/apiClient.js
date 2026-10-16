@@ -38,6 +38,17 @@ import { getGuestUuid, getToken } from '../services/storageService';
     },
   });
 
+  let unauthorizedHandler = null;
+  let isHandlingUnauthorized = false;
+
+  export const setUnauthorizedHandler = handler => {
+    unauthorizedHandler = handler;
+  };
+
+  export const clearUnauthorizedHandler = () => {
+    unauthorizedHandler = null;
+  };
+
   export const setAuthToken = token => {
     const normalizedToken = token && String(token).trim() ? token : null;
 
@@ -54,7 +65,11 @@ import { getGuestUuid, getToken } from '../services/storageService';
       const currentBaseUrl = getApiBaseUrl();
       config.baseURL = currentBaseUrl;
 
-      const token = await getToken();
+      const hasAuthTokenSnapshot = Object.prototype.hasOwnProperty.call(config, 'authTokenSnapshot');
+      const token = hasAuthTokenSnapshot
+        ? config.authTokenSnapshot
+        : await getToken();
+      if (hasAuthTokenSnapshot) delete config.authTokenSnapshot;
       const guestUuid = await getGuestUuid();
       const hasToken = Boolean(token && String(token).trim());
 
@@ -64,10 +79,14 @@ import { getGuestUuid, getToken } from '../services/storageService';
       };
 
       if (hasToken) {
-        setAuthToken(token);
+        if (!hasAuthTokenSnapshot) setAuthToken(token);
         config.headers.Authorization = `Bearer ${token}`;
       } else {
-        setAuthToken(null);
+        if (hasAuthTokenSnapshot) {
+          delete config.headers.Authorization;
+        } else {
+          setAuthToken(null);
+        }
       }
 
       const baseURL = config?.baseURL || apiBaseUrl;
@@ -130,6 +149,25 @@ import { getGuestUuid, getToken } from '../services/storageService';
           fullURL,
           status,
         });
+
+        const normalizedPath = String(requestPath).toLowerCase();
+        const isAuthAttempt =
+          normalizedPath.includes('/login') ||
+          normalizedPath.includes('/register') ||
+          normalizedPath.includes('/forgot-password') ||
+          normalizedPath.includes('/reset-password') ||
+          normalizedPath.includes('/otp');
+
+        if (!isAuthAttempt && typeof unauthorizedHandler === 'function' && !isHandlingUnauthorized) {
+          isHandlingUnauthorized = true;
+          try {
+            unauthorizedHandler();
+          } finally {
+            setTimeout(() => {
+              isHandlingUnauthorized = false;
+            }, 3000);
+          }
+        }
       } else if (isNetworkError) {
         // Use console.warn to prevent triggering React Native RedBox modal on connectivity drop
         console.warn('[apiClient] Network / Connection unavailable:', {
@@ -137,6 +175,14 @@ import { getGuestUuid, getToken } from '../services/storageService';
           fullURL,
           code: error?.code || 'ERR_NETWORK',
           message,
+        });
+      } else if (status === 403 && (responseData?.reason === 'ai_limit_reached' || responseData?.error === 'ai_limit_reached')) {
+        console.info('[apiClient] AI Consultation Quota Limit reached (403):', {
+          status,
+          plan: responseData?.plan,
+          limit: responseData?.limit,
+          used: responseData?.used,
+          remaining: responseData?.remaining,
         });
       } else if (!isValidationError) {
         console.error('[apiClient] API Client Error:', message);

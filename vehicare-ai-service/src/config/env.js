@@ -8,6 +8,11 @@ const envPath = path.resolve(__dirname, '../../.env');
 
 dotenv.config({ path: envPath });
 
+const readInteger = (name, fallback, minimum = 1) => {
+  const value = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(value) && value >= minimum ? value : fallback;
+};
+
 const requiredEnvVars = ['GEMINI_API_KEY', 'AI_SERVICE_SECRET'];
 
 for (const envVar of requiredEnvVars) {
@@ -23,7 +28,18 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY.trim(),
     model: (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim(),
-    timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS || '25000', 10),
+    fallbackModel: (process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite').trim(),
+    conversationModel: (process.env.GEMINI_CONVERSATION_MODEL || process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite').trim(),
+    timeoutMs: readInteger('GEMINI_TIMEOUT_MS', 30000),
+    timeouts: {
+      text: readInteger('AI_TEXT_TIMEOUT', readInteger('GEMINI_TIMEOUT_MS', 30000)),
+      image: readInteger('AI_IMAGE_TIMEOUT', 45000),
+      audio: readInteger('AI_AUDIO_TIMEOUT', 60000),
+      video: readInteger('AI_VIDEO_TIMEOUT', 120000),
+    },
+    mediaProcessingTimeoutMs: readInteger('AI_MEDIA_PROCESSING_TIMEOUT', 90000),
+    mediaPollIntervalMs: readInteger('AI_MEDIA_POLL_INTERVAL', 2000),
+    maxRetries: readInteger('AI_MAX_RETRIES', 1, 0),
   },
   concurrency: {
     maxConcurrent: parseInt(process.env.AI_MAX_CONCURRENT_REQUESTS || '2', 10),

@@ -36,6 +36,9 @@ class Payment extends Model
         'verified_at',
         'refunded_at',
         'admin_id',
+        'subscription_revoked_at',
+        'subscription_revoked_by',
+        'subscription_revocation_reason',
     ];
 
     protected function casts(): array
@@ -46,6 +49,7 @@ class Payment extends Model
             'submitted_at' => 'datetime',
             'verified_at' => 'datetime',
             'refunded_at' => 'datetime',
+            'subscription_revoked_at' => 'datetime',
         ];
     }
 
@@ -57,6 +61,11 @@ class Payment extends Model
     public function admin(): BelongsTo
     {
         return $this->belongsTo(User::class, 'admin_id');
+    }
+
+    public function subscriptionRevokedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'subscription_revoked_by');
     }
 
     public function isPending(): bool

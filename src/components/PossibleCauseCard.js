@@ -81,14 +81,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   causeNumberText: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 11,
   },
   causeTitleContainer: {
     flex: 1,
   },
   causeTitle: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 14,
     lineHeight: 19,
   },

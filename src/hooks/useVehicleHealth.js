@@ -1,26 +1,38 @@
-import { useMemo } from 'react';
-import { useVehicleHealthContext } from '../context/VehicleHealthContext';
-import useMaintenanceRecommendations from './useMaintenanceRecommendations';
+import { useContext, useMemo } from 'react';
+import { VehicleHealthContext } from '../context/VehicleHealthContext';
+import { useMaintenanceRecommendations } from './useMaintenanceRecommendations';
 
 /**
  * Unified useVehicleHealth Hook
  * Provides synchronized vehicle health score, status, and recommendations
- * across Dashboard, Maintenance Screen, and Vehicle Health Details screen.
+ * across Dashboard, Maintenance Screen, Smart Recommendations Screen, and Vehicle Health Details screen.
  */
 const useVehicleHealth = () => {
-  const { activeVehicle, pendingVehicle, loading: contextLoading } = useVehicleHealthContext();
-  const vehicleProfile = activeVehicle || pendingVehicle || null;
+  const context = useContext(VehicleHealthContext);
+  const maintenance = (context && context.allRecommendations !== undefined)
+    ? context
+    : useMaintenanceRecommendations();
 
   const {
+    activeVehicle,
+    pendingVehicle,
+    loading,
     maintenanceHealth,
     healthStatus: recHealthStatus,
-    allRecommendations,
-    diagnosticItems,
-    urgentDiagnosticItems,
-    preventiveItems,
-    historyItems,
-    loading: recLoading,
-  } = useMaintenanceRecommendations();
+    allRecommendations = [],
+    diagnosticItems = [],
+    urgentDiagnosticItems = [],
+    preventiveItems = [],
+    historyItems = [],
+    completedRecommendationIds,
+    isRecommendationCompleted,
+    markAsDone,
+    undo,
+    refresh,
+    refreshVehicleHealth,
+  } = maintenance;
+
+  const vehicleProfile = activeVehicle || pendingVehicle || null;
 
   const vehicleHealth = useMemo(() => {
     if (!vehicleProfile) return {};
@@ -32,23 +44,20 @@ const useVehicleHealth = () => {
     );
   }, [vehicleProfile]);
 
-  // If backend provided an explicit override healthScore, use it; otherwise use dynamic maintenanceHealth
-  const healthScore = typeof vehicleHealth?.healthScore === 'number'
-    ? vehicleHealth.healthScore
-    : typeof vehicleHealth?.health_score === 'number'
-      ? vehicleHealth.health_score
-      : maintenanceHealth;
+  // Dynamic maintenanceHealth derived from active diagnostic records and maintenance history
+  // is authoritative across the entire application to prevent score divergence.
+  const healthScore = typeof maintenanceHealth === 'number' ? maintenanceHealth : 100;
 
   const healthPercentage = Number.isFinite(healthScore)
     ? Math.min(100, Math.max(0, Math.round(healthScore)))
     : 100;
 
-  const rawHealthStatus = vehicleHealth?.status || vehicleHealth?.health_status || recHealthStatus;
+  const rawHealthStatus = recHealthStatus || vehicleHealth?.status || vehicleHealth?.health_status;
 
   const healthStatus = {
     label: typeof rawHealthStatus === 'string'
       ? rawHealthStatus
-      : rawHealthStatus?.label || 'Looking Good',
+      : rawHealthStatus?.label || (healthPercentage >= 80 ? 'Looking Good' : healthPercentage >= 60 ? 'Needs Attention' : 'Needs Immediate Attention'),
     icon: (typeof rawHealthStatus === 'object' && rawHealthStatus?.icon)
       ? rawHealthStatus.icon
       : healthPercentage >= 80
@@ -63,15 +72,20 @@ const useVehicleHealth = () => {
         : healthPercentage >= 60
           ? '#F63B05'
           : '#FF5A5F',
+    explanation: (typeof rawHealthStatus === 'object' && rawHealthStatus?.explanation)
+      ? rawHealthStatus.explanation
+      : undefined,
   };
 
   return {
     activeVehicle,
     pendingVehicle,
+    vehicleProfile,
     vehicleHealth,
     completedRecommendations: historyItems,
     pendingRecommendations: [...diagnosticItems, ...preventiveItems],
     recommendations: allRecommendations,
+    allRecommendations,
     completedCount: historyItems.length,
     pendingCount: diagnosticItems.length + preventiveItems.length,
     recommendationCount: allRecommendations.length,
@@ -84,9 +98,15 @@ const useVehicleHealth = () => {
       urgentDiagnosticItems,
       preventiveItems,
     },
-    loading: contextLoading || recLoading,
+    loading: Boolean(loading),
     hasVehicle: !!activeVehicle,
     hasPendingVehicle: !!pendingVehicle,
+    completedRecommendationIds,
+    isRecommendationCompleted,
+    markAsDone,
+    undo,
+    refresh: refresh || refreshVehicleHealth,
+    refreshVehicleHealth: refreshVehicleHealth || refresh,
   };
 };
 

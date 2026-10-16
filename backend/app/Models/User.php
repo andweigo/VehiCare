@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\Vehicle;
+use App\Models\ManualPremiumGrant;
 
 class User extends Authenticatable
 {
@@ -43,6 +44,7 @@ class User extends Authenticatable
         'subscription_plan',
         'subscription_status',
         'subscription_cycle',
+        'subscription_source',
         'subscription_started_at',
         'subscription_expires_at',
         'vehicle_limit',
@@ -71,11 +73,22 @@ class User extends Authenticatable
     {
         if ($this->subscription_plan === self::SUBSCRIPTION_PREMIUM && $this->subscription_expires_at) {
             if ($this->subscription_expires_at->isPast()) {
+                $wasManualGrant = $this->subscription_source === 'manual';
                 $this->update([
                     'subscription_plan' => self::SUBSCRIPTION_FREE,
                     'subscription_status' => self::SUBSCRIPTION_STATUS_EXPIRED,
+                    'subscription_source' => 'none',
                     'vehicle_limit' => self::VEHICLE_LIMIT_FREE,
                 ]);
+
+                if ($wasManualGrant) {
+                    $this->manualPremiumGrants()
+                        ->where('status', ManualPremiumGrant::STATUS_ACTIVE)
+                        ->update([
+                            'status' => ManualPremiumGrant::STATUS_EXPIRED,
+                            'ended_at' => now(),
+                        ]);
+                }
             }
         }
 
@@ -87,14 +100,38 @@ class User extends Authenticatable
         return $this->role === self::ROLE_ADMIN;
     }
 
+    public static function protectedAdminEmail(): string
+    {
+        return config('app.default_admin_email', 'admin@vehicare.local');
+    }
+
     public function isActive(): bool
     {
         return $this->is_active;
     }
 
+    public function receivesBroadcastNotificationsOn(): string
+    {
+        return $this->isAdmin()
+            ? 'private-admin.' . $this->getKey()
+            : 'private-user.' . $this->getKey();
+    }
+
+    public function vehicleAllowance(): int
+    {
+        return $this->subscription_plan === self::SUBSCRIPTION_PREMIUM
+            ? self::VEHICLE_LIMIT_PREMIUM
+            : self::VEHICLE_LIMIT_FREE;
+    }
+
     public function vehicles(): HasMany
     {
         return $this->hasMany(Vehicle::class);
+    }
+
+    public function activeVehicles(): HasMany
+    {
+        return $this->hasMany(Vehicle::class)->whereNull('archived_at');
     }
 
     public function activeVehicle(): BelongsTo
@@ -110,5 +147,10 @@ class User extends Authenticatable
     public function latestPayment()
     {
         return $this->hasOne(\App\Models\Payment::class)->latestOfMany();
+    }
+
+    public function manualPremiumGrants(): HasMany
+    {
+        return $this->hasMany(ManualPremiumGrant::class)->latest('granted_at');
     }
 }

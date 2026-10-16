@@ -27,6 +27,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
 import AILimitModal from '../components/AILimitModal';
+import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
 import AiThinkingBubble from '../components/AiThinkingBubble';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import DiagnosisLimitModal from '../components/DiagnosisLimitModal';
@@ -38,6 +39,7 @@ import { vehicleApi } from '../api/vehicleApi';
 import { fetchAIUsageStats } from '../services/aiUsageService';
 import activityService from '../services/activity.service';
 
+import { useAIUsage } from '../context/AIUsageContext';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -260,13 +262,31 @@ export default function AskVehiCareScreen({
   const { t, language } = useLanguage();
   const {
     currentSession,
+    currentSessionId,
     messages: chatMessages,
     addMessage,
+    addMessageToSession,
+    removeMessageFromSession,
+    requestStates,
+    conversationUiState,
+    updateConversationUiState,
+    submitDiagnosticRequest,
+    retryDiagnosticRequest,
     createNewSession,
-    clearActiveChat,
     fetchChatSession,
     isLoading: isChatLoading,
   } = useChat();
+
+  const {
+    usage,
+    refreshUsage,
+    setQuotaExhausted,
+    recordConsultationOptimistic,
+    isDetailsModalVisible: isUsageDetailsModalVisible,
+    openDetailsModal: openUsageDetailsModal,
+    closeDetailsModal: closeUsageDetailsModal,
+    feedbackNotice,
+  } = useAIUsage();
 
   /*
   |--------------------------------------------------------------------------
@@ -306,8 +326,7 @@ export default function AskVehiCareScreen({
   |--------------------------------------------------------------------------
   */
 
-  const [message, setMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const [isSendingLocally, setIsSendingLocally] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [guestUsageCount, setGuestUsageCount] = useState(0);
   const [showSignInLimitModal, setShowSignInLimitModal] = useState(false);
@@ -315,9 +334,6 @@ export default function AskVehiCareScreen({
   const [selectedDiagnosis, setSelectedDiagnosis] = useState(null);
   const [resultModalVisible, setResultModalVisible] = useState(false);
   const [nearbyModalVisible, setNearbyModalVisible] = useState(false);
-  const [attachedImage, setAttachedImage] = useState(null);
-  const [attachedVideo, setAttachedVideo] = useState(null);
-  const [attachedAudio, setAttachedAudio] = useState(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [fullScreenImage, setFullScreenImage] = useState(null);
   const [playingAudioId, setPlayingAudioId] = useState(null);
@@ -328,8 +344,7 @@ export default function AskVehiCareScreen({
   const [pendingVehicleToSwitch, setPendingVehicleToSwitch] = useState(null);
   const [showVehicleConfirmModal, setShowVehicleConfirmModal] = useState(false);
   const [showNewChatConfirmModal, setShowNewChatConfirmModal] = useState(false);
-  const [selectedQuestion, setSelectedQuestion] = useState(null);
-  const [answeredQuestionIds, setAnsweredQuestionIds] = useState([]);
+  const activeConversationUiState = conversationUiState[currentSessionId] || {};
 
   /*
   |--------------------------------------------------------------------------
@@ -339,6 +354,39 @@ export default function AskVehiCareScreen({
 
   const scrollRef = useRef(null);
   const recordingIntervalRef = useRef(null);
+  const screenMountedRef = useRef(false);
+  const ownerUserId = user?.id || user?.uid || null;
+  const setConversationField = useCallback((field, value) => {
+    updateConversationUiState(currentSessionId, previous => ({
+      ...previous,
+      [field]: typeof value === 'function'
+        ? value(previous[field] ?? (field === 'answeredQuestionIds' ? [] : null))
+        : value,
+    }));
+  }, [currentSessionId, updateConversationUiState]);
+  const message = activeConversationUiState.draft || '';
+  const setMessage = useCallback(value => setConversationField('draft', value), [setConversationField]);
+  const attachedImage = activeConversationUiState.attachedImage || null;
+  const setAttachedImage = useCallback(value => setConversationField('attachedImage', value), [setConversationField]);
+  const attachedVideo = activeConversationUiState.attachedVideo || null;
+  const setAttachedVideo = useCallback(value => setConversationField('attachedVideo', value), [setConversationField]);
+  const attachedAudio = activeConversationUiState.attachedAudio || null;
+  const setAttachedAudio = useCallback(value => setConversationField('attachedAudio', value), [setConversationField]);
+  const selectedQuestion = activeConversationUiState.selectedQuestion || null;
+  const setSelectedQuestion = useCallback(value => setConversationField('selectedQuestion', value), [setConversationField]);
+  const answeredQuestionIds = activeConversationUiState.answeredQuestionIds || [];
+  const setAnsweredQuestionIds = useCallback(value => setConversationField('answeredQuestionIds', value), [setConversationField]);
+  const isRequestPending = Object.values(requestStates).some(
+    request => request.sessionId === currentSessionId && request.status === 'pending',
+  );
+  const isSending = isSendingLocally || isRequestPending;
+
+  useEffect(() => {
+    screenMountedRef.current = true;
+    return () => {
+      screenMountedRef.current = false;
+    };
+  }, []);
 
   /*
   |--------------------------------------------------------------------------
@@ -360,11 +408,18 @@ export default function AskVehiCareScreen({
   }, [userName, vehicleName, language]);
 
   const loadUsageStats = useCallback(async () => {
+    if (typeof refreshUsage === 'function') {
+      const refreshed = await refreshUsage();
+      if (refreshed) {
+        if (screenMountedRef.current) setUsageStats(refreshed);
+        return;
+      }
+    }
     const stats = await fetchAIUsageStats();
-    if (stats) {
+    if (stats && screenMountedRef.current) {
       setUsageStats(stats);
     }
-  }, []);
+  }, [refreshUsage]);
 
   const loadGuestUsage = useCallback(async () => {
     const count = await getGuestDiagnosisCount();
@@ -411,7 +466,7 @@ export default function AskVehiCareScreen({
     setAttachedVideo(null);
     setAttachedAudio(null);
     setSelectedDiagnosis(null);
-    setIsSending(false);
+    setIsSendingLocally(false);
 
     const rawId = vehicleProfile?.id || vehicleProfile?.vehicle_id;
     const vehicleId = (rawId && !isNaN(Number(rawId))) ? Number(rawId) : null;
@@ -428,7 +483,15 @@ export default function AskVehiCareScreen({
         }),
       },
     ]);
-  }, [vehicleProfile, createNewSession, getDynamicWelcomeText]);
+  }, [
+    vehicleProfile,
+    createNewSession,
+    getDynamicWelcomeText,
+    setMessage,
+    setAttachedImage,
+    setAttachedVideo,
+    setAttachedAudio,
+  ]);
 
   const handleNewChatPress = useCallback(() => {
     const hasUserMessages = chatMessages.some(m => (m.role === 'user' || m.sender === 'user'));
@@ -835,7 +898,7 @@ export default function AskVehiCareScreen({
       const next =
         await incrementGuestDiagnosisCount();
 
-      setGuestUsageCount(next);
+      if (screenMountedRef.current) setGuestUsageCount(next);
 
       return next;
     };
@@ -897,6 +960,79 @@ export default function AskVehiCareScreen({
     );
   };
 
+  const handleDiagnosticResponse = async resultData => {
+    const isDiagnostic = resultData?.type === 'diagnostic';
+    const isClarificationNeeded = resultData?.status === 'needs_clarification'
+      || (resultData?.clarification_questions && resultData.clarification_questions.length > 0);
+
+    if (isDiagnostic || isClarificationNeeded) {
+      if (!isAuthenticated) {
+        await incrementGuestUsage();
+      }
+      if (typeof recordConsultationOptimistic === 'function') {
+        recordConsultationOptimistic();
+      }
+    }
+
+    if (resultData?.status === 'diagnosis_ready' || (!isClarificationNeeded && isDiagnostic)) {
+      if (screenMountedRef.current) setSelectedDiagnosis(resultData);
+
+      const diagProblem =
+        resultData?.diagnosis?.problem ||
+        resultData?.problem ||
+        resultData?.diagnosis_title ||
+        resultData?.title ||
+        'Vehicle Issue';
+      const diagSummary =
+        resultData?.diagnosis?.summary ||
+        resultData?.summary ||
+        resultData?.description ||
+        `Completed diagnosis for ${diagProblem}.`;
+
+      activityService.addActivity({
+        type: 'diagnosis_completed',
+        title: `Diagnosis: ${diagProblem}`,
+        description: diagSummary,
+        vehicleId: activeVehicle?.id || activeVehicle?.vehicle_id,
+        vehicleName: activeVehicle?.name || activeVehicle?.make || 'Active Vehicle',
+        userId: ownerUserId,
+        metadata: {
+          diagnosisId: resultData?.id || resultData?.diagnosis_id || null,
+          severity: resultData?.diagnosis?.severity || resultData?.severity || 'medium',
+        },
+      });
+    }
+
+    await loadUsageStats();
+  };
+
+  const handleDiagnosticFailure = async error => {
+    const responseReason = error?.response?.data?.reason;
+    if (responseReason !== 'ai_limit_reached' && error?.response?.status !== 403) {
+      return;
+    }
+
+    const errorData = error?.response?.data || {};
+    if (typeof setQuotaExhausted === 'function') {
+      setQuotaExhausted({
+        limit: errorData.limit || 20,
+        used: errorData.used || 20,
+        remaining: 0,
+        exhausted: true,
+        period: errorData.period || 'monthly',
+        reset_at: errorData.reset_at || null,
+      });
+    }
+
+    if (screenMountedRef.current) {
+      if (typeof openUsageDetailsModal === 'function') {
+        openUsageDetailsModal();
+      }
+      setShowAILimitModal(true);
+    }
+    await loadUsageStats();
+  };
+
   const sendMessage = async (overrideText = null) => {
     const isCustomOverride = typeof overrideText === 'string';
     const textToSend = isCustomOverride ? overrideText : message;
@@ -937,7 +1073,14 @@ export default function AskVehiCareScreen({
       time,
     };
 
-    addMessage(userMessage);
+    const requestSessionId = currentSessionId;
+    const requestOwnerUserId = ownerUserId;
+    if (
+      !requestSessionId ||
+      !addMessageToSession(requestSessionId, requestOwnerUserId, userMessage)
+    ) {
+      return;
+    }
 
     if (trimmed && isExplicitlyUnrelated(trimmed, chatMessages)) {
       const outOfScopeReply = {
@@ -952,22 +1095,12 @@ export default function AskVehiCareScreen({
           minute: '2-digit',
         }),
       };
-      addMessage(outOfScopeReply);
+      addMessageToSession(requestSessionId, requestOwnerUserId, outOfScopeReply);
       if (!isCustomOverride) {
         setMessage('');
       }
-      setIsSending(false);
+      setIsSendingLocally(false);
       return;
-    }
-
-    if (trimmed) {
-      activityService.addActivity({
-        type: 'chat_question',
-        title: 'Asked VehiCare',
-        description: `Asked: "${trimmed.slice(0, 50)}${trimmed.length > 50 ? '...' : ''}"`,
-        vehicleId: activeVehicle?.id || activeVehicle?.vehicle_id,
-        vehicleName: activeVehicle?.name || activeVehicle?.make || 'Active Vehicle',
-      });
     }
 
     if (selectedQuestion?.id) {
@@ -977,7 +1110,7 @@ export default function AskVehiCareScreen({
     if (!isCustomOverride) {
       setMessage('');
     }
-    setIsSending(true);
+    setIsSendingLocally(true);
     scrollToBottom();
 
     try {
@@ -992,6 +1125,31 @@ export default function AskVehiCareScreen({
         role: m.role || m.sender || 'user',
         content: m.text || m.message || '',
       }));
+      const diagnosticState = {
+        assessments: chatMessages
+          .filter(m => m?.diagnosisData?.type === 'diagnostic')
+          .slice(-3)
+          .map(({ diagnosisData }) => ({
+            status: diagnosisData.status === 'needs_clarification' ? 'needs_clarification' : 'diagnosis_ready',
+            summary: typeof diagnosisData.summary === 'string' ? diagnosisData.summary.slice(0, 500) : '',
+            reported: Array.isArray(diagnosisData.reported)
+              ? diagnosisData.reported.filter(value => typeof value === 'string').slice(0, 5).map(value => value.slice(0, 200))
+              : [],
+            observed: Array.isArray(diagnosisData.observed)
+              ? diagnosisData.observed.filter(value => typeof value === 'string').slice(0, 5).map(value => value.slice(0, 200))
+              : [],
+            possible_causes: Array.isArray(diagnosisData.possible_causes)
+              ? diagnosisData.possible_causes.slice(0, 5).map(cause => ({
+                cause: typeof cause === 'string' ? cause.slice(0, 200) : String(cause?.cause || '').slice(0, 200),
+              }))
+              : [],
+            clarification_questions: Array.isArray(diagnosisData.clarification_questions)
+              ? diagnosisData.clarification_questions.slice(0, 5).map(question => ({
+                question: typeof question === 'string' ? question.slice(0, 300) : String(question?.question || '').slice(0, 300),
+              }))
+              : [],
+          })),
+      };
 
       const activeSymptoms = trimmed || (currentAudio ? 'Audio recording of engine or vehicle noise' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
       const payload = {
@@ -1003,6 +1161,7 @@ export default function AskVehiCareScreen({
         video_duration: currentVideo?.durationSec || 0,
         audio_duration: currentAudio?.durationSec || 0,
         history,
+        diagnostic_state: diagnosticState,
       };
 
       const media = currentAudio || currentVideo || currentImage;
@@ -1015,6 +1174,8 @@ export default function AskVehiCareScreen({
               requestPayload.append(`history[${index}][role]`, turn.role);
               requestPayload.append(`history[${index}][content]`, turn.content);
             });
+          } else if (key === 'diagnostic_state') {
+            requestPayload.append(key, JSON.stringify(value));
           } else {
             requestPayload.append(key, String(value));
           }
@@ -1028,75 +1189,66 @@ export default function AskVehiCareScreen({
         });
       }
 
-      const resultData = await vehicleApi.submitDiagnostic(requestPayload);
+      const outcome = await submitDiagnosticRequest({
+        sessionId: requestSessionId,
+        ownerUserId: requestOwnerUserId,
+        userMessageId: userMessage.id,
+        payload: requestPayload,
+        formatResponse: formatAiResponseText,
+      });
 
-      const isDiagnostic = resultData?.type === 'diagnostic';
-      const isClarificationNeeded = resultData?.status === 'needs_clarification' || (resultData?.clarification_questions && resultData.clarification_questions.length > 0);
-
-      if (isDiagnostic || isClarificationNeeded) {
-        if (!isAuthenticated) {
-          await incrementGuestUsage();
-        }
+      if (outcome.busy) {
+        removeMessageFromSession(requestSessionId, requestOwnerUserId, userMessage.id);
+        return;
       }
-
-      const formattedReplyText = formatAiResponseText(resultData);
-
-      const reply = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        sender: 'assistant',
-        text: formattedReplyText,
-        message: formattedReplyText,
-        diagnosisData: (isDiagnostic || isClarificationNeeded) ? resultData : null,
-        clarificationQuestions: resultData?.clarification_questions || resultData?.clarificationQuestions || [],
-        time: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-
-      addMessage(reply);
-
-      if (resultData?.status === 'diagnosis_ready' || (!isClarificationNeeded && isDiagnostic)) {
-        setSelectedDiagnosis(resultData);
+      if (outcome.stale) return;
+      if (outcome.error) {
+        console.warn('[AskVehiCareScreen] AI request failed:', outcome.error?.message);
+        await handleDiagnosticFailure(outcome.error);
+        return;
       }
-
-      await loadUsageStats();
+      if (outcome.data) {
+        await handleDiagnosticResponse(outcome.data);
+      }
     } catch (err) {
       console.error('[AskVehiCareScreen] AI Request Failed:', {
         axiosMessage: err?.message,
         httpStatus: err?.response?.status,
-        responseData: err?.response?.data,
+      });
+    } finally {
+      if (screenMountedRef.current) {
+        setIsSendingLocally(false);
+        scrollToBottom();
+      }
+    }
+  };
+
+  const handleRetryDiagnostic = async userMessageId => {
+    if (!currentSessionId || isSending) return;
+    setIsSendingLocally(true);
+    try {
+      const outcome = await retryDiagnosticRequest({
+        sessionId: currentSessionId,
+        ownerUserId,
+        userMessageId,
+        formatResponse: formatAiResponseText,
       });
 
-      const responseReason = err?.response?.data?.reason;
-      if (responseReason === 'ai_limit_reached' || err?.response?.status === 403) {
-        setShowAILimitModal(true);
-        await loadUsageStats();
+      if (outcome.stale || outcome.busy) return;
+      if (outcome.error) {
+        await handleDiagnosticFailure(outcome.error);
         return;
       }
-
-      const serverMessage = err?.response?.data?.message;
-      const errorText = serverMessage
-        ? `Request Error: ${serverMessage}`
-        : 'Sorry, I encountered an issue reaching the assistant. Please check your network connection and try again.';
-
-      const errorReply = {
-        id: `assistant-err-${Date.now()}`,
-        role: 'assistant',
-        sender: 'assistant',
-        text: errorText,
-        message: errorText,
-        time: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-
-      addMessage(errorReply);
+      if (outcome.data) {
+        await handleDiagnosticResponse(outcome.data);
+      }
+    } catch (error) {
+      console.error('[AskVehiCareScreen] Failed to retry AI request:', error?.message);
     } finally {
-      setIsSending(false);
-      scrollToBottom();
+      if (screenMountedRef.current) {
+        setIsSendingLocally(false);
+        scrollToBottom();
+      }
     }
   };
 
@@ -1516,8 +1668,9 @@ export default function AskVehiCareScreen({
           </Text>
         </View>
 
-        {/* TOP RIGHT ACTION ROW: NEW CHAT + SIDEBAR TOGGLE */}
+        {/* TOP RIGHT ACTION ROW: QUOTA INDICATOR + NEW CHAT + SIDEBAR TOGGLE */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+
           <Pressable
             style={[
               styles.newChatHeaderButton,
@@ -1556,6 +1709,25 @@ export default function AskVehiCareScreen({
           </Pressable>
         </View>
       </View>
+
+      {/* AI CONSULTATION FEEDBACK BANNER */}
+      {feedbackNotice && (
+        <View
+          testID="ai-consultation-feedback-banner"
+          style={[
+            styles.feedbackBanner,
+            {
+              backgroundColor: theme.surfaceAlt,
+              borderColor: theme.accent,
+            },
+          ]}
+        >
+          <Feather name="check-circle" size={14} color={theme.accent} />
+          <Text style={[styles.feedbackBannerText, { color: theme.text }]}>
+            {feedbackNotice}
+          </Text>
+        </View>
+      )}
 
       {/* ==================================================
           VEHICLE SELECTOR BAR (TIER 2)
@@ -2156,6 +2328,31 @@ export default function AskVehiCareScreen({
                           </Text>
                         </TouchableOpacity>
                       )}
+                      {item.requestErrorFor
+                        && requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.status === 'failed'
+                        && requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.retryable && (
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginTop: 10,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: theme.accent,
+                            }}
+                            disabled={isSending}
+                            onPress={() => handleRetryDiagnostic(item.requestErrorFor)}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="rotate-ccw" size={14} color={theme.accent} />
+                            <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: theme.accent }}>
+                              Retry
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                     </View>
 
                     <Text
@@ -2579,6 +2776,7 @@ export default function AskVehiCareScreen({
         vehicleName={vehicleName}
         onFindNearbyShops={() => setNearbyModalVisible(true)}
         onOwnShopSelected={handleOwnShopSelected}
+        onUpgrade={() => navigation.navigate('ManagePlan')}
       />
 
       <NearbyShopsModal
@@ -2588,21 +2786,35 @@ export default function AskVehiCareScreen({
         vehicleType={vehicleProfile?.vehicle_type?.name || vehicleProfile?.type || 'car'}
       />
 
-      <AILimitModal
-        visible={showAILimitModal}
-        onClose={() => setShowAILimitModal(false)}
-        plan={usageStats?.plan || (isAuthenticated ? 'free' : 'guest')}
+      <AIUsageDetailsModal
+        visible={Boolean(isUsageDetailsModalVisible || showAILimitModal)}
+        onClose={() => {
+          if (typeof closeUsageDetailsModal === 'function') {
+            closeUsageDetailsModal();
+          }
+          setShowAILimitModal(false);
+        }}
+        usage={usage || usageStats}
         onCreateAccount={() => {
+          if (typeof closeUsageDetailsModal === 'function') {
+            closeUsageDetailsModal();
+          }
           setShowAILimitModal(false);
           navigation.navigate('Register');
         }}
         onSignIn={() => {
+          if (typeof closeUsageDetailsModal === 'function') {
+            closeUsageDetailsModal();
+          }
           setShowAILimitModal(false);
           navigation.navigate('Login');
         }}
         onUpgrade={() => {
+          if (typeof closeUsageDetailsModal === 'function') {
+            closeUsageDetailsModal();
+          }
           setShowAILimitModal(false);
-          navigation.navigate('Profile');
+          navigation.navigate('ManagePlan');
         }}
       />
 
@@ -2830,6 +3042,38 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
 
+  quotaPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 13,
+    borderWidth: 1,
+    gap: 5,
+  },
+  quotaPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  quotaPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    letterSpacing: 0.2,
+  },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  feedbackBannerText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+  },
   newChatHeaderButton: {
     width: 40,
     height: 40,
@@ -2837,7 +3081,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
 
   backButton: {

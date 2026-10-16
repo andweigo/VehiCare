@@ -5,7 +5,11 @@ import {
   useState,
 } from 'react';
 
-import { setAuthToken } from '../api/apiClient';
+import {
+  clearUnauthorizedHandler,
+  setAuthToken,
+  setUnauthorizedHandler,
+} from '../api/apiClient';
 
 import {
   googleLogin,
@@ -163,8 +167,19 @@ export const AuthProvider = ({
   const [loading, setLoading] =
     useState(true);
 
+  const [isGuest, setIsGuest] =
+    useState(false);
+
   const [logoutSignal, setLogoutSignal] =
     useState(0);
+
+  const continueAsGuest = () => {
+    setIsGuest(true);
+  };
+
+  const exitGuestMode = () => {
+    setIsGuest(false);
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -199,6 +214,8 @@ export const AuthProvider = ({
       setUser(
         nextUser,
       );
+
+      setIsGuest(false);
     };
 
   /*
@@ -237,6 +254,25 @@ export const AuthProvider = ({
       );
     }
 
+    setUnauthorizedHandler(async () => {
+      console.warn('[AuthContext] Session expired or revoked by server (401). Performing clean logout...');
+      try {
+        await logoutFirebase();
+      } catch (e) {
+        // ignore
+      }
+      try {
+        await clearAuthData();
+      } catch (e) {
+        // ignore
+      }
+      setAuthToken(null);
+      setToken(null);
+      setUser(null);
+      setIsGuest(false);
+      setLogoutSignal(c => c + 1);
+    });
+
     const unsubscribe =
       onAuthStateChanged(
         async firebaseUser => {
@@ -273,13 +309,20 @@ export const AuthProvider = ({
               }
 
               /*
-               * If Firebase is authenticated,
+               * If Firebase is authenticated and token exists,
                * restore the account state.
                */
-              await persistAuthState(
-                persistedToken,
-                authUser,
-              );
+              if (persistedToken) {
+                await persistAuthState(
+                  persistedToken,
+                  authUser,
+                );
+              } else {
+                setAuthToken(null);
+                setToken(null);
+                setUser(null);
+                await clearAuthData();
+              }
             } else {
               /*
                * Firebase is logged out.
@@ -318,6 +361,7 @@ export const AuthProvider = ({
 
     return () => {
       isMounted = false;
+      clearUnauthorizedHandler();
 
       if (
         typeof unsubscribe ===
@@ -945,6 +989,7 @@ export const AuthProvider = ({
          */
         setToken(null);
         setUser(null);
+        setIsGuest(false);
         setLogoutSignal(
           current => current + 1,
         );
@@ -975,6 +1020,9 @@ export const AuthProvider = ({
         logoutSignal,
 
         loading,
+        isGuest,
+        continueAsGuest,
+        exitGuestMode,
 
         register,
         registerGoogle,
@@ -990,7 +1038,7 @@ export const AuthProvider = ({
         updateProfile,
 
         isAuthenticated:
-          !!token,
+          Boolean(token && String(token).trim()),
       }}
     >
       {children}

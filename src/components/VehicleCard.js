@@ -1356,7 +1356,7 @@ const styles = StyleSheet.create({
   },
 
   vehicleName: {
-    fontFamily: 'Outfit-SemiBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 17,
     lineHeight: 21,
 

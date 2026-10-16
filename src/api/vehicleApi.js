@@ -647,14 +647,18 @@ const vehicleApi = {
     }
   },
 
-  submitDiagnostic: async payload => {
+  submitDiagnostic: async (payload, authTokenSnapshot) => {
     try {
-      const config = await buildAuthConfig();
+      const config = authTokenSnapshot === undefined
+        ? await buildAuthConfig()
+        : { authTokenSnapshot };
+      const isMultipart = typeof FormData !== 'undefined' && payload instanceof FormData;
       const response = await apiClient.post('/diagnostics', payload, {
         ...config,
+        timeout: isMultipart ? 370000 : 60000,
         headers: {
           ...(config.headers || {}),
-          ...(typeof FormData !== 'undefined' && payload instanceof FormData
+          ...(isMultipart
             ? { 'Content-Type': 'multipart/form-data' }
             : {}),
         },
@@ -760,9 +764,11 @@ const vehicleApi = {
     }
   },
 
-  syncChatSession: async (sessionPayload) => {
+  syncChatSession: async (sessionPayload, authTokenSnapshot) => {
     try {
-      const config = await buildAuthConfig();
+      const config = authTokenSnapshot === undefined
+        ? await buildAuthConfig()
+        : { authTokenSnapshot };
       const response = await apiClient.post('/chat-sessions', sessionPayload, config);
       return response?.data;
     } catch (error) {

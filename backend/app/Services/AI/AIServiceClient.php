@@ -13,7 +13,10 @@ class AIServiceClient
     public function __construct()
     {
         $this->baseUrl = rtrim((string) config('services.ai_service.url', 'http://127.0.0.1:5000'), '/');
-        $this->secret = (string) config('services.ai_service.secret', '');
+        $this->secret = trim((string) config('services.ai_service.secret', ''));
+        if ($this->secret === '') {
+            throw new \LogicException('AI_SERVICE_SECRET must be configured before calling the AI service.');
+        }
     }
 
     /**
@@ -27,16 +30,25 @@ class AIServiceClient
         string $inputType = 'text',
         array $history = [],
         ?string $requestId = null,
-        ?int $userId = null
+        ?int $userId = null,
+        array $entitlements = [],
+        array $historicalContext = [],
+        array $diagnosticState = []
     ): array {
         $requestId = $requestId ?: ('req_' . bin2hex(random_bytes(8)));
+        $history = $this->sanitizeHistory($history);
 
         $payload = [
             'request_id' => $requestId,
             'user_context' => [
                 'id' => $userId,
                 'language' => $vehicleInfo['preferred_language'] ?? 'en',
+                'plan' => $entitlements['plan'] ?? 'free',
             ],
+            'entitlements' => empty($entitlements) ? (object) [] : $entitlements,
+            'historical_context' => empty($historicalContext) ? (object) [] : $historicalContext,
+            'diagnostic_state' => empty($diagnosticState) ? (object) ['assessments' => []] : $diagnosticState,
+
             'vehicle_context' => [
                 'type' => $vehicleInfo['type'] ?? 'Vehicle',
                 'brand' => $vehicleInfo['brand'] ?? 'Unknown',
@@ -55,18 +67,13 @@ class AIServiceClient
 
         $endpoint = "{$this->baseUrl}/api/diagnosis";
 
-        $brandStr = $this->safeStr($vehicleInfo['brand'] ?? 'Unknown');
-        $modelStr = $this->safeStr($vehicleInfo['model'] ?? '');
-
         Log::info('[AIServiceClient] Sending request to Node.js AI Service', [
             'request_id' => $requestId,
-            'endpoint' => $endpoint,
-            'vehicle' => trim("{$brandStr} {$modelStr}"),
             'has_media' => !empty($mediaBase64),
         ]);
 
         try {
-            $response = Http::timeout(65)
+            $response = Http::timeout((int) config('services.ai_service.timeout', 360))
                 ->connectTimeout(10)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
@@ -74,34 +81,89 @@ class AIServiceClient
                     'X-Request-ID' => $requestId,
                 ])
                 ->post($endpoint, $payload);
-
-            if ($response->successful()) {
-                $data = $response->json();
-                if (isset($data['success']) && $data['success'] && isset($data['diagnosis'])) {
-                    Log::info('[AIServiceClient] Received successful AI diagnosis from Node.js', [
-                        'request_id' => $requestId,
-                        'ai_source' => $data['ai_source'] ?? 'unknown',
-                        'model' => $data['model'] ?? 'unknown',
-                    ]);
-                    $data['diagnosis']['ai_source'] = $data['ai_source'] ?? 'gemini';
-                    return $data['diagnosis'];
-                }
-            }
-
-            Log::error('[AIServiceClient] Node.js AI Service returned error response', [
-                'request_id' => $requestId,
-                'status' => $response->status(),
-                'body' => mb_substr($response->body(), 0, 500),
-            ]);
         } catch (\Throwable $e) {
             Log::error('[AIServiceClient] HTTP Exception communicating with Node.js AI Service', [
                 'request_id' => $requestId,
-                'error' => $e->getMessage(),
+                'exception' => get_class($e),
             ]);
+
+            throw new AIServiceException(
+                'AI_SERVICE_UNAVAILABLE',
+                'The AI service is temporarily unavailable. Please try again.',
+                true,
+                503,
+                $e
+            );
         }
 
-        // Return fallback if Node.js microservice fails
-        return $this->generateFallback($vehicleInfo, $symptoms);
+        $data = $response->json();
+        if ($response->successful() && isset($data['success']) && $data['success'] && isset($data['diagnosis'])) {
+            Log::info('[AIServiceClient] Received successful AI diagnosis from Node.js', [
+                'request_id' => $requestId,
+                'ai_source' => $data['ai_source'] ?? 'unknown',
+                'model' => $data['model'] ?? 'unknown',
+            ]);
+            $data['diagnosis']['ai_source'] = $data['ai_source'] ?? 'gemini';
+            return $data['diagnosis'];
+        }
+
+        $errorCode = data_get($data, 'error.code', 'AI_SERVICE_UNAVAILABLE');
+        $message = data_get($data, 'error.message', 'The AI service could not complete the request. Please try again.');
+        $details = data_get($data, 'error.details');
+        $retryable = (bool) data_get($data, 'error.retryable', $response->serverError());
+        $status = $response->status() >= 400 ? $response->status() : 502;
+
+        Log::error('[AIServiceClient] Node.js AI Service returned error response', [
+            'request_id' => $requestId,
+            'status' => $response->status(),
+            'error_code' => $errorCode,
+            'retryable' => $retryable,
+        ]);
+
+        throw new AIServiceException(
+            (string) $errorCode,
+            (string) $message,
+            $retryable,
+            $status,
+            null,
+            is_array($details) ? $details : null
+        );
+    }
+
+    protected function sanitizeHistory(array $history): array
+    {
+        $sanitized = [];
+
+        foreach ($history as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            if (!is_string($entry['role'] ?? null)) {
+                continue;
+            }
+            $role = strtolower(trim($entry['role']));
+            if (!in_array($role, ['user', 'assistant'], true)) {
+                continue;
+            }
+
+            $content = $entry['content'] ?? $entry['text'] ?? null;
+            if (!is_string($content)) {
+                continue;
+            }
+
+            $content = trim($content);
+            if ($content === '') {
+                continue;
+            }
+
+            $sanitized[] = [
+                'role' => $role,
+                'content' => function_exists('mb_substr') ? mb_substr($content, 0, 4000) : substr($content, 0, 4000),
+            ];
+        }
+
+        return array_slice($sanitized, -20);
     }
 
     protected function safeStr($val, string $default = ''): string
@@ -119,45 +181,4 @@ class AIServiceClient
         return $default;
     }
 
-    protected function generateFallback(array $vehicleInfo, string $symptoms): array
-    {
-        $vBrand = $this->safeStr($vehicleInfo['brand'] ?? '', 'Vehicle');
-        $vModel = $this->safeStr($vehicleInfo['model'] ?? '');
-        $vName = trim("{$vBrand} {$vModel}");
-
-        return [
-            'type' => 'diagnostic',
-            'status' => 'needs_clarification',
-            'confidence' => 'INSUFFICIENT',
-            'summary' => "The reported symptoms for your {$vName} require additional information.",
-            'reported' => $symptoms !== '' ? [$symptoms] : [],
-            'observed' => [],
-            'severity' => 'MODERATE',
-            'urgency' => 'Please provide more detail about when the symptom occurs.',
-            'possible_causes' => [
-                [
-                    'cause' => 'Component inspection required',
-                    'likelihood' => 'MODERATE',
-                    'reason' => 'The available information is insufficient to identify a specific component.',
-                ],
-            ],
-            'recommended_actions' => [
-                'Provide more detail about when the symptom occurs.',
-            ],
-            'clarification_questions' => [
-                'When does the symptom occur?',
-            ],
-            'estimated_cost' => [
-                'min' => 1000,
-                'max' => 3500,
-                'currency' => 'PHP',
-            ],
-            'professional_help' => [
-                'recommended' => false,
-                'requires_specialist' => false,
-                'reason' => '',
-                'severity' => 'MODERATE',
-            ],
-        ];
-    }
 }

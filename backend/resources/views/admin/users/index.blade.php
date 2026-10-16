@@ -53,7 +53,7 @@
                             <th class="px-4 py-3">User</th>
                             <th class="px-4 py-3">Role</th>
                             <th class="px-4 py-3">Subscription</th>
-                            <th class="px-4 py-3">Vehicles</th>
+                            <th class="px-4 py-3">Vehicles (Active / Total)</th>
                             <th class="px-4 py-3">Status</th>
                             <th class="px-4 py-3 text-right">Actions</th>
                         </tr>
@@ -87,7 +87,15 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 font-heading font-semibold text-white">
-                                    {{ $user->vehicles_count }}
+                                    {{ $user->active_vehicles_count }} / {{ $user->vehicles_count }}
+                                    @php
+                                        $vehicleAllowance = $user->subscription_plan === App\Models\User::SUBSCRIPTION_PREMIUM
+                                            ? App\Models\User::VEHICLE_LIMIT_PREMIUM
+                                            : App\Models\User::VEHICLE_LIMIT_FREE;
+                                    @endphp
+                                    @if($user->active_vehicles_count > $vehicleAllowance)
+                                        <span class="ml-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-heading font-bold text-amber-400">OVER LIMIT</span>
+                                    @endif
                                 </td>
                                 <td class="px-4 py-3">
                                     @if($user->is_active)

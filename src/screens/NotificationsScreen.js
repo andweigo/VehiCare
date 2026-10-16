@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 const CATEGORY_KEYS = [
   'All',
+  'Announcements',
   'Vehicle',
   'Diagnostics',
   'Maintenance',
@@ -89,6 +90,14 @@ const groupByDate = items => {
 
 const getNotificationMeta = (type, isDark = false) => {
   switch (type) {
+    case 'announcement':
+      return {
+        icon: 'campaign',
+        label: 'Announcement',
+        color: isDark ? '#38BDF8' : '#0284C7',
+        background: isDark ? '#122438' : '#E0F2FE',
+      };
+
     case 'maintenance':
       return {
         icon: 'build',
@@ -352,16 +361,17 @@ const NotificationsScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState('All');
+  const mountedRef = useRef(false);
+  const loadInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
+  const loadRef = useRef(null);
+  const currentUserIdRef = useRef(user?.id);
+  currentUserIdRef.current = user?.id;
 
   const handleRealtimeNotification = useCallback(
-    async (broadcastData) => {
+    broadcastData => {
       console.info('[NotificationsScreen] Realtime notification received:', broadcastData);
-      try {
-        const items = await notificationService.fetchNotifications();
-        setNotifications(Array.isArray(items) ? items : []);
-      } catch (e) {
-        console.warn('Error syncing notifications in realtime:', e);
-      }
+      loadRef.current?.();
     },
     [],
   );
@@ -376,45 +386,63 @@ const NotificationsScreen = ({ navigation }) => {
   ---------------------------------------------------------- */
 
   const load = useCallback(async () => {
+    if (!mountedRef.current) return;
+
+    if (loadInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
+
+    loadInFlightRef.current = true;
+    const requestedUserId = user?.id;
     try {
       const items = await notificationService.fetchNotifications();
-      setNotifications(Array.isArray(items) ? items : []);
+      if (mountedRef.current && currentUserIdRef.current === requestedUserId) {
+        setNotifications(Array.isArray(items) ? items : []);
+      }
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
-      setLoading(false);
+      loadInFlightRef.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
+        if (currentUserIdRef.current !== requestedUserId || refreshPendingRef.current) {
+          refreshPendingRef.current = false;
+          loadRef.current?.();
+        }
+      }
     }
-  }, []);
+  }, [user?.id]);
+  loadRef.current = load;
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
 
     const timerId = setInterval(() => {
-      notificationService.fetchNotifications().then(items => {
-        if (Array.isArray(items)) {
-          setNotifications(items);
-        }
-      }).catch(() => {});
+      load();
     }, 12000);
 
-    return () => clearInterval(timerId);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timerId);
+    };
   }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
-    setRefreshing(false);
+    if (mountedRef.current) setRefreshing(false);
   }, [load]);
 
   const onMarkAll = useCallback(async () => {
     try {
       await notificationService.markAllAsRead();
-      const items = await notificationService.fetchNotifications();
-      setNotifications(Array.isArray(items) ? items : []);
+      await load();
     } catch (error) {
       console.error('Failed to mark notifications as read:', error);
     }
-  }, []);
+  }, [load]);
 
   const onPressNotification = useCallback(
     async item => {
@@ -423,8 +451,7 @@ const NotificationsScreen = ({ navigation }) => {
           await notificationService.markAsRead(item.id);
         }
 
-        const items = await notificationService.fetchNotifications();
-        setNotifications(Array.isArray(items) ? items : []);
+        await load();
 
         const targetVehicleId = item.vehicleId || item.data?.vehicle_id;
 
@@ -477,7 +504,7 @@ const NotificationsScreen = ({ navigation }) => {
         console.error('Failed processing notification click:', error);
       }
     },
-    [navigation, refreshActiveVehicle],
+    [navigation, refreshActiveVehicle, load],
   );
 
   const filteredNotifications = useMemo(() => {

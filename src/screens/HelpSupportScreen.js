@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
+import { HELP_RESOURCES, RESOURCE_CATEGORIES } from '../data/helpResources';
 
 // Enable LayoutAnimation on Android
 if (
@@ -30,24 +31,28 @@ const QUICK_CARDS = [
     title: 'Getting Started',
     icon: 'rocket-launch',
     description: 'Learn the basics of VehiCare',
+    articleId: 'getting_started_overview',
   },
   {
     key: 'vehicle_setup',
     title: 'Vehicle Setup',
     icon: 'directions-car',
     description: 'Manage your vehicle profiles',
+    articleId: 'add_vehicle_guide',
   },
   {
     key: 'ai_diagnostics',
     title: 'AI Diagnostics',
     icon: 'health-and-safety',
     description: 'Understand your vehicle diagnosis',
+    articleId: 'start_diagnosis_guide',
   },
   {
     key: 'maintenance',
     title: 'Maintenance',
     icon: 'build',
     description: 'Manage maintenance and reminders',
+    articleId: 'maintenance_schedules_guide',
   },
 ];
 
@@ -136,41 +141,14 @@ const SUPPORT_CATEGORIES = [
     title: 'Subscription & Premium',
     icon: 'workspace-premium',
     desc: 'Billing and premium features',
-    screen: null,
+    screen: 'ManagePlan',
   },
   {
     key: 'technical',
     title: 'Technical Issues',
     icon: 'settings-suggest',
     desc: 'App crashes, device issues',
-    screen: null,
-  },
-];
-
-const RESOURCES = [
-  {
-    key: 'user_guide',
-    title: 'User Guide',
-    icon: 'menu-book',
-    screen: null,
-  },
-  {
-    key: 'getting_started',
-    title: 'Getting Started',
-    icon: 'rocket-launch',
-    screen: null,
-  },
-  {
-    key: 'diagnostics_guide',
-    title: 'Vehicle Diagnostics Guide',
-    icon: 'search',
-    screen: null,
-  },
-  {
-    key: 'maintenance_guide',
-    title: 'Maintenance Guide',
-    icon: 'build',
-    screen: null,
+    screen: 'ReportProblem',
   },
 ];
 
@@ -178,6 +156,7 @@ const HelpSupportScreen = ({ navigation }) => {
   const { theme } = useTheme();
 
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [expanded, setExpanded] = useState({});
   const [faq, setFaq] = useState(FAQ_ITEMS);
 
@@ -209,23 +188,28 @@ const HelpSupportScreen = ({ navigation }) => {
     }));
   }, []);
 
-  const onQuickCardPress = useCallback(card => {
-    Alert.alert(card.title, card.description);
-  }, []);
+  const onQuickCardPress = useCallback(
+    card => {
+      if (card.articleId && navigation) {
+        navigation.navigate('HelpArticle', { articleId: card.articleId });
+        return;
+      }
+      Alert.alert(card.title, card.description);
+    },
+    [navigation],
+  );
 
   const onContactSupport = useCallback(() => {
-    Alert.alert(
-      'Contact Support',
-      'Open support contact form (placeholder)',
-    );
-  }, []);
+    if (navigation) {
+      navigation.navigate('SendFeedback');
+    }
+  }, [navigation]);
 
   const onReportProblem = useCallback(() => {
-    Alert.alert(
-      'Report a Problem',
-      'Open problem report flow (placeholder)',
-    );
-  }, []);
+    if (navigation) {
+      navigation.navigate('ReportProblem');
+    }
+  }, [navigation]);
 
   const onCategoryPress = useCallback(
     cat => {
@@ -241,20 +225,32 @@ const HelpSupportScreen = ({ navigation }) => {
 
   const onResourcePress = useCallback(
     resource => {
-      if (resource.screen && navigation) {
-        navigation.navigate(resource.screen);
-        return;
+      if (navigation) {
+        navigation.navigate('HelpArticle', { articleId: resource.id });
       }
-
-      Alert.alert(
-        resource.title,
-        'Open resource (placeholder)',
-      );
     },
     [navigation],
   );
 
   const filteredFaq = useMemo(() => faq, [faq]);
+
+  const filteredResources = useMemo(() => {
+    let list = HELP_RESOURCES;
+    if (selectedCategory !== 'all') {
+      list = list.filter(item => item.category === selectedCategory);
+    }
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter(
+        item =>
+          item.title.toLowerCase().includes(q) ||
+          item.summary.toLowerCase().includes(q) ||
+          (item.categoryTitle &&
+            item.categoryTitle.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [selectedCategory, query]);
 
   return (
     <SafeAreaView
@@ -865,58 +861,164 @@ const HelpSupportScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* RESOURCES */}
+        {/* HELPFUL RESOURCES */}
 
         <View style={styles.sectionBlock}>
-          <Text
-            style={[
-              styles.sectionHeading,
-              {
-                color: theme.text,
-              },
-            ]}
-          >
-            Helpful Resources
-          </Text>
+          <View style={styles.sectionHeadingRow}>
+            <View>
+              <Text
+                style={[
+                  styles.sectionHeading,
+                  {
+                    color: theme.text,
+                  },
+                ]}
+              >
+                Helpful Resources
+              </Text>
 
-          <Text
-            style={[
-              styles.sectionSubheading,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
-            Guides to help you use VehiCare
-          </Text>
+              <Text
+                style={[
+                  styles.sectionSubheading,
+                  {
+                    color: theme.textSecondary,
+                  },
+                ]}
+              >
+                Guides to help you use VehiCare
+              </Text>
+            </View>
 
-          <View
-            style={[
-              styles.settingsCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-            ]}
+            <View
+              style={[
+                styles.faqCount,
+                {
+                  backgroundColor: theme.accentSoft,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.faqCountText,
+                  {
+                    color: theme.accent,
+                  },
+                ]}
+              >
+                {filteredResources.length}
+              </Text>
+            </View>
+          </View>
+
+          {/* Category Filter Pills */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryPillsScroll}
+            style={styles.categoryPillsContainer}
           >
-            {RESOURCES.map(
-              (resource, index) => (
+            {RESOURCE_CATEGORIES.map(category => {
+              const isSelected = selectedCategory === category.key;
+              return (
                 <TouchableOpacity
-                  key={resource.key}
+                  key={category.key}
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: isSelected
+                        ? theme.accent
+                        : theme.surface,
+                      borderColor: isSelected
+                        ? theme.accent
+                        : theme.border,
+                    },
+                  ]}
+                  onPress={() => setSelectedCategory(category.key)}
+                  activeOpacity={0.75}
+                >
+                  <Icon
+                    name={category.icon}
+                    size={14}
+                    color={isSelected ? '#FFFFFF' : theme.textSecondary}
+                    style={styles.categoryPillIcon}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryPillText,
+                      {
+                        color: isSelected
+                          ? '#FFFFFF'
+                          : theme.textSecondary,
+                        fontFamily: isSelected
+                          ? 'Inter-SemiBold'
+                          : 'Inter-Medium',
+                      },
+                    ]}
+                  >
+                    {category.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {filteredResources.length === 0 ? (
+            <View
+              style={[
+                styles.emptyFaq,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.surface,
+                },
+              ]}
+            >
+              <Icon
+                name="menu-book"
+                size={26}
+                color={theme.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.emptyFaqTitle,
+                  {
+                    color: theme.text,
+                  },
+                ]}
+              >
+                No guides found
+              </Text>
+              <Text
+                style={[
+                  styles.emptyFaqText,
+                  {
+                    color: theme.textSecondary,
+                  },
+                ]}
+              >
+                Try selecting a different category or clearing your search.
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.settingsCard,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              {filteredResources.map((resource, index) => (
+                <TouchableOpacity
+                  key={resource.id}
                   activeOpacity={0.8}
-                  onPress={() =>
-                    onResourcePress(resource)
-                  }
+                  onPress={() => onResourcePress(resource)}
                   style={[
                     styles.resourceRow,
                     {
-                      borderBottomColor:
-                        theme.border,
+                      borderBottomColor: theme.border,
                       borderBottomWidth:
-                        index ===
-                        RESOURCES.length - 1
-                          ? 0
-                          : 1,
+                        index === filteredResources.length - 1 ? 0 : 1,
                     },
                   ]}
                 >
@@ -924,21 +1026,37 @@ const HelpSupportScreen = ({ navigation }) => {
                     style={[
                       styles.resourceIcon,
                       {
-                        backgroundColor:
-                          theme.surfaceAlt,
+                        backgroundColor: theme.accentSoft,
                       },
                     ]}
                   >
                     <Icon
-                      name={resource.icon}
+                      name={resource.icon || 'menu-book'}
                       size={18}
                       color={theme.accent}
                     />
                   </View>
 
-                  <View
-                    style={styles.resourceContent}
-                  >
+                  <View style={styles.resourceContent}>
+                    <View style={styles.resourceMetaRow}>
+                      <Text
+                        style={[
+                          styles.resourceCategoryTag,
+                          { color: theme.accent },
+                        ]}
+                      >
+                        {resource.categoryTitle.toUpperCase()}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.resourceReadTime,
+                          { color: theme.textSecondary },
+                        ]}
+                      >
+                        • {resource.readTime}
+                      </Text>
+                    </View>
+
                     <Text
                       style={[
                         styles.resourceTitle,
@@ -946,8 +1064,21 @@ const HelpSupportScreen = ({ navigation }) => {
                           color: theme.text,
                         },
                       ]}
+                      numberOfLines={1}
                     >
                       {resource.title}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.resourceDesc,
+                        {
+                          color: theme.textSecondary,
+                        },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {resource.summary}
                     </Text>
                   </View>
 
@@ -957,9 +1088,9 @@ const HelpSupportScreen = ({ navigation }) => {
                     color={theme.textSecondary}
                   />
                 </TouchableOpacity>
-              ),
-            )}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* SAFETY NOTICE */}
@@ -1410,12 +1541,40 @@ secondaryActionText: {
     marginTop: 2,
   },
 
+  /* RESOURCE CATEGORY PILLS */
+
+  categoryPillsContainer: {
+    marginVertical: 10,
+  },
+
+  categoryPillsScroll: {
+    paddingRight: 12,
+  },
+
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+
+  categoryPillIcon: {
+    marginRight: 6,
+  },
+
+  categoryPillText: {
+    fontSize: 11.5,
+  },
+
   /* RESOURCES */
 
   resourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 13,
   },
 
   resourceIcon: {
@@ -1429,11 +1588,37 @@ secondaryActionText: {
 
   resourceContent: {
     flex: 1,
+    minWidth: 0,
+  },
+
+  resourceMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+
+  resourceCategoryTag: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9,
+    letterSpacing: 0.6,
+  },
+
+  resourceReadTime: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 9.5,
+    marginLeft: 4,
   },
 
   resourceTitle: {
     fontFamily: 'Outfit-SemiBold',
     fontSize: 13,
+  },
+
+  resourceDesc: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    marginTop: 3,
+    lineHeight: 15,
   },
 
   /* SAFETY */

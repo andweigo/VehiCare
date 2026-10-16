@@ -45,13 +45,15 @@
                     <span class="rounded-full bg-[#32D583]/10 px-3 py-1 text-xs font-heading font-bold text-[#32D583] border border-[#32D583]/20">Registered</span>
                 @endif
 
-                <form action="{{ route('admin.vehicles.destroy', $vehicle->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to archive this vehicle?');">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="rounded-xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500 hover:text-white px-3.5 py-2 text-xs font-heading font-semibold text-rose-400 transition">
-                        Archive Vehicle
-                    </button>
-                </form>
+                @unless($vehicle->archived_at)
+                    <form action="{{ route('admin.vehicles.destroy', $vehicle->id) }}" method="POST" onsubmit="return confirm('Archive this vehicle? Its maintenance and diagnostic history will be retained.');">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="rounded-xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500 hover:text-white px-3.5 py-2 text-xs font-heading font-semibold text-rose-400 transition">
+                            Archive Vehicle
+                        </button>
+                    </form>
+                @endunless
             </div>
         </div>
 

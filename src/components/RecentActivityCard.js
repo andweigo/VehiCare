@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   viewAllText: {
-    fontFamily: 'Outfit-Bold',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 13,
   },
   emptyBox: {
@@ -178,8 +178,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   vehicleBadgeText: {
-    fontFamily: 'Inter-Medium',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 10,
+    letterSpacing: 0.3,
   },
 });
 

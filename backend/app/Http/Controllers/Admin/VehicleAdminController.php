@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle;
 use App\Models\VehicleType;
 use App\Models\VehicleBrand;
+use App\Services\AdminActionAuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class VehicleAdminController extends Controller
 {
@@ -97,9 +99,30 @@ class VehicleAdminController extends Controller
 
     public function destroy($id)
     {
-        $vehicle = Vehicle::findOrFail($id);
-        $vehicle->delete();
+        $vehicle = Vehicle::with('user')->findOrFail($id);
 
-        return redirect()->route('admin.vehicles.index')->with('status', 'Vehicle archived successfully.');
+        DB::transaction(function () use ($vehicle) {
+            $wasArchived = $vehicle->archived_at !== null;
+            $vehicle->archived_at = $vehicle->archived_at ?? now();
+            $vehicle->save();
+            if (! $wasArchived) {
+                app(AdminActionAuditService::class)->record(auth()->user(), 'vehicle_archived', 'vehicle', $vehicle->id, [
+                    'user_id' => $vehicle->user_id,
+                ]);
+            }
+
+            $user = $vehicle->user;
+            if ($user && (int) $user->active_vehicle_id === (int) $vehicle->id) {
+                $nextActiveVehicle = $user->activeVehicles()
+                    ->where('id', '!=', $vehicle->id)
+                    ->latest()
+                    ->first();
+
+                $user->active_vehicle_id = $nextActiveVehicle?->id;
+                $user->save();
+            }
+        });
+
+        return redirect()->route('admin.vehicles.index')->with('status', 'Vehicle archived successfully. Its diagnostic and maintenance history was preserved.');
     }
 }

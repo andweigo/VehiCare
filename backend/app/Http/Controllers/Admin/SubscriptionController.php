@@ -21,7 +21,11 @@ class SubscriptionController extends Controller
     {
         $tab = $request->get('tab', 'all');
 
-        $paymentsQuery = Payment::with(['user', 'admin'])->orderByDesc('created_at');
+        $paymentsQuery = Payment::with([
+            'user:id,name,email',
+            'admin:id,name',
+            'subscriptionRevokedBy:id,name',
+        ])->orderByDesc('created_at');
 
         if ($tab === 'pending') {
             $paymentsQuery->where('status', Payment::STATUS_PENDING);
@@ -111,11 +115,51 @@ class SubscriptionController extends Controller
                 'required',
                 'in:' . implode(',', [User::SUBSCRIPTION_FREE, User::SUBSCRIPTION_PREMIUM]),
             ],
-            'vehicle_limit' => ['required', 'integer', 'min:1'],
+            'billing_cycle' => ['required_if:subscription_plan,' . User::SUBSCRIPTION_PREMIUM, 'nullable', 'in:monthly,yearly'],
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
 
-        $user->update($validated);
+        if ($validated['subscription_plan'] === User::SUBSCRIPTION_PREMIUM) {
+            $this->subscriptionService->grantManualPremium(
+                $user,
+                $request->user(),
+                $validated['billing_cycle'],
+                $validated['reason']
+            );
+        } else {
+            $this->subscriptionService->revokePremium($user, $request->user(), $validated['reason']);
+        }
 
         return back()->with('status', 'Subscription settings updated successfully.');
+    }
+
+    public function grantPremium(Request $request, $id)
+    {
+        $user = User::where('role', User::ROLE_USER)->findOrFail($id);
+
+        $validated = $request->validate([
+            'billing_cycle' => ['required', 'in:monthly,yearly'],
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ]);
+
+        $this->subscriptionService->grantManualPremium(
+            $user,
+            $request->user(),
+            $validated['billing_cycle'],
+            $validated['reason']
+        );
+
+        return back()->with('status', "Manual Premium access granted to {$user->name}.");
+    }
+
+    public function revokePremium(Request $request, $id)
+    {
+        $user = User::where('role', User::ROLE_USER)->findOrFail($id);
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ]);
+        $this->subscriptionService->revokePremium($user, $request->user(), $validated['reason']);
+
+        return back()->with('status', "Premium access revoked for {$user->name}. Existing vehicles were preserved; any refund remains a separate payment workflow.");
     }
 }

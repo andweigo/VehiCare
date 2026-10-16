@@ -134,12 +134,6 @@ const Sidebar = ({ navigation, activeScreen = 'Dashboard', onClose, topInset = 0
 
     try {
       await logout();
-      if (navigation) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Welcome' }],
-        });
-      }
     } catch (error) {
       console.error('Logout failed:', error);
     }

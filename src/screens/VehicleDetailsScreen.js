@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import {
     ActivityIndicator,
+    BackHandler,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -98,6 +99,17 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
     isAddFromMyVehicles,
   ]);
 
+  useEffect(() => {
+    if (step <= 1) return;
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      previousStep();
+      return true;
+    });
+
+    return () => backHandler.remove();
+  }, [step, previousStep]);
+
   const customVehicleModal = useCustomVehicleModal({
     brand,
     model,
@@ -129,7 +141,7 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
       if (isAddFromMyVehicles) {
         navigation.replace('Vehicles');
       } else {
-        navigation.replace('VehicleLoading');
+        navigation.replace('VehicleLoading', { vehicle: response });
       }
     }
   };

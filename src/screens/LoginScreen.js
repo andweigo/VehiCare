@@ -170,6 +170,10 @@ const LoginScreen = ({ navigation, route }) => {
   };
 
   const handleLogin = async () => {
+    if (loading || googleLoading) {
+      return;
+    }
+
     if (!email.trim() || !password) {
       showToast({
         type: 'warning',
@@ -205,16 +209,18 @@ const LoginScreen = ({ navigation, route }) => {
 
       await delay(1500);
 
-      const shouldSkipVehicleSetup =
-        result?.hasAccountVehicles &&
-        redirectTo?.name === 'VehicleDetails';
+      if (navigation.isFocused && navigation.isFocused()) {
+        const shouldSkipVehicleSetup =
+          result?.hasAccountVehicles &&
+          redirectTo?.name === 'VehicleDetails';
 
-      if (shouldSkipVehicleSetup) {
-        navigation.replace('Dashboard');
-      } else if (redirectTo?.name) {
-        navigation.replace(redirectTo.name, redirectTo.params);
-      } else {
-        navigation.replace('Dashboard');
+        if (shouldSkipVehicleSetup) {
+          navigation.replace('Dashboard');
+        } else if (redirectTo?.name) {
+          navigation.replace(redirectTo.name, redirectTo.params);
+        } else {
+          navigation.replace('Dashboard');
+        }
       }
     } catch (err) {
       showToast(getLoginErrorPayload(err));
@@ -228,6 +234,10 @@ const LoginScreen = ({ navigation, route }) => {
   };
 
   const handleGoogleSignIn = async () => {
+    if (loading || googleLoading) {
+      return;
+    }
+
     if (typeof loginGoogle !== 'function') {
       console.error(
         'Google sign-in handler unavailable:',
@@ -255,25 +265,27 @@ const LoginScreen = ({ navigation, route }) => {
       });
       await delay(1500);
 
-      if (result?.requiresOtp) {
-        navigation.replace('OtpVerification', {
-          email: result?.email,
-          purpose: 'registration',
-          redirectTo,
-        });
-        return;
-      }
+      if (navigation.isFocused && navigation.isFocused()) {
+        if (result?.requiresOtp) {
+          navigation.replace('OtpVerification', {
+            email: result?.email,
+            purpose: 'registration',
+            redirectTo,
+          });
+          return;
+        }
 
-      const shouldSkipVehicleSetup =
-        result?.hasAccountVehicles &&
-        redirectTo?.name === 'VehicleDetails';
+        const shouldSkipVehicleSetup =
+          result?.hasAccountVehicles &&
+          redirectTo?.name === 'VehicleDetails';
 
-      if (shouldSkipVehicleSetup) {
-        navigation.replace('Dashboard');
-      } else if (redirectTo?.name) {
-        navigation.replace(redirectTo.name, redirectTo.params);
-      } else {
-        navigation.replace('Dashboard');
+        if (shouldSkipVehicleSetup) {
+          navigation.replace('Dashboard');
+        } else if (redirectTo?.name) {
+          navigation.replace(redirectTo.name, redirectTo.params);
+        } else {
+          navigation.replace('Dashboard');
+        }
       }
     } catch (err) {
       const rawMessage = String(err?.message || '').toLowerCase();

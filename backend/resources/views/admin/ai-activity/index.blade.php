@@ -7,15 +7,15 @@
         <!-- Top Metrics Cards -->
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4">
-                <p class="text-[10px] font-heading font-bold uppercase tracking-wider text-[#A1A1AA]">AI Usage (Selected Period)</p>
+                <p class="text-[10px] font-heading font-bold uppercase tracking-wider text-[#A1A1AA]">AI Requests (Selected Period)</p>
                 <p class="mt-2 text-2xl font-heading font-extrabold text-white">{{ number_format($totalAiUsagePeriod) }}</p>
-                <p class="text-[10px] text-[#666666] mt-1">Total diagnostic inferences</p>
+                <p class="text-[10px] text-[#666666] mt-1">Consultation attempts across outcomes</p>
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4">
                 <p class="text-[10px] font-heading font-bold uppercase tracking-wider text-[#A1A1AA]">Average Daily AI Usage</p>
                 <p class="mt-2 text-2xl font-heading font-extrabold text-[#F63B05]">{{ $avgDailyUsage }}</p>
-                <p class="text-[10px] text-[#666666] mt-1">Diagnostic runs per day</p>
+                <p class="text-[10px] text-[#666666] mt-1">Request attempts per day</p>
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4">
@@ -25,11 +25,46 @@
             </div>
 
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-4">
-                <p class="text-[10px] font-heading font-bold uppercase tracking-wider text-[#A1A1AA]">Engine Status</p>
-                <p class="mt-2 text-base font-heading font-bold text-[#32D583] flex items-center gap-2">
-                    <span class="h-2.5 w-2.5 rounded-full bg-[#32D583] animate-pulse"></span> Active & Operational
-                </p>
-                <p class="text-[10px] text-[#666666] mt-1">Multi-modal AI Engine</p>
+                <p class="text-[10px] font-heading font-bold uppercase tracking-wider text-[#A1A1AA]">Failed Requests (Selected Period)</p>
+                <p class="mt-2 text-2xl font-heading font-extrabold text-rose-400">{{ number_format($failedRequests) }}</p>
+                <p class="text-[10px] text-[#666666] mt-1">{{ number_format($successfulRequests) }} completed usage records</p>
+            </div>
+        </div>
+
+        <div class="overflow-hidden rounded-xl border border-[#222222] bg-[#111111]">
+            <div class="border-b border-[#222222] p-4">
+                <h2 class="text-sm font-heading font-bold text-white uppercase tracking-wider">Recent Failed AI Requests</h2>
+                <p class="mt-1 text-[11px] text-[#A1A1AA]">Request metadata only; prompts, media, user contact details, credentials, and raw exception messages are not shown.</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs text-[#A1A1AA]">
+                    <thead class="bg-[#181818] text-[10px] font-heading font-bold uppercase tracking-wider text-[#666666]">
+                        <tr>
+                            <th class="px-4 py-3">Request</th>
+                            <th class="px-4 py-3">Plan</th>
+                            <th class="px-4 py-3">Input Type</th>
+                            <th class="px-4 py-3">Error Code</th>
+                            <th class="px-4 py-3">Duration</th>
+                            <th class="px-4 py-3">Recorded</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#222222]">
+                        @forelse($recentFailures as $failure)
+                            <tr>
+                                <td class="px-4 py-3 font-mono text-white">#{{ $failure->id }}</td>
+                                <td class="px-4 py-3">{{ ucfirst($failure->plan) }}</td>
+                                <td class="px-4 py-3">{{ ucfirst($failure->input_type) }}</td>
+                                <td class="px-4 py-3 font-mono">{{ $failure->error_code ?: '—' }}</td>
+                                <td class="px-4 py-3">{{ $failure->duration_ms !== null ? number_format($failure->duration_ms) . ' ms' : '—' }}</td>
+                                <td class="px-4 py-3">{{ $failure->created_at?->format('M d, Y h:i A') ?? '—' }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-4 py-6 text-center text-[#666666]">No failed requests recorded.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
         </div>
 

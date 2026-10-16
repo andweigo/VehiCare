@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/config/googleSignIn';
 
 import { AuthProvider } from './src/context/AuthContext';
+import { AIUsageProvider } from './src/context/AIUsageContext';
 import { ChatProvider } from './src/context/ChatContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import { SidebarDrawerOverlay, SidebarProvider, useSidebar } from './src/context/SidebarContext';
@@ -32,30 +33,32 @@ const App = () => {
             <AuthProvider>
               <VehicleProvider>
                 <VehicleHealthProvider>
-                  <ChatProvider>
-                    <SidebarProvider>
-                      <NavigationContainer
-                        ref={navigationRef}
-                        onReady={() => {
-                          if (navigationRef.isReady()) {
-                            const currentRoute = navigationRef.getCurrentRoute();
-                            if (currentRoute?.name && activeScreenSyncRef.current) {
-                              activeScreenSyncRef.current(currentRoute.name);
+                  <AIUsageProvider>
+                    <ChatProvider>
+                      <SidebarProvider>
+                        <NavigationContainer
+                          ref={navigationRef}
+                          onReady={() => {
+                            if (navigationRef.isReady()) {
+                              const currentRoute = navigationRef.getCurrentRoute();
+                              if (currentRoute?.name && activeScreenSyncRef.current) {
+                                activeScreenSyncRef.current(currentRoute.name);
+                              }
                             }
-                          }
-                        }}
-                        onStateChange={() => {
-                          if (navigationRef.isReady()) {
-                            const currentRoute = navigationRef.getCurrentRoute();
-                            if (currentRoute?.name && activeScreenSyncRef.current) {
-                              activeScreenSyncRef.current(currentRoute.name);
+                          }}
+                          onStateChange={() => {
+                            if (navigationRef.isReady()) {
+                              const currentRoute = navigationRef.getCurrentRoute();
+                              if (currentRoute?.name && activeScreenSyncRef.current) {
+                                activeScreenSyncRef.current(currentRoute.name);
+                              }
                             }
-                          }
-                        }}>
-                        <AppNavigatorWithSidebar onSyncReady={fn => (activeScreenSyncRef.current = fn)} />
-                      </NavigationContainer>
-                    </SidebarProvider>
-                  </ChatProvider>
+                          }}>
+                          <AppNavigatorWithSidebar onSyncReady={fn => (activeScreenSyncRef.current = fn)} />
+                        </NavigationContainer>
+                      </SidebarProvider>
+                    </ChatProvider>
+                  </AIUsageProvider>
                 </VehicleHealthProvider>
               </VehicleProvider>
             </AuthProvider>

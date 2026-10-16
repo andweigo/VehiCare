@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
+import { Animated, BackHandler, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sidebar from '../components/Sidebar';
 
@@ -58,6 +58,17 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
       }),
     ]).start();
   }, [isOpen, sidebarX, backdropOpacity]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeSidebar();
+      return true;
+    });
+
+    return () => backHandler.remove();
+  }, [isOpen, closeSidebar]);
 
   return (
     <View

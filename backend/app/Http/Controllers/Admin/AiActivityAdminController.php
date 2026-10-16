@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AiUsageLog;
 use App\Models\Diagnostic;
 use App\Models\ServiceReferral;
 use App\Models\User;
@@ -29,9 +30,19 @@ class AiActivityAdminController extends Controller
         $totalVehicles = Vehicle::count();
         $totalDiagnostics = Diagnostic::count();
         $totalReferrals = ServiceReferral::count();
+        $successfulRequests = AiUsageLog::where('status', 'success')
+            ->where('created_at', '>=', $startDate)
+            ->count();
+        $failedRequests = AiUsageLog::where('status', 'failed')
+            ->where('created_at', '>=', $startDate)
+            ->count();
+        $recentFailures = AiUsageLog::where('status', 'failed')
+            ->where('created_at', '>=', $startDate)
+            ->latest()
+            ->limit(10)
+            ->get(['id', 'plan', 'input_type', 'error_code', 'duration_ms', 'created_at']);
 
-        // Query AI Diagnostic Runs grouped by DATE(created_at)
-        $rawDailyUsage = Diagnostic::select(
+        $rawDailyUsage = AiUsageLog::select(
                 DB::raw('DATE(created_at) as date'),
                 DB::raw('COUNT(*) as total_runs'),
                 DB::raw('COUNT(DISTINCT user_id) as unique_users')
@@ -68,6 +79,9 @@ class AiActivityAdminController extends Controller
             'totalVehicles',
             'totalDiagnostics',
             'totalReferrals',
+            'successfulRequests',
+            'failedRequests',
+            'recentFailures',
             'chartLabels',
             'chartData',
             'uniqueUserData',
