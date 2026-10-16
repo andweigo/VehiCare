@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
@@ -339,88 +340,96 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
       <Text style={[styles.logo, { color: theme.text }]}>VehiCare</Text>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.flexOne}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>
-            {purpose === 'password_reset' ? 'Verification' : 'Verify email'}
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Enter the 6-digit code sent to{' '}
-            <Text style={{ color: theme.accent, fontFamily: 'Inter-SemiBold' }}>{email}</Text>
-          </Text>
-        </View>
-
-        {/* OTP BOXES DISPLAY */}
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => inputRef.current?.focus()}
-          style={styles.otpContainer}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {renderOtpBoxes()}
-        </TouchableOpacity>
-
-        {/* HIDDEN REAL TEXTINPUT */}
-        <TextInput
-          ref={inputRef}
-          value={otp}
-          onChangeText={handleTextChange}
-          keyboardType="number-pad"
-          maxLength={6}
-          style={styles.hiddenInput}
-          caretHidden
-        />
-
-        {/* SUBMIT BUTTON */}
-        <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: theme.accent },
-            (loading || otp.length !== 6) && styles.buttonDisabled,
-          ]}
-          onPress={() => handleVerify()}
-          disabled={loading || otp.length !== 6}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.buttonText}>Verify Code</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* RESEND SECTION */}
-        <View style={styles.resendContainer}>
-          <Text style={[styles.resendLabel, { color: theme.textSecondary }]}>
-            Didn't receive the code?
-          </Text>
-          {cooldown > 0 ? (
-            <Text style={[styles.cooldownText, { color: theme.accent }]}>
-              Resend available in {formatCooldownTime(cooldown)}
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: theme.text }]}>
+              {purpose === 'password_reset' ? 'Verification' : 'Verify email'}
             </Text>
-          ) : (
-            <TouchableOpacity
-              onPress={handleResendCode}
-              disabled={resending}
-              activeOpacity={0.7}
-              style={{ paddingVertical: 4 }}
-            >
-              <Text style={[styles.resendLink, { color: theme.accent }]}>
-                {resending ? 'Sending...' : 'Resend Code'}
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Enter the 6-digit code sent to{' '}
+              <Text style={{ color: theme.accent, fontFamily: 'Inter-SemiBold' }}>{email}</Text>
+            </Text>
+          </View>
+
+          {/* OTP BOXES DISPLAY */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => inputRef.current?.focus()}
+            style={styles.otpContainer}
+          >
+            {renderOtpBoxes()}
+          </TouchableOpacity>
+
+          {/* HIDDEN REAL TEXTINPUT */}
+          <TextInput
+            ref={inputRef}
+            value={otp}
+            onChangeText={handleTextChange}
+            keyboardType="number-pad"
+            maxLength={6}
+            style={styles.hiddenInput}
+            caretHidden
+          />
+
+          {/* SUBMIT BUTTON */}
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { backgroundColor: theme.accent },
+              (loading || otp.length !== 6) && styles.buttonDisabled,
+            ]}
+            onPress={() => handleVerify()}
+            disabled={loading || otp.length !== 6}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>Verify Code</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* RESEND SECTION */}
+          <View style={styles.resendContainer}>
+            <Text style={[styles.resendLabel, { color: theme.textSecondary }]}>
+              Didn't receive the code?
+            </Text>
+            {cooldown > 0 ? (
+              <Text style={[styles.cooldownText, { color: theme.accent }]}>
+                Resend available in {formatCooldownTime(cooldown)}
               </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+            ) : (
+              <TouchableOpacity
+                onPress={handleResendCode}
+                disabled={resending}
+                activeOpacity={0.7}
+                style={{ paddingVertical: 4 }}
+              >
+                <Text style={[styles.resendLink, { color: theme.accent }]}>
+                  {resending ? 'Sending...' : 'Resend Code'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  flexOne: {
     flex: 1,
   },
   backButton: {

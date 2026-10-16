@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
@@ -160,83 +161,91 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
       <Text style={[styles.logo, { color: theme.text }]}>VehiCare</Text>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.flexOne}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Forgot password</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Enter your email to receive a 6-digit verification code.
-          </Text>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email</Text>
-          <View
-            style={[
-              styles.inputWrapper,
-              {
-                backgroundColor: theme.surfaceAlt,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Ionicons
-              name="mail-outline"
-              size={19}
-              color={theme.textSecondary}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={[styles.input, { color: theme.text }]}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter your email"
-              placeholderTextColor={theme.placeholder}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={!loading}
-            />
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: theme.text }]}>Forgot password</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Enter your email to receive a 6-digit verification code.
+            </Text>
           </View>
-        </View>
 
-        <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: theme.accent },
-            loading && styles.buttonDisabled,
-          ]}
-          activeOpacity={0.85}
-          onPress={handleSendCode}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.buttonText}>Send Verification Code</Text>
-          )}
-        </TouchableOpacity>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                {
+                  backgroundColor: theme.surfaceAlt,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={19}
+                color={theme.textSecondary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Enter your email"
+                placeholderTextColor={theme.placeholder}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!loading}
+              />
+            </View>
+          </View>
 
-        <TouchableOpacity
-          style={styles.footerContainer}
-          onPress={() => navigation.navigate('Login')}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.footer, { color: theme.textSecondary }]}>
-            Remember your password?{' '}
-            <Text style={[styles.orange, { color: theme.accent }]}>Sign In</Text>
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { backgroundColor: theme.accent },
+              loading && styles.buttonDisabled,
+            ]}
+            activeOpacity={0.85}
+            onPress={handleSendCode}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>Send Verification Code</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerContainer}
+            onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.footer, { color: theme.textSecondary }]}>
+              Remember your password?{' '}
+              <Text style={[styles.orange, { color: theme.accent }]}>Sign In</Text>
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  flexOne: {
     flex: 1,
   },
   backButton: {

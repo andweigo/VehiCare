@@ -12,6 +12,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import CustomVehicleModal from '../components/CustomVehicleModal';
 import VehicleDetailsSteps from '../components/VehicleDetailsSteps';
@@ -81,19 +83,42 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   });
 
   const { activeVehicle } = useVehicle();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isGuest, exitGuestMode } = useAuth();
   const { theme } = useTheme();
 
-  useEffect(() => {
-    if (step <= 1) return;
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+  const handleBack = () => {
+    if (step > 1) {
       previousStep();
-      return true;
+    } else if (isGuest) {
+      if (typeof exitGuestMode === 'function') {
+        exitGuestMode();
+      }
+    } else if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  };
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step > 1) {
+        previousStep();
+        return true;
+      }
+      if (isGuest) {
+        if (typeof exitGuestMode === 'function') {
+          exitGuestMode();
+        }
+        return true;
+      }
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+        return true;
+      }
+      return false;
     });
 
     return () => backHandler.remove();
-  }, [step, previousStep]);
+  }, [step, previousStep, isGuest, exitGuestMode, navigation]);
 
   const customVehicleModal = useCustomVehicleModal({
     brand,
@@ -238,98 +263,132 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   };
 
   return (
-    <KeyboardAvoidingView
+    <SafeAreaView
+      edges={['top', 'bottom']}
       style={[styles.container, { backgroundColor: theme.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <StatusBar barStyle={theme.name === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={theme.background} />
+    >
+      <StatusBar
+        barStyle={theme.name === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.background}
+      />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="always"
-        showsVerticalScrollIndicator={false}>
-        <VehicleDetailsSteps
-          vehicleDetails={vehicleDetails}
-          handlers={handlers}
-        />
-      </ScrollView>
-
-      <View style={[styles.bottom, { backgroundColor: theme.background }]}>
-        {step > 1 && (
+      <View style={styles.topBar}>
+        {(step > 1 || isGuest || navigation.canGoBack()) && (
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={previousStep}
-            disabled={savingVehicle}>
-            <Text style={[styles.backText, { color: theme.textSecondary }]}>Back</Text>
+            style={styles.backButtonTop}
+            onPress={handleBack}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={21} color={theme.text} />
           </TouchableOpacity>
         )}
-
-        <TouchableOpacity
-          style={[
-            styles.button,
-            { backgroundColor: theme.accent },
-            ((step === 1 && !canContinueStep1) ||
-              (step === 2 && !canContinueStep2) ||
-              savingVehicle) &&
-              [styles.buttonDisabled, { backgroundColor: theme.border }],
-          ]}
-          onPress={handleContinue}
-          disabled={
-            savingVehicle ||
-            (step === 1 && !canContinueStep1) ||
-            (step === 2 && !canContinueStep2)
-          }>
-          {savingVehicle ? (
-            <View style={styles.savingContent}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text style={styles.buttonText}>Saving...</Text>
-            </View>
-          ) : (
-            <Text style={styles.buttonText}>
-              {step === 2 ? 'Save & Continue' : 'Continue'}
-            </Text>
-          )}
-        </TouchableOpacity>
       </View>
 
-      <CustomVehicleModal
-        visible={customVehicleModal.visible}
-        brand={customVehicleModal.customBrand}
-        model={customVehicleModal.customModel}
-        year={customVehicleModal.customYear}
-        error={customVehicleModal.error}
-        onBrandChange={customVehicleModal.setCustomBrand}
-        onModelChange={customVehicleModal.setCustomModel}
-        onYearChange={customVehicleModal.setCustomYear}
-        onSave={customVehicleModal.handleSaveCustomVehicleProfile}
-        onCancel={customVehicleModal.closeCustomVehicleModal}
-      />
-    </KeyboardAvoidingView>
+      <KeyboardAvoidingView
+        style={styles.flexOne}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="always"
+          showsVerticalScrollIndicator={false}
+        >
+          <VehicleDetailsSteps
+            vehicleDetails={vehicleDetails}
+            handlers={handlers}
+          />
+        </ScrollView>
+
+        <View style={[styles.bottom, { backgroundColor: theme.background }]}>
+          {(step > 1 || isGuest || navigation.canGoBack()) && (
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBack}
+              disabled={savingVehicle}
+            >
+              <Text style={[styles.backText, { color: theme.textSecondary }]}>Back</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { backgroundColor: theme.accent },
+              ((step === 1 && !canContinueStep1) ||
+                (step === 2 && !canContinueStep2) ||
+                savingVehicle) &&
+                [styles.buttonDisabled, { backgroundColor: theme.border }],
+            ]}
+            onPress={handleContinue}
+            disabled={
+              savingVehicle ||
+              (step === 1 && !canContinueStep1) ||
+              (step === 2 && !canContinueStep2)
+            }
+          >
+            {savingVehicle ? (
+              <View style={styles.savingContent}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.buttonText}>Saving...</Text>
+              </View>
+            ) : (
+              <Text style={styles.buttonText}>
+                {step === 2 ? 'Save & Continue' : 'Continue'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <CustomVehicleModal
+          visible={customVehicleModal.visible}
+          brand={customVehicleModal.customBrand}
+          model={customVehicleModal.customModel}
+          year={customVehicleModal.customYear}
+          error={customVehicleModal.error}
+          onBrandChange={customVehicleModal.setCustomBrand}
+          onModelChange={customVehicleModal.setCustomModel}
+          onYearChange={customVehicleModal.setCustomYear}
+          onSave={customVehicleModal.handleSaveCustomVehicleProfile}
+          onCancel={customVehicleModal.closeCustomVehicleModal}
+        />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
     paddingHorizontal: 24,
   },
+  flexOne: {
+    flex: 1,
+  },
+  topBar: {
+    height: 44,
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  backButtonTop: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+  },
   scrollContent: {
-    paddingBottom: 140,
+    paddingBottom: 40,
   },
   bottom: {
-    paddingBottom: 28,
+    paddingBottom: 20,
     paddingTop: 12,
-    backgroundColor: '#0A0A0A',
   },
   button: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: '#F63B05',
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#292929',
+    opacity: 0.6,
   },
   buttonText: {
     fontFamily: 'Inter-SemiBold',
@@ -343,12 +402,11 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     marginBottom: 4,
   },
   backText: {
     fontFamily: 'Inter-Medium',
-    color: '#888888',
     fontSize: 14,
   },
 });
