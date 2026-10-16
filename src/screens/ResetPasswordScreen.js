@@ -122,7 +122,7 @@ const ResetPasswordScreen = ({ route, navigation }) => {
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <StatusBar
-        barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
+        barStyle={theme?.name === 'light' ? 'dark-content' : 'light-content'}
         backgroundColor={theme.background}
       />
       <CustomToast toast={toast} onHide={hideToast} />
