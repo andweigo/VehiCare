@@ -13,7 +13,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import CustomVehicleModal from '../components/CustomVehicleModal';
 import VehicleDetailsSteps from '../components/VehicleDetailsSteps';
@@ -89,15 +88,15 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   const handleBack = () => {
     if (step > 1) {
       previousStep();
-    } else if (isGuest) {
-      if (typeof exitGuestMode === 'function') {
+    } else {
+      if (isGuest && typeof exitGuestMode === 'function') {
         exitGuestMode();
       }
       if (navigation.canGoBack()) {
         navigation.goBack();
+      } else {
+        navigation.navigate('Welcome');
       }
-    } else if (navigation.canGoBack()) {
-      navigation.goBack();
     }
   };
 
@@ -107,23 +106,32 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
         previousStep();
         return true;
       }
-      if (isGuest) {
-        if (typeof exitGuestMode === 'function') {
-          exitGuestMode();
-        }
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-        }
-        return true;
+      if (isGuest && typeof exitGuestMode === 'function') {
+        exitGuestMode();
       }
       if (navigation.canGoBack()) {
         navigation.goBack();
         return true;
       }
-      return false;
+      navigation.navigate('Welcome');
+      return true;
     });
 
-    return () => backHandler.remove();
+    const unsubscribe = navigation.addListener('beforeRemove', e => {
+      if (step > 1) {
+        e.preventDefault();
+        previousStep();
+        return;
+      }
+      if (isGuest && typeof exitGuestMode === 'function') {
+        exitGuestMode();
+      }
+    });
+
+    return () => {
+      backHandler.remove();
+      unsubscribe();
+    };
   }, [step, previousStep, isGuest, exitGuestMode, navigation]);
 
   const customVehicleModal = useCustomVehicleModal({
@@ -278,18 +286,6 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
         backgroundColor={theme.background}
       />
 
-      <View style={styles.topBar}>
-        {(step > 1 || isGuest || navigation.canGoBack()) && (
-          <TouchableOpacity
-            style={styles.backButtonTop}
-            onPress={handleBack}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={21} color={theme.text} />
-          </TouchableOpacity>
-        )}
-      </View>
-
       <KeyboardAvoidingView
         style={styles.flexOne}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -306,7 +302,7 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
         </ScrollView>
 
         <View style={[styles.bottom, { backgroundColor: theme.background }]}>
-          {(step > 1 || isGuest || navigation.canGoBack()) && (
+          {(step > 1 || navigation.canGoBack() || !isAuthenticated || isGuest) && (
             <TouchableOpacity
               style={styles.backButton}
               onPress={handleBack}
@@ -370,17 +366,8 @@ const styles = StyleSheet.create({
   flexOne: {
     flex: 1,
   },
-  topBar: {
-    height: 44,
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  backButtonTop: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-  },
   scrollContent: {
+    paddingTop: 12,
     paddingBottom: 40,
   },
   bottom: {

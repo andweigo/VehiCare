@@ -311,79 +311,43 @@ const AppNavigator = () => {
             {renderAppScreens()}
           </>
         )
-      ) : isGuest ? (
+      ) : isGuest && hasGuestVehicle ? (
         /* ==========================================================
-           GUEST FLOW
-           Allows guest vehicle onboarding, dashboard, diagnostics,
-           plus upgrade entry points to Login and Register.
+           GUEST WITH CONFIGURED VEHICLE FLOW
+           Dashboard is the root entry point.
         ========================================================== */
-        hasGuestVehicle ? (
-          <>
-            <Stack.Screen
-              name="Dashboard"
-              component={DashboardScreen}
-            />
-            <Stack.Screen
-              name="VehicleLoading"
-              component={VehicleLoadingScreen}
-            />
-            <Stack.Screen
-              name="VehicleDetails"
-              component={VehicleDetailsScreen}
-            />
-            {renderAppScreens()}
-            {/* Guest account upgrade entry points */}
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-            />
-            <Stack.Screen
-              name="ForgotPassword"
-              component={ForgotPasswordScreen}
-            />
-            <Stack.Screen
-              name="ResetPassword"
-              component={ResetPasswordScreen}
-            />
-          </>
-        ) : (
-          <>
-            <Stack.Screen
-              name="VehicleDetails"
-              component={VehicleDetailsScreen}
-            />
-            <Stack.Screen
-              name="VehicleLoading"
-              component={VehicleLoadingScreen}
-            />
-            <Stack.Screen
-              name="Dashboard"
-              component={DashboardScreen}
-            />
-            {renderAppScreens()}
-            {/* Guest account upgrade entry points */}
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-            />
-            <Stack.Screen
-              name="ForgotPassword"
-              component={ForgotPasswordScreen}
-            />
-            <Stack.Screen
-              name="ResetPassword"
-              component={ResetPasswordScreen}
-            />
-          </>
-        )
+        <>
+          <Stack.Screen
+            name="Dashboard"
+            component={DashboardScreen}
+          />
+          <Stack.Screen
+            name="VehicleLoading"
+            component={VehicleLoadingScreen}
+          />
+          <Stack.Screen
+            name="VehicleDetails"
+            component={VehicleDetailsScreen}
+          />
+          {renderAppScreens()}
+          {/* Guest account upgrade entry points */}
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+          />
+          <Stack.Screen
+            name="Register"
+            component={RegisterScreen}
+          />
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+          />
+          <Stack.Screen
+            name="ResetPassword"
+            component={ResetPasswordScreen}
+          />
+        </>
       ) : (
         /* ==========================================================
            SIGNED-OUT FLOW
