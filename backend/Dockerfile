@@ -22,6 +22,8 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
        storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
+COPY certs/ca.pem /etc/ssl/certs/aiven-ca.pem
+
 EXPOSE 80
 
 CMD ["apache2-foreground"]

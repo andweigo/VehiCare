@@ -96,3 +96,6 @@ certs/
 
 # Generated project structure listing
 /vehicare-structure.txt
+
+!backend/certs/
+!backend/certs/ca.pem
