@@ -94,7 +94,7 @@ class OtpService
 
             return [
                 'success' => false,
-                'message' => 'Failed to send verification email. Please try again later.',
+                'message' => 'Failed to send verification email: ' . $e->getMessage(),
             ];
         }
     }

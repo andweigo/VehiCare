@@ -307,14 +307,17 @@ const RegisterScreen = ({
         };
       }
 
+      const rawApiMessage =
+        err?.response?.data?.message ||
+        err?.message;
+
       return {
         type: 'error',
-
-        title:
-          'Registration Failed',
-
+        title: 'Registration Failed',
         message:
-          'We could not create your account. Please try again.',
+          rawApiMessage && String(rawApiMessage).trim().length > 0
+            ? rawApiMessage
+            : 'We could not create your account. Please try again.',
       };
     };
 
