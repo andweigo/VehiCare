@@ -280,7 +280,8 @@ class AuthController extends Controller
 
     private function verifyFirebaseIdToken(string $idToken): array
     {
-        $apiKey = env('FIREBASE_WEB_API_KEY')
+        $apiKey = config('services.firebase.api_key')
+            ?: env('FIREBASE_WEB_API_KEY')
             ?: env('FIREBASE_API_KEY')
             ?: env('GOOGLE_API_KEY');
 

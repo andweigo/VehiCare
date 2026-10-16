@@ -14,9 +14,6 @@ class AIServiceClient
     {
         $this->baseUrl = rtrim((string) config('services.ai_service.url', 'http://127.0.0.1:5000'), '/');
         $this->secret = trim((string) config('services.ai_service.secret', ''));
-        if ($this->secret === '') {
-            throw new \LogicException('AI_SERVICE_SECRET must be configured before calling the AI service.');
-        }
     }
 
     /**
@@ -35,6 +32,15 @@ class AIServiceClient
         array $historicalContext = [],
         array $diagnosticState = []
     ): array {
+        if ($this->secret === '') {
+            throw new AIServiceException(
+                'AI_CONFIG_ERROR',
+                'AI_SERVICE_SECRET must be configured before calling the AI service.',
+                false,
+                500
+            );
+        }
+
         $requestId = $requestId ?: ('req_' . bin2hex(random_bytes(8)));
         $history = $this->sanitizeHistory($history);
 

@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'firebase' => [
+        'api_key' => env('FIREBASE_WEB_API_KEY', env('FIREBASE_API_KEY', env('GOOGLE_API_KEY'))),
+    ],
+
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-3.7-flash'),
