@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -26,7 +25,7 @@ import { useTheme } from '../theme/ThemeContext';
 const ProfileScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { openSidebar } = useSidebar();
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, refreshUser } = useAuth();
   const { language, t } = useLanguage();
 
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -35,6 +34,23 @@ const ProfileScreen = ({ navigation }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
+
+  const refreshUserRef = useRef(refreshUser);
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    refreshUserRef.current = refreshUser;
+    userRef.current = user;
+  });
+
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      if (userRef.current && typeof refreshUserRef.current === 'function') {
+        refreshUserRef.current().catch(() => {});
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const languageLabel =
     language === 'fil'

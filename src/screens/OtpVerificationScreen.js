@@ -17,6 +17,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { resendOtp, verifyOtp } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
 import { useAuth } from '../context/AuthContext';
+import { useVehicle } from '../context/VehicleContext';
 import { useTheme } from '../theme/ThemeContext';
 
 /**
@@ -51,7 +52,8 @@ export const formatApiMessage = msg => {
 
 const OtpVerificationScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
-  const { verifyUserEmail } = useAuth();
+  const { verifyUserEmail, completeRegistrationAuth } = useAuth();
+  const { setActiveVehicle, clearPendingVehicle } = useVehicle();
 
   const email = route?.params?.email || '';
   const purpose = route?.params?.purpose || 'registration';
@@ -123,11 +125,51 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
         setTimeout(async () => {
           if (purpose === 'registration') {
-            await verifyUserEmail();
-            if (redirectTo?.name) {
-              navigation.replace(redirectTo.name, redirectTo.params);
+            const verifiedToken = response?.token || response?.data?.token;
+            const verifiedUser = response?.user || response?.data?.user;
+            const guestVehicle = route?.params?.guestVehicle || null;
+
+            if (verifiedToken && verifiedUser) {
+              try {
+                const completeResult = await completeRegistrationAuth(
+                  verifiedToken,
+                  verifiedUser,
+                  guestVehicle,
+                );
+
+                if (guestVehicle) {
+                  try {
+                    await clearPendingVehicle();
+                  } catch (e) {
+                    // non-fatal
+                  }
+                }
+
+                if (completeResult?.claimedVehicle) {
+                  setActiveVehicle(completeResult.claimedVehicle);
+                }
+
+                if (completeResult?.hasAccountVehicles) {
+                  navigation.replace('VehicleLoading', {
+                    vehicle: completeResult.claimedVehicle,
+                  });
+                } else if (redirectTo?.name) {
+                  navigation.replace(redirectTo.name, redirectTo.params);
+                } else {
+                  navigation.replace('VehicleDetails');
+                }
+              } catch (authErr) {
+                console.error('[OtpVerificationScreen] Registration completion error:', authErr);
+                await verifyUserEmail();
+                navigation.replace('Dashboard');
+              }
             } else {
-              navigation.replace('Dashboard');
+              await verifyUserEmail();
+              if (redirectTo?.name) {
+                navigation.replace(redirectTo.name, redirectTo.params);
+              } else {
+                navigation.replace('Dashboard');
+              }
             }
           } else if (purpose === 'password_reset') {
             navigation.replace('ResetPassword', { email, code });

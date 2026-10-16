@@ -628,71 +628,23 @@ const RegisterScreen = ({
             vehicleToSave,
           );
 
-        if (
-          result?.claimedVehicle
-        ) {
-          setActiveVehicle(
-            result.claimedVehicle,
-          );
-        }
-
-        /*
-         * The vehicle has now been sent to
-         * Laravel and belongs to the account.
-         *
-         * Remove the temporary guest state.
-         */
-
-        await clearPendingVehicle();
-
         showToast({
           type: 'success',
-
-          title:
-            'Account Created',
-
-          message:
-            'Your account is ready. Redirecting…',
-
-          duration: 1500,
+          title: 'Account Created',
+          message: 'A 6-digit verification code has been sent to your email.',
+          duration: 2000,
         });
 
-        await delay(1500);
+        await delay(1200);
 
-        if (navigation.isFocused && navigation.isFocused()) {
-          if (result?.requiresOtp) {
-            navigation.replace('OtpVerification', {
-              email: result?.email || email.trim(),
-              purpose: 'registration',
-              redirectTo,
-            });
-            return;
-          }
-
-          const shouldSkipVehicleSetup =
-            result?.hasAccountVehicles &&
-            redirectTo?.name ===
-              'VehicleDetails';
-
-          if (
-            shouldSkipVehicleSetup
-          ) {
-            navigation.replace(
-              'Dashboard',
-            );
-          } else if (
-            redirectTo?.name
-          ) {
-            navigation.replace(
-              redirectTo.name,
-              redirectTo.params,
-            );
-          } else {
-            navigation.replace(
-              'Dashboard',
-            );
-          }
-        }
+        navigation.replace('OtpVerification', {
+          email: result?.email || email.trim(),
+          purpose: 'registration',
+          redirectTo,
+          guestVehicle: vehicleToSave,
+          cooldown_seconds: result?.cooldownSeconds || 60,
+        });
+        return;
       } catch (err) {
         showToast(
           getRegisterErrorPayload(

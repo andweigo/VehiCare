@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -203,7 +203,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
   const [limitModalVisible, setLimitModalVisible] =
     useState(false);
 
-  const { user, updateUser } =
+  const { user, updateUser, refreshUser } =
     useAuth();
 
   const backendPlan =
@@ -546,24 +546,37 @@ const MyVehiclesScreen = ({ navigation, route }) => {
    * ============================================
    */
 
+  const loadVehiclesRef = useRef(loadVehicles);
+  const refreshUserRef = useRef(refreshUser);
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    loadVehiclesRef.current = loadVehicles;
+    refreshUserRef.current = refreshUser;
+    userRef.current = user;
+  });
+
   useEffect(() => {
     loadVehicles();
+    if (user && typeof refreshUser === 'function') {
+      refreshUser().catch(() => {});
+    }
 
-    const unsubscribe =
-      navigation?.addListener?.(
-        'focus',
-        loadVehicles,
-      );
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      if (typeof loadVehiclesRef.current === 'function') {
+        loadVehiclesRef.current();
+      }
+      if (userRef.current && typeof refreshUserRef.current === 'function') {
+        refreshUserRef.current().catch(() => {});
+      }
+    });
 
     return () => {
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
     };
-  }, [
-    navigation,
-    loadVehicles,
-  ]);
+  }, [navigation]);
 
   useEffect(() => {
     if (route?.params?.vehicle || route?.params?.openVehicleId) {

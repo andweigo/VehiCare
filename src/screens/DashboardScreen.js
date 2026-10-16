@@ -83,7 +83,7 @@ const getVehicleIconName = vehicleType => {
 const DashboardScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { isOpen, openSidebar } = useSidebar();
-  const { isAuthenticated, loginGoogle } = useAuth();
+  const { isAuthenticated, loginGoogle, refreshUser } = useAuth();
   const {
     activeVehicle,
     pendingVehicle,
@@ -98,24 +98,52 @@ const DashboardScreen = ({ navigation }) => {
   const helpSignInModal = useNeedHelpSignInModal();
   const { recentActivities, refreshActivities } = useRecentActivities(3);
 
+  const focusRef = useRef({
+    refreshActivities,
+    refreshUsage,
+    refreshUser,
+    refreshActiveVehicle,
+    isAuthenticated,
+    activeVehicle,
+  });
+
+  useEffect(() => {
+    focusRef.current = {
+      refreshActivities,
+      refreshUsage,
+      refreshUser,
+      refreshActiveVehicle,
+      isAuthenticated,
+      activeVehicle,
+    };
+  });
+
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      refreshActivities();
-      if (typeof refreshUsage === 'function') {
-        refreshUsage();
+      const {
+        refreshActivities: doActivities,
+        refreshUsage: doUsage,
+        refreshUser: doUser,
+        refreshActiveVehicle: doVehicle,
+        isAuthenticated: isAuth,
+        activeVehicle: curVehicle,
+      } = focusRef.current;
+
+      if (typeof doActivities === 'function') {
+        doActivities();
       }
-      if (isAuthenticated && !activeVehicle && typeof refreshActiveVehicle === 'function') {
-        refreshActiveVehicle();
+      if (typeof doUsage === 'function') {
+        doUsage();
+      }
+      if (isAuth && typeof doUser === 'function') {
+        doUser().catch(() => {});
+      }
+      if (isAuth && !curVehicle && typeof doVehicle === 'function') {
+        doVehicle().catch?.(() => {});
       }
     });
     return unsubscribe;
-  }, [navigation, refreshActivities, refreshUsage, isAuthenticated, activeVehicle, refreshActiveVehicle]);
-
-  useEffect(() => {
-    if (isAuthenticated && !activeVehicle && typeof refreshActiveVehicle === 'function') {
-      refreshActiveVehicle();
-    }
-  }, [isAuthenticated, activeVehicle, refreshActiveVehicle]);
+  }, [navigation]);
 
   const vehicleProfile =
     activeVehicle || pendingVehicle;
@@ -279,7 +307,7 @@ const DashboardScreen = ({ navigation }) => {
         'Find nearby repair shops when your vehicle needs help.',
       feature:
         'Need Professional Help',
-      requiresAuth: true,
+      requiresAuth: false,
       routeName: 'RepairShops',
     },
     {

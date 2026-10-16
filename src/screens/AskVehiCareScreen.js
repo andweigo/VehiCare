@@ -2774,8 +2774,20 @@ export default function AskVehiCareScreen({
         onClose={() => setResultModalVisible(false)}
         diagnosis={selectedDiagnosis}
         vehicleName={vehicleName}
-        onFindNearbyShops={() => setNearbyModalVisible(true)}
-        onOwnShopSelected={handleOwnShopSelected}
+        onFindNearbyShops={() => {
+          setResultModalVisible(false);
+          navigation.navigate('RepairShops', {
+            initialOption: 'find',
+            diagnosis: selectedDiagnosis,
+          });
+        }}
+        onOwnShopSelected={() => {
+          setResultModalVisible(false);
+          navigation.navigate('RepairShops', {
+            initialOption: 'own',
+            diagnosis: selectedDiagnosis,
+          });
+        }}
         onUpgrade={() => navigation.navigate('ManagePlan')}
       />
 

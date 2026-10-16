@@ -200,7 +200,7 @@ const renderAppScreens = () => (
 );
 
 const AppNavigator = () => {
-  const { isAuthenticated, loading: authLoading, isGuest } = useAuth();
+  const { isAuthenticated, loading: authLoading, isGuest, isNewRegistration } = useAuth();
   const { activeVehicle, vehicles, loading: vehicleLoading, pendingVehicle } = useVehicle();
 
   // Show clean branded splash screen while checking session or restoring vehicles
@@ -244,7 +244,41 @@ const AppNavigator = () => {
            Guarantees Login, Register, and Welcome are NOT in history.
            Hardware Back on Dashboard exits/backgrounds app.
         ========================================================== */
-        hasAccountVehicles ? (
+        isNewRegistration ? (
+          hasAccountVehicles ? (
+            <>
+              <Stack.Screen
+                name="VehicleLoading"
+                component={VehicleLoadingScreen}
+              />
+              <Stack.Screen
+                name="Dashboard"
+                component={DashboardScreen}
+              />
+              <Stack.Screen
+                name="VehicleDetails"
+                component={VehicleDetailsScreen}
+              />
+              {renderAppScreens()}
+            </>
+          ) : (
+            <>
+              <Stack.Screen
+                name="VehicleDetails"
+                component={VehicleDetailsScreen}
+              />
+              <Stack.Screen
+                name="VehicleLoading"
+                component={VehicleLoadingScreen}
+              />
+              <Stack.Screen
+                name="Dashboard"
+                component={DashboardScreen}
+              />
+              {renderAppScreens()}
+            </>
+          )
+        ) : hasAccountVehicles ? (
           <>
             <Stack.Screen
               name="Dashboard"

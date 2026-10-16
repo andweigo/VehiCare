@@ -85,21 +85,6 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
 
   useEffect(() => {
-    if (
-      isAuthenticated &&
-      activeVehicle &&
-      !isAddFromMyVehicles
-    ) {
-      navigation.replace('Dashboard');
-    }
-  }, [
-    isAuthenticated,
-    activeVehicle,
-    navigation,
-    isAddFromMyVehicles,
-  ]);
-
-  useEffect(() => {
     if (step <= 1) return;
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {

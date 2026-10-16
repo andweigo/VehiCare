@@ -49,18 +49,29 @@ class AuthController extends Controller
             'subscription_plan' => User::SUBSCRIPTION_FREE,
             'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
             'is_active' => true,
+            'email_verified_at' => null,
         ]);
 
-        $token = $user->createToken(
-            'vehicare-mobile'
-        )->plainTextToken;
+        /** @var \App\Services\OtpService $otpService */
+        $otpService = app(\App\Services\OtpService::class);
+        $otpResult = $otpService->generateOtp($user->email, \App\Services\OtpService::PURPOSE_REGISTRATION);
+
+        if (! ($otpResult['success'] ?? false)) {
+            Log::warning('[AuthController] Failed to dispatch registration OTP email', [
+                'email' => $user->email,
+                'message' => $otpResult['message'] ?? 'Unknown error',
+            ]);
+        }
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Account created successfully.',
+            'message' => 'Account created successfully. A 6-digit verification code has been sent to your email.',
             'data' => [
                 'user' => $user,
-                'token' => $token,
+                'requires_otp' => true,
+                'email' => $user->email,
+                'cooldown_seconds' => $otpResult['cooldown_seconds'] ?? 60,
+                'token' => null,
             ],
         ], 201);
     }
@@ -233,6 +244,7 @@ class AuthController extends Controller
             'subscription_plan' => User::SUBSCRIPTION_FREE,
             'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
             'is_active' => true,
+            'email_verified_at' => $emailVerified ? now() : null,
         ]);
 
         $token = $user->createToken('vehicare-mobile')->plainTextToken;

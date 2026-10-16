@@ -34,7 +34,7 @@ const getProgressStepIndex = value => {
 
 const VehicleLoadingScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setIsNewRegistration } = useAuth();
   const { activeVehicle, setActiveVehicle, refreshActiveVehicle } = useVehicle();
 
   const accent = theme.accent || '#F63B05';
@@ -200,6 +200,9 @@ const VehicleLoadingScreen = ({ navigation, route }) => {
         setPercent(100);
 
         dashboardDelayTimer = setTimeout(() => {
+          if (typeof setIsNewRegistration === 'function') {
+            setIsNewRegistration(false);
+          }
           navigation.reset({
             index: 0,
             routes: [{ name: 'Dashboard' }],

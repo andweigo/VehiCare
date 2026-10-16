@@ -1,9 +1,12 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 
 import {
   clearUnauthorizedHandler,
@@ -170,6 +173,9 @@ export const AuthProvider = ({
   const [isGuest, setIsGuest] =
     useState(false);
 
+  const [isNewRegistration, setIsNewRegistration] =
+    useState(false);
+
   const [logoutSignal, setLogoutSignal] =
     useState(0);
 
@@ -317,6 +323,18 @@ export const AuthProvider = ({
                   persistedToken,
                   authUser,
                 );
+                // Background subscription sync on session restore
+                getSubscriptionStatus()
+                  .then(statusData => {
+                    if (statusData?.user) {
+                      const updated = buildAuthUser(firebaseUser, {
+                        ...authUser,
+                        ...statusData.user,
+                      });
+                      updateUser(updated).catch(() => {});
+                    }
+                  })
+                  .catch(() => {});
               } else {
                 setAuthToken(null);
                 setToken(null);
@@ -373,6 +391,21 @@ export const AuthProvider = ({
   }, []);
 
   /*
+   * Synchronize subscription state when app returns to foreground.
+   */
+  useEffect(() => {
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active' && token) {
+        refreshUser().catch(() => {});
+      }
+    });
+
+    return () => {
+      appStateSub?.remove?.();
+    };
+  }, [token]);
+
+  /*
   |--------------------------------------------------------------------------
   | REGISTER
   |--------------------------------------------------------------------------
@@ -414,70 +447,16 @@ export const AuthProvider = ({
           password,
         );
 
-      const authToken =
-        backendAuth?.token ||
-        null;
-
-      const authUser =
-        buildAuthUser(
-          firebaseUser,
-          backendAuth?.user ||
-            null,
-        );
-
-      /*
-       * Store authentication first.
-       */
-      await persistAuthState(
-        authToken,
-        authUser,
-      );
-
-      /*
-       * Transfer the guest vehicle.
-       *
-       * This is the ONLY point where a guest
-       * vehicle becomes an account vehicle.
-       */
-      let claimedVehicle = null;
-
-      if (guestVehicle) {
-        try {
-          claimedVehicle =
-            await transferGuestVehicleToAccount(
-              guestVehicle,
-            );
-        } catch (error) {
-          console.warn(
-            'Failed to claim guest vehicle during registration:',
-            error?.message || error,
-          );
-        }
-      }
-
-      const {
-        accountVehicles,
-        hasAccountVehicles,
-      } =
-        await loadAccountVehicles();
-
-      const requiresOtp = !authUser?.email_verified_at;
-      if (requiresOtp && authUser?.email) {
-        try {
-          await sendOtpApi(authUser.email, 'registration');
-        } catch (otpErr) {
-          console.warn('[AuthContext] Automatic OTP send warning during register:', otpErr?.message || otpErr);
-        }
-      }
-
+      // CRITICAL: Do NOT persist auth state here!
+      // User must verify their OTP code first before entering the Dashboard or gaining session access.
       return {
-        user: authUser,
-        token: authToken,
-        accountVehicles,
-        hasAccountVehicles,
-        claimedVehicle,
-        requiresOtp,
-        email: authUser?.email,
+        requiresOtp: true,
+        email: email.trim(),
+        guestVehicle,
+        cooldownSeconds:
+          backendAuth?.data?.cooldown_seconds ||
+          backendAuth?.cooldown_seconds ||
+          60,
       };
     } catch (error) {
       const code =
@@ -511,6 +490,57 @@ export const AuthProvider = ({
 
       throw error;
     }
+  };
+
+  const completeRegistrationAuth = async (
+    verifiedToken,
+    verifiedUser,
+    guestVehicleToClaim = null,
+  ) => {
+    if (!verifiedToken || !verifiedUser) {
+      throw new Error('Invalid verification credentials.');
+    }
+
+    const authUser = buildAuthUser(
+      null,
+      verifiedUser,
+    );
+
+    let claimedVehicle = null;
+
+    if (guestVehicleToClaim) {
+      try {
+        setAuthToken(verifiedToken);
+        claimedVehicle = await transferGuestVehicleToAccount(
+          guestVehicleToClaim,
+        );
+      } catch (error) {
+        console.warn(
+          'Failed to claim guest vehicle during OTP completion:',
+          error?.message || error,
+        );
+      }
+    }
+
+    setIsNewRegistration(true);
+
+    await persistAuthState(
+      verifiedToken,
+      authUser,
+    );
+
+    const {
+      accountVehicles,
+      hasAccountVehicles,
+    } = await loadAccountVehicles();
+
+    return {
+      user: authUser,
+      token: verifiedToken,
+      claimedVehicle,
+      accountVehicles,
+      hasAccountVehicles: Boolean(claimedVehicle || hasAccountVehicles),
+    };
   };
 
   /*
@@ -927,24 +957,42 @@ export const AuthProvider = ({
       return updatedProfile;
     };
 
-  /*
-  |--------------------------------------------------------------------------
-  | REFRESH USER
-  |--------------------------------------------------------------------------
-  */
+  const userRef = useRef(user);
+  const tokenRef = useRef(token);
 
-  const refreshUser = async () => {
+  useEffect(() => {
+    userRef.current = user;
+    tokenRef.current = token;
+  });
+
+  const refreshUser = useCallback(async () => {
     try {
       const data = await getSubscriptionStatus();
       if (data?.user) {
-        const authUser = buildAuthUser(null, data.user);
-        await updateUser(authUser);
+        const currentUser = userRef.current;
+        if (
+          currentUser &&
+          currentUser.subscription_plan === data.user.subscription_plan &&
+          currentUser.vehicle_limit === data.user.vehicle_limit &&
+          currentUser.role === data.user.role
+        ) {
+          return currentUser;
+        }
+
+        const authUser = buildAuthUser(null, {
+          ...(currentUser || {}),
+          ...data.user,
+        });
+
+        const currentToken = tokenRef.current;
+        await saveAuthData(currentToken, authUser);
+        setUser(authUser);
         return authUser;
       }
     } catch (error) {
       console.warn('Failed to refresh user:', error?.message || error);
     }
-  };
+  }, []);
 
   /*
   |--------------------------------------------------------------------------
@@ -1032,6 +1080,10 @@ export const AuthProvider = ({
 
         logout,
         refreshUser,
+
+        isNewRegistration,
+        setIsNewRegistration,
+        completeRegistrationAuth,
 
         verifyUserEmail,
         updateUser,

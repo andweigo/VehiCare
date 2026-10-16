@@ -167,17 +167,28 @@ class OtpService
         ]);
 
         // If registration verification, mark user as verified in DB
+        $user = null;
+        $token = null;
         if ($purpose === self::PURPOSE_REGISTRATION) {
             $user = User::where('email', $normalizedEmail)->first();
-            if ($user && ! $user->email_verified_at) {
-                $user->email_verified_at = now();
-                $user->save();
+            if ($user) {
+                if (! $user->email_verified_at) {
+                    $user->email_verified_at = now();
+                    $user->save();
+                }
+                $token = $user->createToken('vehicare-mobile')->plainTextToken;
             }
         }
 
         return [
             'success' => true,
             'message' => 'Verification code verified successfully.',
+            'user' => $user ? $user->fresh() : null,
+            'token' => $token,
+            'data' => [
+                'user' => $user ? $user->fresh() : null,
+                'token' => $token,
+            ],
         ];
     }
 

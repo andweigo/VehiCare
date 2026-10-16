@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -22,7 +22,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 const BRAND = '#F63B05';
 
-const RepairShopsScreen = ({ navigation }) => {
+const RepairShopsScreen = ({ navigation, route }) => {
   const { theme, themeName } = useTheme();
   const { openSidebar } = useSidebar();
   const isDark = themeName === 'dark';
@@ -63,8 +63,15 @@ const RepairShopsScreen = ({ navigation }) => {
   } = useRepairShops(displayVehicleType);
 
   // Option selection state: 'find' (Find Nearby Shops) or 'own' (Already Know a Shop)
-  const [activeOption, setActiveOption] = useState('find');
+  const routeOption = route?.params?.initialOption || route?.params?.option;
+  const [activeOption, setActiveOption] = useState(routeOption || 'find');
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (routeOption && (routeOption === 'find' || routeOption === 'own')) {
+      setActiveOption(routeOption);
+    }
+  }, [routeOption]);
 
   // Dynamic theme styling
   const option1Bg = activeOption === 'find'
