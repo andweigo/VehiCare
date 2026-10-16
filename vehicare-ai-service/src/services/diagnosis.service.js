@@ -352,7 +352,7 @@ export const processDiagnosisRequest = async (payload) => {
           });
 
           // Resilient salvage: If we have an AI response or summary, deliver it as conversation instead of failing with a 502 error
-          const salvageableText = jsonObject.summary || jsonObject.response;
+          const salvageableText = jsonObject.summary || jsonObject.response || jsonObject.diagnosis || jsonObject.description || jsonObject.analysis;
           if (salvageableText) {
             finalDiagnosisData = {
               type: 'conversation',

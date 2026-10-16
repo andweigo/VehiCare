@@ -527,13 +527,11 @@ export const callGemini = async (params, client = null) => {
       }
 
       if (modelIndex < candidateModels.length - 1) {
-        if (!lastError?.retryable && !isModelUnavailableError(lastError)) {
-          break;
-        }
         logger.info('AI_MODEL_FALLBACK', requestId, {
           failedModel: modelName,
           nextModel: candidateModels[modelIndex + 1],
           errorCode: lastError?.code,
+          errorMessage: lastError?.message,
         });
       }
     }

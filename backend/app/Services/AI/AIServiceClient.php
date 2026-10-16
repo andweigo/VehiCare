@@ -12,7 +12,12 @@ class AIServiceClient
 
     public function __construct()
     {
-        $this->baseUrl = rtrim((string) config('services.ai_service.url', 'http://127.0.0.1:5000'), '/');
+        $rawUrl = (string) config('services.ai_service.url', 'http://127.0.0.1:5000');
+        $rawUrl = rtrim($rawUrl, '/');
+        if (str_ends_with($rawUrl, '/api')) {
+            $rawUrl = substr($rawUrl, 0, -4);
+        }
+        $this->baseUrl = $rawUrl;
         $this->secret = trim((string) config('services.ai_service.secret', ''));
     }
 
@@ -76,11 +81,15 @@ class AIServiceClient
         Log::info('[AIServiceClient] Sending request to Node.js AI Service', [
             'request_id' => $requestId,
             'has_media' => !empty($mediaBase64),
+            'endpoint' => $endpoint,
         ]);
 
         try {
             $response = Http::timeout((int) config('services.ai_service.timeout', 360))
-                ->connectTimeout(10)
+                ->connectTimeout((int) config('services.ai_service.connect_timeout', 30))
+                ->retry(2, 2000, function ($exception, $request) {
+                    return $exception instanceof \Illuminate\Http\Client\ConnectionException;
+                }, throw: false)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'Authorization' => "Bearer {$this->secret}",
@@ -91,6 +100,7 @@ class AIServiceClient
             Log::error('[AIServiceClient] HTTP Exception communicating with Node.js AI Service', [
                 'request_id' => $requestId,
                 'exception' => get_class($e),
+                'message' => $e->getMessage(),
             ]);
 
             throw new AIServiceException(

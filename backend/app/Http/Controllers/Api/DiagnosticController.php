@@ -567,19 +567,45 @@ class DiagnosticController extends Controller
         $historicalContext = $this->entitlementService->getAuthorizedHistoricalContext($user, $vehicle);
 
         try {
-            $analysis = $this->aiServiceClient->analyzeSymptoms(
-                $vehicleInfo,
-                $validated['symptoms'],
-                $mediaBase64,
-                $mediaMime,
-                $inputType,
-                $validated['history'] ?? [],
-                $requestId,
-                $user?->id,
-                $entitlements,
-                $historicalContext,
-                $diagnosticState
-            );
+            $analysis = null;
+            $aiSource = 'gemini';
+
+            try {
+                $analysis = $this->aiServiceClient->analyzeSymptoms(
+                    $vehicleInfo,
+                    $validated['symptoms'],
+                    $mediaBase64,
+                    $mediaMime,
+                    $inputType,
+                    $validated['history'] ?? [],
+                    $requestId,
+                    $user?->id,
+                    $entitlements,
+                    $historicalContext,
+                    $diagnosticState
+                );
+                $aiSource = $analysis['ai_source'] ?? 'gemini';
+            } catch (AIServiceException $microserviceException) {
+                if ($isGeminiConfigured) {
+                    Log::warning('[DiagnosticController] Node.js AI service unavailable, attempting Gemini direct fallback', [
+                        'request_id' => $requestId,
+                        'reason' => $microserviceException->errorCode,
+                        'message' => $microserviceException->getMessage(),
+                    ]);
+
+                    $analysis = $this->geminiService->analyzeSymptoms(
+                        $vehicleInfo,
+                        $validated['symptoms'],
+                        $mediaBase64,
+                        $mediaMime,
+                        $validated['history'] ?? []
+                    );
+                    $aiSource = 'gemini_direct_fallback';
+                } else {
+                    throw $microserviceException;
+                }
+            }
+
             if (($analysis['status'] ?? null) === 'temporarily_busy') {
                 throw new AIServiceException(
                     'AI_SERVICE_BUSY',
@@ -588,7 +614,6 @@ class DiagnosticController extends Controller
                     503
                 );
             }
-            $aiSource = $analysis['ai_source'] ?? 'gemini';
 
             $intentType = strtolower($analysis['type'] ?? 'conversation');
 
