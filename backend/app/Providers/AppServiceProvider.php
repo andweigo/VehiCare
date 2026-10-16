@@ -14,6 +14,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(RepairShopProviderInterface::class, OverpassClient::class);
+        $this->app->singleton(\App\Services\FirebaseService::class);
     }
 
     /**

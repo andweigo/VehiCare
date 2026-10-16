@@ -5,20 +5,22 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\OtpCode;
 use App\Models\User;
+use App\Services\FirebaseService;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class OtpController extends Controller
 {
     protected OtpService $otpService;
+    protected FirebaseService $firebaseService;
 
-    public function __construct(OtpService $otpService)
+    public function __construct(OtpService $otpService, FirebaseService $firebaseService)
     {
         $this->otpService = $otpService;
+        $this->firebaseService = $firebaseService;
     }
 
     /**
@@ -42,14 +44,6 @@ class OtpController extends Controller
                     'success' => false,
                     'message' => 'No account found with this email address.',
                 ], 404);
-            }
-
-            // Check if account is a Google-only account without password
-            if ($user->firebase_uid && empty($user->password)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This account is registered via Google Sign-In. Please sign in using your Google account.',
-                ], 422);
             }
         }
 
@@ -138,39 +132,46 @@ class OtpController extends Controller
             ], 400);
         }
 
-        // 1. Update Laravel database password
+        if ($verifiedOtp->isExpired()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The verification code has expired. Please request a new code.',
+            ], 400);
+        }
+
+        if (! Hash::check($code, $verifiedOtp->code_hash)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The provided verification code is invalid.',
+            ], 400);
+        }
+
+        // 1. Update Firebase Authentication credential first if FirebaseService is configured
+        if ($this->firebaseService->isConfigured()) {
+            $firebaseResult = $this->firebaseService->updateUserPassword($user, $newPassword);
+            if (! ($firebaseResult['success'] ?? false)) {
+                Log::error('[OtpController] Failed to update Firebase password during reset', [
+                    'user_id' => $user->id,
+                    'error' => $firebaseResult['message'] ?? 'Unknown error',
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to update authentication credentials. Please try again later.',
+                ], 500);
+            }
+        } elseif ($user->firebase_uid) {
+            Log::warning('[OtpController] Firebase service account credentials not configured. Firebase user password could not be updated.', [
+                'user_id' => $user->id,
+                'firebase_uid' => $user->firebase_uid,
+            ]);
+        }
+
+        // 2. Update Laravel database password
         $user->password = Hash::make($newPassword);
         $user->save();
 
-        // 2. Update Firebase Authentication password if user is linked to Firebase
-        if ($user->firebase_uid) {
-            $apiKey = env('FIREBASE_WEB_API_KEY')
-                ?: env('FIREBASE_API_KEY')
-                ?: env('GOOGLE_API_KEY');
-
-            if ($apiKey) {
-                try {
-                    $response = Http::post(
-                        "https://identitytoolkit.googleapis.com/v1/accounts:update?key={$apiKey}",
-                        [
-                            'localId' => $user->firebase_uid,
-                            'password' => $newPassword,
-                            'returnSecureToken' => false,
-                        ]
-                    );
-
-                    if ($response->ok()) {
-                        Log::info('[OtpController] Firebase password updated successfully for user', ['email' => $email]);
-                    } else {
-                        Log::warn('[OtpController] Firebase password update warning:', ['response' => $response->json()]);
-                    }
-                } catch (\Throwable $e) {
-                    Log::error('[OtpController] Exception updating Firebase password:', ['error' => $e->getMessage()]);
-                }
-            }
-        }
-
-        // Invalidate verified OTP so it cannot be reused
+        // 3. Invalidate verified OTP so it cannot be reused (single-use)
         $verifiedOtp->delete();
 
         return response()->json([

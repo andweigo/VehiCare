@@ -37,6 +37,10 @@ return [
 
     'firebase' => [
         'api_key' => env('FIREBASE_WEB_API_KEY', env('FIREBASE_API_KEY', env('GOOGLE_API_KEY'))),
+        'project_id' => env('FIREBASE_PROJECT_ID', 'vehicare-62de4'),
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'service_account_json' => env('FIREBASE_SERVICE_ACCOUNT_JSON'),
+        'service_account_key' => env('FIREBASE_SERVICE_ACCOUNT_KEY'),
     ],
 
     'gemini' => [
