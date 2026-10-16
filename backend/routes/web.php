@@ -41,7 +41,19 @@ Route::post('/admin/login', [AdminController::class, 'login'])
     ->name('admin.login.submit');
 
 Route::get('/admin/logo.png', static function () {
-    return response()->file(base_path('../src/assets/logo.png'));
+    $candidates = [
+        public_path('images/logo.png'),
+        public_path('logo.png'),
+        base_path('../src/assets/logo.png'),
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (file_exists($candidate)) {
+            return response()->file($candidate);
+        }
+    }
+
+    abort(404, 'Logo not found');
 })->name('admin.logo');
 
 Route::post('/admin/logout', [AdminController::class, 'logout'])

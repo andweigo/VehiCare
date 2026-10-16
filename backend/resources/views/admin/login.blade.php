@@ -32,7 +32,9 @@
             }
         }
     </script>
-    @vite(['resources/css/app.css'])
+    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+        @vite(['resources/css/app.css'])
+    @endif
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #000000; color: #FFFFFF; }

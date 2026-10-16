@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VehiCare Admin</title>
-    @vite(['resources/css/app.css'])
+    <script src="https://cdn.tailwindcss.com"></script>
+    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+        @vite(['resources/css/app.css'])
+    @endif
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900">
     <div class="max-w-6xl mx-auto py-8 px-4">

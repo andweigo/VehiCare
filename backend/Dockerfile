@@ -1,3 +1,10 @@
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
 FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,6 +23,7 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 WORKDIR /var/www/html
 
 COPY . .
+COPY --from=build /app/public/build /var/www/html/public/build
 
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader \
     && mkdir -p storage/framework/cache storage/framework/sessions \
