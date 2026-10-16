@@ -418,15 +418,32 @@ export const AuthProvider = ({
     guestVehicle = null,
   ) => {
     let firebaseUser = null;
+    let isExistingFirebaseUser = false;
     try {
-      const userCredential =
-        await registerWithEmail(
-          email,
-          password,
-        );
+      try {
+        const userCredential =
+          await registerWithEmail(
+            email,
+            password,
+          );
 
-      firebaseUser =
-        userCredential?.user;
+        firebaseUser =
+          userCredential?.user;
+      } catch (fbErr) {
+        const fbCode = String(fbErr?.code || '').toLowerCase();
+        if (fbCode.includes('email-already-in-use')) {
+          // Attempt sign-in with provided credentials to heal desynced Firebase account
+          try {
+            const loginCred = await loginWithEmail(email, password);
+            firebaseUser = loginCred?.user;
+            isExistingFirebaseUser = true;
+          } catch (signInErr) {
+            throw fbErr;
+          }
+        } else {
+          throw fbErr;
+        }
+      }
 
       if (!firebaseUser) {
         throw new Error(
@@ -435,10 +452,14 @@ export const AuthProvider = ({
       }
 
       if (name?.trim()) {
-        await firebaseUser.updateProfile({
-          displayName:
-            name.trim(),
-        });
+        try {
+          await firebaseUser.updateProfile({
+            displayName:
+              name.trim(),
+          });
+        } catch (profileErr) {
+          // non-fatal
+        }
       }
 
       const backendAuth =
@@ -463,7 +484,7 @@ export const AuthProvider = ({
           60,
       };
     } catch (error) {
-      if (firebaseUser) {
+      if (firebaseUser && !isExistingFirebaseUser) {
         try {
           await firebaseUser.delete();
         } catch (delErr) {
