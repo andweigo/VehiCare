@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
@@ -10,7 +9,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -138,188 +136,147 @@ const ForgotPasswordScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
       <StatusBar
         barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={theme.background}
       />
       <CustomToast toast={toast} onHide={hideToast} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.flexOne}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+        activeOpacity={0.7}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+        <Ionicons
+          name="arrow-back"
+          size={21}
+          color={theme.text}
+        />
+      </TouchableOpacity>
+
+      <Text style={[styles.logo, { color: theme.text }]}>VehiCare</Text>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>Forgot password</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            Enter your email to receive a 6-digit verification code.
+          </Text>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email</Text>
+          <View
+            style={[
+              styles.inputWrapper,
+              {
+                backgroundColor: theme.surfaceAlt,
+                borderColor: theme.border,
+              },
+            ]}
           >
-            {/* TOP BAR / BACK BUTTON */}
-            <View style={styles.topBar}>
-              <TouchableOpacity
-                style={[
-                  styles.backButton,
-                  { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
-                ]}
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-back" size={20} color={theme.text} />
-              </TouchableOpacity>
-            </View>
+            <Ionicons
+              name="mail-outline"
+              size={19}
+              color={theme.textSecondary}
+              style={styles.inputIcon}
+            />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor={theme.placeholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              editable={!loading}
+            />
+          </View>
+        </View>
 
-            {/* HEADER */}
-            <View style={styles.headerBox}>
-              <View
-                style={[
-                  styles.iconCircle,
-                  {
-                    backgroundColor:
-                      theme.mode === 'dark' ? 'rgba(246, 59, 5, 0.15)' : 'rgba(246, 59, 5, 0.08)',
-                    borderColor: 'rgba(246, 59, 5, 0.3)',
-                  },
-                ]}
-              >
-                <Ionicons name="key-outline" size={32} color={theme.accent} />
-              </View>
-              <Text style={[styles.title, { color: theme.text }]}>Forgot Password</Text>
-              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                Enter your registered email address and we will send you a 6-digit verification code to reset your password.
-              </Text>
-            </View>
+        <TouchableOpacity
+          style={[
+            styles.button,
+            { backgroundColor: theme.accent },
+            loading && styles.buttonDisabled,
+          ]}
+          activeOpacity={0.85}
+          onPress={handleSendCode}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>Send Verification Code</Text>
+          )}
+        </TouchableOpacity>
 
-            {/* INPUT SECTION */}
-            <View style={styles.formContainer}>
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email Address</Text>
-                <View
-                  style={[
-                    styles.inputWrapper,
-                    {
-                      backgroundColor: theme.surfaceAlt,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="mail-outline"
-                    size={19}
-                    color={theme.textSecondary}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    placeholder="Enter your email"
-                    placeholderTextColor={theme.placeholder}
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!loading}
-                  />
-                </View>
-              </View>
-
-              {/* ACTION BUTTON */}
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  { backgroundColor: theme.accent },
-                  loading && styles.buttonDisabled,
-                ]}
-                onPress={handleSendCode}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>Send Verification Code</Text>
-                )}
-              </TouchableOpacity>
-
-              {/* FOOTER LINK */}
-              <TouchableOpacity
-                style={styles.footerLink}
-                onPress={() => navigation.navigate('Login')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-                  Remember your password?{' '}
-                  <Text style={[styles.footerTextBold, { color: theme.accent }]}>Sign In</Text>
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+        <TouchableOpacity
+          style={styles.footerContainer}
+          onPress={() => navigation.navigate('Login')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.footer, { color: theme.textSecondary }]}>
+            Remember your password?{' '}
+            <Text style={[styles.orange, { color: theme.accent }]}>Sign In</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  flexOne: {
-    flex: 1,
-  },
   container: {
     flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 8 : 12,
-    paddingBottom: 28,
-    justifyContent: 'space-between',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
   },
   backButton: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
+    marginLeft: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerBox: {
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 28,
+  logo: {
+    alignSelf: 'center',
+    marginTop: -38,
+    fontFamily: 'Outfit-ExtraBold',
+    fontSize: 18,
+    letterSpacing: -0.3,
   },
-  iconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
-    alignItems: 'center',
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
-    marginBottom: 18,
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 28,
+  },
+  header: {
+    marginBottom: 30,
   },
   title: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 26,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-    textAlign: 'center',
+    fontFamily: 'Outfit-ExtraBold',
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.8,
   },
   subtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    lineHeight: 22,
-    textAlign: 'center',
-    paddingHorizontal: 12,
-  },
-  formContainer: {
-    flex: 1,
-    justifyContent: 'flex-start',
+    lineHeight: 21,
+    marginTop: 8,
   },
   inputGroup: {
-    marginBottom: 22,
+    marginBottom: 20,
   },
   inputLabel: {
     fontFamily: 'Inter-Medium',
@@ -328,28 +285,30 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
     height: 56,
     borderRadius: 15,
     borderWidth: 1,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 15,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     height: '100%',
+    paddingHorizontal: 2,
+    paddingVertical: 0,
     fontFamily: 'Inter-Regular',
     fontSize: 14,
   },
   button: {
     height: 54,
     borderRadius: 15,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    alignItems: 'center',
+    marginTop: 6,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -358,19 +317,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
   },
-  footerLink: {
-    alignItems: 'center',
+  footerContainer: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 28,
   },
-  footerText: {
+  footer: {
     fontFamily: 'Inter-Regular',
-    fontSize: 13,
+    fontSize: 12,
   },
-  footerTextBold: {
+  orange: {
     fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
   },
 });
 

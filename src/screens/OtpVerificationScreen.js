@@ -2,18 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { resendOtp, verifyOtp } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
 import { useAuth } from '../context/AuthContext';
@@ -59,15 +58,16 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   const purpose = route?.params?.purpose || 'registration';
   const redirectTo = route?.params?.redirectTo || null;
 
-  const initialCooldown = route?.params?.cooldown_seconds || route?.params?.initialCooldown;
-
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [cooldown, setCooldown] = useState(initialCooldown ? Math.ceil(initialCooldown) : 60);
+  const [cooldown, setCooldown] = useState(
+    route?.params?.cooldown_seconds ? Math.ceil(route.params.cooldown_seconds) : 0,
+  );
   const [toast, setToast] = useState(null);
 
   const inputRef = useRef(null);
+  const timerRef = useRef(null);
 
   const showToast = useCallback(({ type = 'info', title = '', message = '', duration = 3500 }) => {
     setToast({ type, title, message, duration });
@@ -77,35 +77,45 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setToast(null);
   }, []);
 
-  // Cooldown Countdown Timer
+  // Focus input automatically on mount
   useEffect(() => {
-    let timer = null;
-    if (cooldown > 0) {
-      timer = setInterval(() => {
-        setCooldown(prev => prev - 1);
-      }, 1000);
+    const t = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 400);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Cooldown timer
+  useEffect(() => {
+    if (cooldown <= 0) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
     }
+
+    timerRef.current = setInterval(() => {
+      setCooldown(c => {
+        if (c <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+
     return () => {
-      if (timer) clearInterval(timer);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [cooldown]);
 
-  // Focus input automatically
-  useEffect(() => {
-    const focusTimer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 400);
-    return () => clearTimeout(focusTimer);
-  }, []);
+  const handleVerify = async (submittedOtp = null) => {
+    Keyboard.dismiss();
+    const code = submittedOtp !== null && typeof submittedOtp === 'string' ? submittedOtp : otp;
 
-  const handleVerify = async (codeToVerify = otp) => {
-    const code = String(codeToVerify || '').trim();
-
-    if (code.length !== 6) {
+    if (!code || code.length !== 6) {
       showToast({
         type: 'warning',
         title: 'Incomplete Code',
-        message: 'Please enter all 6 digits of your verification code.',
+        message: 'Please enter the complete 6-digit verification code.',
       });
       return;
     }
@@ -113,13 +123,16 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setLoading(true);
 
     try {
-      const response = await verifyOtp(email, purpose, code);
+      const response = await verifyOtp(email, code, purpose);
 
       if (response?.success) {
         showToast({
           type: 'success',
-          title: 'Verification Successful',
-          message: response.message || 'Verification complete!',
+          title: 'Code Verified',
+          message:
+            purpose === 'password_reset'
+              ? 'Verification code confirmed. Setting new password...'
+              : 'Email verified successfully!',
           duration: 1500,
         });
 
@@ -251,22 +264,19 @@ const OtpVerificationScreen = ({ route, navigation }) => {
         });
       } else {
         const cd = response?.cooldown_seconds || response?.cooldown;
-        if (cd) {
-          setCooldown(Math.ceil(cd));
-        }
+        if (cd) setCooldown(Math.ceil(cd));
         showToast({
           type: 'error',
           title: 'Resend Failed',
-          message: formatApiMessage(response?.message) || 'Failed to resend code. Please try again later.',
+          message: formatApiMessage(response?.message) || 'Unable to resend code.',
         });
       }
     } catch (err) {
       const resData = err?.response?.data;
+      const rawMsg = resData?.message || err?.message || 'Failed to resend verification code.';
       const cd = resData?.cooldown_seconds || resData?.cooldown;
-      if (cd) {
-        setCooldown(Math.ceil(cd));
-      }
-      const rawMsg = resData?.message || err?.message || 'Failed to resend code.';
+      if (cd) setCooldown(Math.ceil(cd));
+
       showToast({
         type: 'error',
         title: 'Resend Cooldown Active',
@@ -305,145 +315,149 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
+      <StatusBar
+        barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.background}
+      />
       <CustomToast toast={toast} onHide={hideToast} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.flexOne}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+        activeOpacity={0.7}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.inner}>
-            {/* BACK BUTTON */}
+        <Ionicons
+          name="arrow-back"
+          size={21}
+          color={theme.text}
+        />
+      </TouchableOpacity>
+
+      <Text style={[styles.logo, { color: theme.text }]}>VehiCare</Text>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {purpose === 'password_reset' ? 'Verification' : 'Verify email'}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            Enter the 6-digit code sent to{' '}
+            <Text style={{ color: theme.accent, fontFamily: 'Inter-SemiBold' }}>{email}</Text>
+          </Text>
+        </View>
+
+        {/* OTP BOXES DISPLAY */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => inputRef.current?.focus()}
+          style={styles.otpContainer}
+        >
+          {renderOtpBoxes()}
+        </TouchableOpacity>
+
+        {/* HIDDEN REAL TEXTINPUT */}
+        <TextInput
+          ref={inputRef}
+          value={otp}
+          onChangeText={handleTextChange}
+          keyboardType="number-pad"
+          maxLength={6}
+          style={styles.hiddenInput}
+          caretHidden
+        />
+
+        {/* SUBMIT BUTTON */}
+        <TouchableOpacity
+          style={[
+            styles.button,
+            { backgroundColor: theme.accent },
+            (loading || otp.length !== 6) && styles.buttonDisabled,
+          ]}
+          onPress={() => handleVerify()}
+          disabled={loading || otp.length !== 6}
+          activeOpacity={0.85}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>Verify Code</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* RESEND SECTION */}
+        <View style={styles.resendContainer}>
+          <Text style={[styles.resendLabel, { color: theme.textSecondary }]}>
+            Didn't receive the code?
+          </Text>
+          {cooldown > 0 ? (
+            <Text style={[styles.cooldownText, { color: theme.accent }]}>
+              Resend available in {formatCooldownTime(cooldown)}
+            </Text>
+          ) : (
             <TouchableOpacity
-              style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-              onPress={() => navigation.goBack()}
+              onPress={handleResendCode}
+              disabled={resending}
               activeOpacity={0.7}
+              style={{ paddingVertical: 4 }}
             >
-              <Icon name="arrow-back" size={22} color={theme.text} />
-            </TouchableOpacity>
-
-            {/* HEADER */}
-            <View style={styles.headerBox}>
-              <View style={[styles.iconCircle, { backgroundColor: '#27160F' }]}>
-                <Icon name="mark-email-read" size={32} color={theme.accent} />
-              </View>
-              <Text style={[styles.title, { color: theme.text }]}>
-                {purpose === 'password_reset' ? 'Password Reset Verification' : 'Verify Your Email'}
+              <Text style={[styles.resendLink, { color: theme.accent }]}>
+                {resending ? 'Sending...' : 'Resend Code'}
               </Text>
-              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                We've sent a 6-digit verification code to:
-              </Text>
-              <Text style={[styles.emailText, { color: theme.accent }]}>{email}</Text>
-            </View>
-
-            {/* OTP BOXES DISPLAY */}
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={() => inputRef.current?.focus()}
-              style={styles.otpContainer}
-            >
-              {renderOtpBoxes()}
             </TouchableOpacity>
-
-            {/* HIDDEN REAL TEXTINPUT */}
-            <TextInput
-              ref={inputRef}
-              value={otp}
-              onChangeText={handleTextChange}
-              keyboardType="number-pad"
-              maxLength={6}
-              style={styles.hiddenInput}
-              caretHidden
-            />
-
-            {/* RESEND SECTION */}
-            <View style={styles.resendContainer}>
-              <Text style={[styles.resendLabel, { color: theme.textSecondary }]}>
-                Didn't receive the code?
-              </Text>
-              {cooldown > 0 ? (
-                <Text style={[styles.cooldownText, { color: theme.accent }]}>
-                  Resend available in {formatCooldownTime(cooldown)}
-                </Text>
-              ) : (
-                <TouchableOpacity onPress={handleResendCode} disabled={resending} activeOpacity={0.7} style={{ paddingVertical: 4 }}>
-                  <Text style={[styles.resendLink, { color: theme.accent }]}>
-                    {resending ? 'Sending...' : 'Resend Code'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* SUBMIT BUTTON */}
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.accent }, (loading || otp.length !== 6) && styles.buttonDisabled]}
-              onPress={() => handleVerify()}
-              disabled={loading || otp.length !== 6}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Verify Code</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  flexOne: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  inner: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 16,
-    justifyContent: 'space-between',
-    paddingBottom: 24,
-  },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 44,
+    height: 44,
+    marginLeft: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerBox: {
-    alignItems: 'center',
-    marginTop: 12,
+  logo: {
+    alignSelf: 'center',
+    marginTop: -38,
+    fontFamily: 'Outfit-ExtraBold',
+    fontSize: 18,
+    letterSpacing: -0.3,
   },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 28,
+  },
+  header: {
+    marginBottom: 28,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontFamily: 'Outfit-ExtraBold',
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.8,
   },
   subtitle: {
+    fontFamily: 'Inter-Regular',
     fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  emailText: {
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
+    lineHeight: 21,
+    marginTop: 8,
   },
   otpContainer: {
     flexDirection: 'row',
@@ -453,14 +467,14 @@ const styles = StyleSheet.create({
   otpBox: {
     width: 48,
     height: 56,
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   otpDigit: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'Outfit-Bold',
+    fontSize: 22,
   },
   hiddenInput: {
     position: 'absolute',
@@ -468,44 +482,40 @@ const styles = StyleSheet.create({
     width: 1,
     height: 1,
   },
-  resendContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 16,
-    width: '100%',
-    paddingHorizontal: 12,
-  },
-  resendLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 6,
-    textAlign: 'center',
-    width: '100%',
-  },
-  cooldownText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  resendLink: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
   button: {
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 10,
+    marginBottom: 20,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
+  resendContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  resendLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  cooldownText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+  },
+  resendLink: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
   },
 });
 
