@@ -232,9 +232,6 @@ const WelcomeScreen = ({ navigation }) => {
     if (typeof continueAsGuest === 'function') {
       continueAsGuest();
     }
-    try {
-      navigation.navigate('VehicleDetails');
-    } catch (_) {}
   };
 
   const handleSignIn = () => {

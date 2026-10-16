@@ -229,7 +229,8 @@ const AppNavigator = () => {
 
   // Determine whether a guest already has a configured vehicle
   const hasGuestVehicle = Boolean(
-    pendingVehicle && Object.keys(pendingVehicle).length > 0,
+    (pendingVehicle && Object.keys(pendingVehicle).length > 0) ||
+      (!isAuthenticated && activeVehicle && Object.keys(activeVehicle).length > 0),
   );
 
   return (
@@ -311,47 +312,85 @@ const AppNavigator = () => {
             {renderAppScreens()}
           </>
         )
-      ) : isGuest && hasGuestVehicle ? (
+      ) : isGuest ? (
         /* ==========================================================
-           GUEST WITH CONFIGURED VEHICLE FLOW
-           Dashboard is the root entry point.
+           GUEST FLOW
+           Allows guest vehicle onboarding, dashboard, diagnostics,
+           profile, plus upgrade entry points to Login and Register.
         ========================================================== */
-        <>
-          <Stack.Screen
-            name="Dashboard"
-            component={DashboardScreen}
-          />
-          <Stack.Screen
-            name="VehicleLoading"
-            component={VehicleLoadingScreen}
-          />
-          <Stack.Screen
-            name="VehicleDetails"
-            component={VehicleDetailsScreen}
-          />
-          {renderAppScreens()}
-          {/* Guest account upgrade entry points */}
-          <Stack.Screen
-            name="Login"
-            component={LoginScreen}
-          />
-          <Stack.Screen
-            name="Register"
-            component={RegisterScreen}
-          />
-          <Stack.Screen
-            name="ForgotPassword"
-            component={ForgotPasswordScreen}
-          />
-          <Stack.Screen
-            name="ResetPassword"
-            component={ResetPasswordScreen}
-          />
-        </>
+        hasGuestVehicle ? (
+          <>
+            <Stack.Screen
+              name="Dashboard"
+              component={DashboardScreen}
+            />
+            <Stack.Screen
+              name="VehicleLoading"
+              component={VehicleLoadingScreen}
+            />
+            <Stack.Screen
+              name="VehicleDetails"
+              component={VehicleDetailsScreen}
+            />
+            {renderAppScreens()}
+            {/* Guest account upgrade entry points */}
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+            />
+            <Stack.Screen
+              name="Register"
+              component={RegisterScreen}
+            />
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+            />
+            <Stack.Screen
+              name="ResetPassword"
+              component={ResetPasswordScreen}
+            />
+          </>
+        ) : (
+          <>
+            <Stack.Screen
+              name="VehicleDetails"
+              component={VehicleDetailsScreen}
+            />
+            <Stack.Screen
+              name="VehicleLoading"
+              component={VehicleLoadingScreen}
+            />
+            <Stack.Screen
+              name="Dashboard"
+              component={DashboardScreen}
+            />
+            {renderAppScreens()}
+            {/* Guest account upgrade entry points */}
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+            />
+            <Stack.Screen
+              name="Register"
+              component={RegisterScreen}
+            />
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+            />
+            <Stack.Screen
+              name="ResetPassword"
+              component={ResetPasswordScreen}
+            />
+          </>
+        )
       ) : (
         /* ==========================================================
            SIGNED-OUT FLOW
            Default entry point for unauthenticated users.
+           Contains ONLY signed-out auth screens so logging out
+           immediately returns to Welcome.
         ========================================================== */
         <>
           <Stack.Screen
@@ -369,18 +408,6 @@ const AppNavigator = () => {
           <Stack.Screen
             name="OtpVerification"
             component={OtpVerificationScreen}
-          />
-          <Stack.Screen
-            name="VehicleDetails"
-            component={VehicleDetailsScreen}
-          />
-          <Stack.Screen
-            name="VehicleLoading"
-            component={VehicleLoadingScreen}
-          />
-          <Stack.Screen
-            name="Dashboard"
-            component={DashboardScreen}
           />
           <Stack.Screen
             name="ForgotPassword"
