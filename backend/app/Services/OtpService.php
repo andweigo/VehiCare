@@ -6,6 +6,7 @@ use App\Mail\VerificationCodeMail;
 use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -69,34 +70,89 @@ class OtpService
             'verified_at' => null,
         ]);
 
-        try {
-            Mail::to($normalizedEmail)->send(new VerificationCodeMail($rawCode, $purpose));
+        $mailSent = false;
+        $lastError = null;
 
-            Log::info('[OtpService] Sent OTP email successfully', [
-                'email' => $normalizedEmail,
-                'purpose' => $purpose,
-            ]);
+        // 1. If BREVO_API_KEY is configured, send via Brevo HTTPS API (Port 443, never blocked by Render)
+        $brevoApiKey = env('BREVO_API_KEY');
+        if (! empty($brevoApiKey)) {
+            try {
+                $fromAddress = config('mail.from.address', 'vehicare0@gmail.com');
+                $fromName = config('mail.from.name', 'VehiCare');
+                $subject = $purpose === self::PURPOSE_PASSWORD_RESET ? 'VehiCare Password Reset Code' : 'VehiCare Email Verification Code';
+                $htmlContent = (new VerificationCodeMail($rawCode, $purpose))->render();
 
+                $response = Http::withHeaders([
+                    'api-key' => $brevoApiKey,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])->timeout(8)->post('https://api.brevo.com/v3/smtp/email', [
+                    'sender' => [
+                        'name' => $fromName,
+                        'email' => $fromAddress,
+                    ],
+                    'to' => [
+                        ['email' => $normalizedEmail],
+                    ],
+                    'subject' => $subject,
+                    'htmlContent' => $htmlContent,
+                ]);
+
+                if ($response->successful()) {
+                    $mailSent = true;
+                    Log::info('[OtpService] Sent OTP email via Brevo HTTPS API successfully', [
+                        'email' => $normalizedEmail,
+                        'purpose' => $purpose,
+                    ]);
+                } else {
+                    $lastError = 'Brevo API error (' . $response->status() . '): ' . $response->body();
+                    Log::warning('[OtpService] Brevo API error, falling back to standard mailer', [
+                        'response' => $response->body(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                $lastError = 'Brevo API exception: ' . $e->getMessage();
+                Log::warning('[OtpService] Brevo API exception, falling back to standard mailer', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // 2. Standard Laravel Mailer (SMTP / TLS / SSL)
+        if (! $mailSent) {
+            try {
+                Mail::to($normalizedEmail)->send(new VerificationCodeMail($rawCode, $purpose));
+                $mailSent = true;
+
+                Log::info('[OtpService] Sent OTP email via standard mailer successfully', [
+                    'email' => $normalizedEmail,
+                    'purpose' => $purpose,
+                ]);
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::error('[OtpService] Failed to send OTP email via standard mailer', [
+                    'email' => $normalizedEmail,
+                    'purpose' => $purpose,
+                    'error' => $lastError,
+                ]);
+            }
+        }
+
+        if ($mailSent) {
             return [
                 'success' => true,
                 'message' => 'Verification code sent successfully.',
                 'cooldown_seconds' => 60,
             ];
-        } catch (\Throwable $e) {
-            Log::error('[OtpService] Failed to send OTP email', [
-                'email' => $normalizedEmail,
-                'purpose' => $purpose,
-                'error' => $e->getMessage(),
-            ]);
-
-            // A failed delivery must not leave an unusable code blocking retries.
-            $otpRecord->delete();
-
-            return [
-                'success' => false,
-                'message' => 'Failed to send verification email: ' . $e->getMessage(),
-            ];
         }
+
+        // A failed delivery must not leave an unusable code blocking retries.
+        $otpRecord->delete();
+
+        return [
+            'success' => false,
+            'message' => 'Failed to send verification email: ' . ($lastError ?: 'Unknown delivery error'),
+        ];
     }
 
     /**
