@@ -296,10 +296,12 @@ const vehicleApi = {
 
         return normalized || [];
       } catch (error) {
-        console.error(
-          'API Error in getMyVehicles:',
-          error,
-        );
+        if (error?.response?.status !== 401) {
+          console.error(
+            'API Error in getMyVehicles:',
+            error,
+          );
+        }
 
         throw error;
       }
