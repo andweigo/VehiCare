@@ -25,21 +25,42 @@ const COLOR_MAP = {
 };
 
 const CustomToast = ({
-  visible,
-  type = 'info',
-  title,
-  message,
+  visible: propVisible,
+  type: propType,
+  title: propTitle,
+  message: propMessage,
+  toast,
+  duration,
   onHide,
 }) => {
   const { theme } = useTheme();
-  const [mounted, setMounted] = useState(visible);
+
+  const isVisible =
+    propVisible !== undefined
+      ? Boolean(propVisible)
+      : Boolean(toast && (toast.visible !== undefined ? toast.visible : true));
+  const type = propType || toast?.type || 'info';
+  const title = propTitle || toast?.title || '';
+  const message = propMessage || toast?.message || '';
+  const toastDuration = duration || toast?.duration;
+
+  const [mounted, setMounted] = useState(isVisible);
 
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-30)).current;
   const scale = useRef(new Animated.Value(0.94)).current;
 
   useEffect(() => {
-    if (visible) {
+    if (isVisible && toastDuration && typeof onHide === 'function') {
+      const timer = setTimeout(() => {
+        onHide();
+      }, toastDuration);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, toastDuration, onHide]);
+
+  useEffect(() => {
+    if (isVisible) {
       setMounted(true);
 
       opacity.setValue(0);
@@ -86,7 +107,7 @@ const CustomToast = ({
         setMounted(false);
       });
     }
-  }, [visible, mounted, opacity, translateY, scale]);
+  }, [isVisible, mounted, opacity, translateY, scale]);
 
   if (!mounted) {
     return null;

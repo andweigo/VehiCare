@@ -187,14 +187,32 @@ apiClient.interceptors.response.use(
       });
     } else if (status === 404) {
       // 404 Not Found is expected during account/resource lookups (e.g. forgot password, user check)
-      // Log as info to avoid triggering noisy red error banners or cluttering console
       console.info('[apiClient] Resource not found (404):', {
         method: error?.config?.method?.toUpperCase() || 'GET',
         url: requestPath,
         fullURL,
         message: responseData?.message || message,
       });
-    } else if (!isValidationError) {
+    } else if (status === 400 || isValidationError) {
+      // 400 Bad Request or 422 Validation (e.g. OTP cooldown, duplicate account, invalid format)
+      // These are expected business validation responses handled by UI toasts/alerts
+      console.info(`[apiClient] Request rejected (${status}):`, {
+        method: error?.config?.method?.toUpperCase() || 'GET',
+        url: requestPath,
+        fullURL,
+        message: responseData?.message || message,
+        cooldown_seconds: responseData?.cooldown_seconds,
+      });
+    } else if (status >= 400 && status < 500) {
+      // Other 4xx client errors
+      console.info(`[apiClient] Client error (${status}):`, {
+        method: error?.config?.method?.toUpperCase() || 'GET',
+        url: requestPath,
+        fullURL,
+        message: responseData?.message || message,
+      });
+    } else {
+      // 5xx Server errors or unhandled system failures
       console.error('[apiClient] API Client Error:', message);
 
       console.error('[apiClient] Request details:', {
@@ -215,13 +233,6 @@ apiClient.interceptors.response.use(
       if (error?.code) {
         console.error('[apiClient] Error Code:', error.code);
       }
-    } else {
-      console.info('[apiClient] API Client Validation Error:', {
-        status,
-        method: error?.config?.method?.toUpperCase() || 'GET',
-        fullURL,
-        responseData,
-      });
     }
 
     return Promise.reject(error);
