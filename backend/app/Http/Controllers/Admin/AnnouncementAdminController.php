@@ -21,7 +21,6 @@ class AnnouncementAdminController extends Controller
             ->latest()
             ->paginate(20);
         $activeUsers = User::query()
-            ->where('role', User::ROLE_USER)
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
@@ -42,7 +41,6 @@ class AnnouncementAdminController extends Controller
                 'integer',
                 'distinct',
                 Rule::exists('users', 'id')->where(fn ($query) => $query
-                    ->where('role', User::ROLE_USER)
                     ->where('is_active', true)),
             ],
         ]);
@@ -98,9 +96,9 @@ class AnnouncementAdminController extends Controller
         );
 
         if ($announcement->status === 'published') {
-            DeliverAnnouncement::dispatch($announcement->id)->afterCommit();
+            DeliverAnnouncement::dispatchSync($announcement->id);
             return redirect()->route('admin.announcements.index')
-                ->with('status', 'Announcement published and queued for delivery.');
+                ->with('status', 'Announcement published and delivered to recipients.');
         }
 
         if ($announcement->status === 'expired') {

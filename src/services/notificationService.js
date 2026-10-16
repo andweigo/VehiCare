@@ -50,12 +50,12 @@ export const DEFAULT_PREFERENCES = {
 };
 
 export const fetchNotifications = async () => {
-  try {
-    const token = await getToken();
-    if (!token || String(token).startsWith('guest')) {
-      return [];
-    }
+  const token = await getToken();
+  if (!token || String(token).startsWith('guest')) {
+    return [];
+  }
 
+  try {
     const response = await apiClient.get('/notifications');
     const items = response?.data?.data || [];
 
@@ -77,10 +77,20 @@ export const fetchNotifications = async () => {
       };
     }).sort((a, b) => b.timestamp - a.timestamp);
   } catch (err) {
-    if (err?.response?.status !== 401) {
-      console.warn('[notificationService] Failed to fetch notifications:', err?.message);
+    if (err?.response?.status === 401) {
+      return [];
     }
-    return [];
+
+    const safeMessage =
+      err?.response?.data?.message ||
+      err?.message ||
+      'Failed to load notifications from server.';
+    console.warn('[notificationService] Failed to fetch notifications:', safeMessage);
+
+    const error = new Error(safeMessage);
+    error.status = err?.response?.status || null;
+    error.isNetworkError = !err?.response;
+    throw error;
   }
 };
 

@@ -361,6 +361,7 @@ const NotificationsScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState('All');
+  const [fetchError, setFetchError] = useState(null);
   const mountedRef = useRef(false);
   const loadInFlightRef = useRef(false);
   const refreshPendingRef = useRef(false);
@@ -396,12 +397,15 @@ const NotificationsScreen = ({ navigation }) => {
     loadInFlightRef.current = true;
     const requestedUserId = user?.id;
     try {
+      setFetchError(null);
       const items = await notificationService.fetchNotifications();
       if (mountedRef.current && currentUserIdRef.current === requestedUserId) {
         setNotifications(Array.isArray(items) ? items : []);
       }
     } catch (error) {
-      console.error('Failed to load notifications:', error);
+      if (mountedRef.current && currentUserIdRef.current === requestedUserId) {
+        setFetchError(error?.message || 'Failed to load notifications. Please check your connection.');
+      }
     } finally {
       loadInFlightRef.current = false;
       if (mountedRef.current) {
@@ -489,6 +493,14 @@ const NotificationsScreen = ({ navigation }) => {
 
           case 'diagnostic':
             navigation.navigate('Diagnostics');
+            break;
+
+          case 'announcement':
+            Alert.alert(
+              item.title || 'Announcement',
+              item.message || '',
+              [{ text: 'Close', style: 'cancel' }]
+            );
             break;
 
           case 'vehicle_update':
@@ -657,33 +669,59 @@ const NotificationsScreen = ({ navigation }) => {
           sections={[]}
           ListHeaderComponent={renderHeader}
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <View style={[styles.emptyIconContainer, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-                <Icon name="notifications-none" size={38} color={isDark ? '#F63B05' : '#C2410C'} />
-              </View>
+            fetchError ? (
+              <View style={styles.emptyWrap}>
+                <View style={[styles.emptyIconContainer, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
+                  <Icon name="error-outline" size={38} color="#EF4444" />
+                </View>
 
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                You're All Caught Up
-              </Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  Unable to Load Notifications
+                </Text>
 
-              <Text style={[styles.emptyDesc, { color: theme.textSecondary }]}>
-                {category === 'All'
-                  ? "There aren't any notifications right now. We'll let you know when something needs your attention."
-                  : `There aren't any ${category.toLowerCase()} notifications right now.`}
-              </Text>
+                <Text style={[styles.emptyDesc, { color: theme.textSecondary }]}>
+                  {fetchError}
+                </Text>
 
-              {category !== 'All' && (
                 <TouchableOpacity
-                  style={[styles.clearFilterButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                  onPress={() => setCategory('All')}
+                  style={[styles.clearFilterButton, { backgroundColor: '#F63B05', borderColor: '#F63B05', marginTop: 12 }]}
+                  onPress={onRefresh}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.clearFilterText, { color: theme.accent }]}>
-                    View All Notifications
+                  <Text style={[styles.clearFilterText, { color: '#FFFFFF', fontWeight: 'bold' }]}>
+                    Try Again
                   </Text>
                 </TouchableOpacity>
-              )}
-            </View>
+              </View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <View style={[styles.emptyIconContainer, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
+                  <Icon name="notifications-none" size={38} color={isDark ? '#F63B05' : '#C2410C'} />
+                </View>
+
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                  You're All Caught Up
+                </Text>
+
+                <Text style={[styles.emptyDesc, { color: theme.textSecondary }]}>
+                  {category === 'All'
+                    ? "There aren't any notifications right now. We'll let you know when something needs your attention."
+                    : `There aren't any ${category.toLowerCase()} notifications right now.`}
+                </Text>
+
+                {category !== 'All' && (
+                  <TouchableOpacity
+                    style={[styles.clearFilterButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                    onPress={() => setCategory('All')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.clearFilterText, { color: theme.accent }]}>
+                      View All Notifications
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )
           }
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.emptyListContent, { backgroundColor: theme.background }]}

@@ -54,7 +54,6 @@ class DeliverAnnouncement implements ShouldQueue, ShouldBeUnique
         $this->snapshotRecipients($announcement);
 
         $users = User::query()
-            ->where('users.role', User::ROLE_USER)
             ->where('users.is_active', true)
             ->where('users.created_at', '<=', $recipientCutoff)
             ->whereNotExists(function ($query) {
@@ -63,6 +62,10 @@ class DeliverAnnouncement implements ShouldQueue, ShouldBeUnique
                     ->whereColumn('announcement_deliveries.user_id', 'users.id')
                     ->where('announcement_deliveries.announcement_id', $this->announcementId);
             });
+
+        if ($announcement->audience !== 'all' && $announcement->audience !== 'selected') {
+            $users->where('users.role', User::ROLE_USER);
+        }
 
         $users->whereIn('users.id', function ($query) {
             $query->select('user_id')
@@ -160,9 +163,12 @@ class DeliverAnnouncement implements ShouldQueue, ShouldBeUnique
             $snapshotAt = now();
             if ($lockedAnnouncement->audience !== 'selected') {
                 $users = User::query()
-                    ->where('role', User::ROLE_USER)
                     ->where('is_active', true)
                     ->where('created_at', '<=', $lockedAnnouncement->published_at ?? $lockedAnnouncement->created_at);
+
+                if ($lockedAnnouncement->audience !== 'all') {
+                    $users->where('role', User::ROLE_USER);
+                }
 
                 if ($lockedAnnouncement->audience === 'premium') {
                     $users->where('subscription_plan', User::SUBSCRIPTION_PREMIUM)
@@ -181,6 +187,13 @@ class DeliverAnnouncement implements ShouldQueue, ShouldBeUnique
                             });
                     });
                 }
+
+                $users->whereNotExists(function ($query) use ($lockedAnnouncement) {
+                    $query->selectRaw('1')
+                        ->from('announcement_recipients')
+                        ->whereColumn('announcement_recipients.user_id', 'users.id')
+                        ->where('announcement_recipients.announcement_id', $lockedAnnouncement->id);
+                });
 
                 $now = Carbon::now();
                 DB::table('announcement_recipients')->insertUsing(

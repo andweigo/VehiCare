@@ -20,13 +20,18 @@ class NotificationController extends Controller
             ->get()
             ->filter(fn ($notification) => $this->isVisible($notification))
             ->map(function ($n) {
-                $data = is_array($n->data) ? $n->data : json_decode($n->data, true);
+                $data = is_array($n->data) ? $n->data : json_decode($n->data ?? '', true);
+                $data = is_array($data) ? $data : [];
+
+                $type = $data['type'] ?? ($n->type === 'App\\Notifications\\AnnouncementNotification' ? 'announcement' : $n->type);
+                $title = $data['title'] ?? 'Notification';
+                $message = $data['message'] ?? '';
                 
                 return [
-                    'id' => $n->id,
-                    'type' => $data['type'] ?? $n->type,
-                    'title' => $data['title'] ?? 'Notification',
-                    'message' => $data['message'] ?? '',
+                    'id' => (string) $n->id,
+                    'type' => $type,
+                    'title' => $title,
+                    'message' => $message,
                     'data' => $data['data'] ?? $data,
                     'read_at' => $n->read_at ? $n->read_at->toIso8601String() : null,
                     'is_read' => !is_null($n->read_at),
@@ -85,10 +90,28 @@ class NotificationController extends Controller
 
     private function isVisible($notification): bool
     {
-        $data = is_array($notification->data) ? $notification->data : json_decode($notification->data, true);
+        $data = is_array($notification->data)
+            ? $notification->data
+            : json_decode($notification->data ?? '', true);
 
-        return ($data['kind'] ?? null) !== 'announcement'
-            || empty($data['expires_at'])
-            || Carbon::parse($data['expires_at'])->isFuture();
+        $data = is_array($data) ? $data : [];
+
+        $isAnnouncement = ($data['kind'] ?? null) === 'announcement'
+            || ($data['type'] ?? null) === 'announcement'
+            || $notification->type === 'App\\Notifications\\AnnouncementNotification';
+
+        if (! $isAnnouncement) {
+            return true;
+        }
+
+        if (empty($data['expires_at'])) {
+            return true;
+        }
+
+        try {
+            return Carbon::parse($data['expires_at'])->isFuture();
+        } catch (\Throwable) {
+            return true;
+        }
     }
 }

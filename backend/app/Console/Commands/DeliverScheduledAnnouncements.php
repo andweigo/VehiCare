@@ -36,7 +36,7 @@ class DeliverScheduledAnnouncements extends Command
             ->orderBy('id')
             ->chunkById(100, function ($announcements) {
                 foreach ($announcements as $announcement) {
-                    DeliverAnnouncement::dispatch($announcement->id)->afterCommit();
+                    DeliverAnnouncement::dispatchSync($announcement->id);
                 }
             });
 
