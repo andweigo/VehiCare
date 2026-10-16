@@ -407,6 +407,18 @@ const AppNavigator = () => {
             component={OtpVerificationScreen}
           />
           <Stack.Screen
+            name="VehicleDetails"
+            component={VehicleDetailsScreen}
+          />
+          <Stack.Screen
+            name="VehicleLoading"
+            component={VehicleLoadingScreen}
+          />
+          <Stack.Screen
+            name="Dashboard"
+            component={DashboardScreen}
+          />
+          <Stack.Screen
             name="ForgotPassword"
             component={ForgotPasswordScreen}
           />

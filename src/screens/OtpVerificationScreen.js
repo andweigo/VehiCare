@@ -149,30 +149,58 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                   setActiveVehicle(completeResult.claimedVehicle);
                 }
 
-                if (completeResult?.hasAccountVehicles) {
-                  navigation.replace('VehicleLoading', {
-                    vehicle: completeResult.claimedVehicle,
-                  });
-                } else if (redirectTo?.name) {
-                  navigation.replace(redirectTo.name, redirectTo.params);
+                if (redirectTo?.name) {
+                  try {
+                    navigation.replace(redirectTo.name, redirectTo.params);
+                  } catch (navErr) {
+                    // Handled automatically by auth state transition
+                  }
+                } else if (completeResult?.hasAccountVehicles) {
+                  try {
+                    navigation.replace('VehicleLoading', {
+                      vehicle: completeResult.claimedVehicle,
+                    });
+                  } catch (navErr) {
+                    // Handled automatically by auth state transition
+                  }
                 } else {
-                  navigation.replace('VehicleDetails');
+                  try {
+                    navigation.replace('VehicleDetails');
+                  } catch (navErr) {
+                    // Handled automatically by auth state transition
+                  }
                 }
               } catch (authErr) {
                 console.error('[OtpVerificationScreen] Registration completion error:', authErr);
                 await verifyUserEmail();
-                navigation.replace('Dashboard');
+                try {
+                  navigation.replace('Dashboard');
+                } catch (navErr) {
+                  // Handled automatically by auth state transition
+                }
               }
             } else {
               await verifyUserEmail();
               if (redirectTo?.name) {
-                navigation.replace(redirectTo.name, redirectTo.params);
+                try {
+                  navigation.replace(redirectTo.name, redirectTo.params);
+                } catch (navErr) {
+                  // Handled automatically by auth state transition
+                }
               } else {
-                navigation.replace('Dashboard');
+                try {
+                  navigation.replace('Dashboard');
+                } catch (navErr) {
+                  // Handled automatically by auth state transition
+                }
               }
             }
           } else if (purpose === 'password_reset') {
-            navigation.replace('ResetPassword', { email, code });
+            try {
+              navigation.replace('ResetPassword', { email, code });
+            } catch (navErr) {
+              // Handled safely
+            }
           }
         }, 1500);
       } else {
