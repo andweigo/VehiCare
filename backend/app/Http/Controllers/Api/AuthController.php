@@ -57,10 +57,17 @@ class AuthController extends Controller
         $otpResult = $otpService->generateOtp($user->email, \App\Services\OtpService::PURPOSE_REGISTRATION);
 
         if (! ($otpResult['success'] ?? false)) {
-            Log::warning('[AuthController] Failed to dispatch registration OTP email', [
+            Log::warning('[AuthController] Failed to dispatch registration OTP email, rolling back user creation', [
                 'email' => $user->email,
                 'message' => $otpResult['message'] ?? 'Unknown error',
             ]);
+
+            $user->delete();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $otpResult['message'] ?? 'Failed to send verification email. Please try again.',
+            ], 400);
         }
 
         return response()->json([

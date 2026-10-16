@@ -417,6 +417,7 @@ export const AuthProvider = ({
     password,
     guestVehicle = null,
   ) => {
+    let firebaseUser = null;
     try {
       const userCredential =
         await registerWithEmail(
@@ -424,7 +425,7 @@ export const AuthProvider = ({
           password,
         );
 
-      const firebaseUser =
+      firebaseUser =
         userCredential?.user;
 
       if (!firebaseUser) {
@@ -447,6 +448,9 @@ export const AuthProvider = ({
           password,
         );
 
+      // Temporarily sign out of Firebase on this device so onAuthStateChanged doesn't restore session before OTP is entered!
+      await logoutFirebase();
+
       // CRITICAL: Do NOT persist auth state here!
       // User must verify their OTP code first before entering the Dashboard or gaining session access.
       return {
@@ -459,6 +463,16 @@ export const AuthProvider = ({
           60,
       };
     } catch (error) {
+      if (firebaseUser) {
+        try {
+          await firebaseUser.delete();
+        } catch (delErr) {
+          try {
+            await logoutFirebase();
+          } catch (e) {}
+        }
+      }
+
       const code =
         error?.code || '';
 
