@@ -4,6 +4,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { sendOtp } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
 import { formatApiMessage } from './OtpVerificationScreen';
@@ -35,6 +36,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
   }, []);
 
   const handleSendCode = async () => {
+    Keyboard.dismiss();
     const trimmedEmail = email.trim().toLowerCase();
 
     if (!trimmedEmail) {
@@ -77,11 +79,18 @@ const ForgotPasswordScreen = ({ navigation }) => {
         }, 1500);
       } else {
         const cd = response?.cooldown_seconds || response?.cooldown;
+        const msg = response?.message;
+        const isNotFound =
+          response?.status === 404 ||
+          String(msg).toLowerCase().includes('not found') ||
+          String(msg).toLowerCase().includes('no account');
+
         showToast({
-          type: 'error',
-          title: 'Request Failed',
-          message: formatApiMessage(response?.message) || 'Unable to send verification code.',
+          type: isNotFound ? 'warning' : 'error',
+          title: isNotFound ? 'Account Not Found' : cd ? 'Cooldown Active' : 'Request Failed',
+          message: formatApiMessage(msg) || 'Unable to send verification code.',
         });
+
         if (cd) {
           setTimeout(() => {
             navigation.navigate('OtpVerification', {
@@ -94,13 +103,24 @@ const ForgotPasswordScreen = ({ navigation }) => {
       }
     } catch (err) {
       const resData = err?.response?.data;
+      const status = err?.response?.status;
       const rawMsg = resData?.message || err?.message || 'Failed to request password reset code.';
       const cd = resData?.cooldown_seconds || resData?.cooldown;
 
+      let title = 'Reset Error';
+      let message = formatApiMessage(rawMsg);
+
+      if (status === 404 || String(rawMsg).toLowerCase().includes('no account found')) {
+        title = 'Account Not Found';
+        message = rawMsg || 'No account found with this email address.';
+      } else if (cd) {
+        title = 'Cooldown Active';
+      }
+
       showToast({
-        type: 'error',
-        title: cd ? 'Cooldown Active' : 'Reset Error',
-        message: formatApiMessage(rawMsg),
+        type: status === 404 ? 'warning' : 'error',
+        title,
+        message,
       });
 
       if (cd) {
@@ -119,6 +139,10 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar
+        barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.background}
+      />
       <CustomToast toast={toast} onHide={hideToast} />
 
       <KeyboardAvoidingView
@@ -126,61 +150,109 @@ const ForgotPasswordScreen = ({ navigation }) => {
         style={styles.flexOne}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.inner}>
-            <View>
-              {/* BACK BUTTON */}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* TOP BAR / BACK BUTTON */}
+            <View style={styles.topBar}>
               <TouchableOpacity
-                style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                style={[
+                  styles.backButton,
+                  { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+                ]}
                 onPress={() => navigation.goBack()}
                 activeOpacity={0.7}
               >
-                <Icon name="arrow-back" size={22} color={theme.text} />
+                <Ionicons name="arrow-back" size={20} color={theme.text} />
               </TouchableOpacity>
+            </View>
 
-              {/* HEADER */}
-              <View style={styles.headerBox}>
-                <View style={[styles.iconCircle, { backgroundColor: '#27160F' }]}>
-                  <Icon name="lock-reset" size={32} color={theme.accent} />
-                </View>
-                <Text style={[styles.title, { color: theme.text }]}>Forgot Password</Text>
-                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                  Enter the email address registered with your VehiCare account. We'll send you a 6-digit code to reset your password.
-                </Text>
+            {/* HEADER */}
+            <View style={styles.headerBox}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  {
+                    backgroundColor:
+                      theme.mode === 'dark' ? 'rgba(246, 59, 5, 0.15)' : 'rgba(246, 59, 5, 0.08)',
+                    borderColor: 'rgba(246, 59, 5, 0.3)',
+                  },
+                ]}
+              >
+                <Ionicons name="key-outline" size={32} color={theme.accent} />
               </View>
+              <Text style={[styles.title, { color: theme.text }]}>Forgot Password</Text>
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                Enter your registered email address and we will send you a 6-digit verification code to reset your password.
+              </Text>
+            </View>
 
-              {/* EMAIL INPUT */}
-              <View style={styles.inputContainer}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Email Address</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                  <Icon name="email" size={20} color={theme.textSecondary} style={styles.inputIcon} />
+            {/* INPUT SECTION */}
+            <View style={styles.formContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email Address</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    {
+                      backgroundColor: theme.surfaceAlt,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="mail-outline"
+                    size={19}
+                    color={theme.textSecondary}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={[styles.input, { color: theme.text }]}
                     placeholder="Enter your email"
-                    placeholderTextColor={theme.textMuted}
+                    placeholderTextColor={theme.placeholder}
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    editable={!loading}
                   />
                 </View>
               </View>
-            </View>
 
-            {/* SEND CODE BUTTON */}
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.accent }, loading && styles.buttonDisabled]}
-              onPress={handleSendCode}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Send Verification Code</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              {/* ACTION BUTTON */}
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: theme.accent },
+                  loading && styles.buttonDisabled,
+                ]}
+                onPress={handleSendCode}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Send Verification Code</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* FOOTER LINK */}
+              <TouchableOpacity
+                style={styles.footerLink}
+                onPress={() => navigation.navigate('Login')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.footerText, { color: theme.textSecondary }]}>
+                  Remember your password?{' '}
+                  <Text style={[styles.footerTextBold, { color: theme.accent }]}>Sign In</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -194,58 +266,72 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  inner: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 16,
-    paddingBottom: 24,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 8 : 12,
+    paddingBottom: 28,
     justifyContent: 'space-between',
   },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerBox: {
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 16,
     marginBottom: 28,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 18,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Outfit-Bold',
+    fontSize: 26,
+    letterSpacing: -0.5,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
+    fontFamily: 'Inter-Regular',
     fontSize: 14,
+    lineHeight: 22,
     textAlign: 'center',
-    lineHeight: 20,
+    paddingHorizontal: 12,
   },
-  inputContainer: {
-    marginBottom: 16,
+  formContainer: {
+    flex: 1,
+    justifyContent: 'flex-start',
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
+  inputGroup: {
+    marginBottom: 22,
+  },
+  inputLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
     marginBottom: 8,
+    letterSpacing: 0.2,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
-    borderRadius: 12,
+    height: 56,
+    borderRadius: 15,
     borderWidth: 1,
     paddingHorizontal: 16,
   },
@@ -254,21 +340,37 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 15,
+    height: '100%',
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
   },
   button: {
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 18,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    letterSpacing: 0.1,
+  },
+  footerLink: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  footerText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+  },
+  footerTextBold: {
+    fontFamily: 'Inter-SemiBold',
   },
 });
 

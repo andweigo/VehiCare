@@ -4,6 +4,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -13,7 +14,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { resetPassword as resetPasswordApi } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
@@ -54,6 +54,8 @@ const ResetPasswordScreen = ({ route, navigation }) => {
   const passwordStrong = isPasswordStrong(password);
 
   const handleResetPassword = async () => {
+    Keyboard.dismiss();
+
     if (!password || !confirmPassword) {
       showToast({
         type: 'warning',
@@ -116,14 +118,12 @@ const ResetPasswordScreen = ({ route, navigation }) => {
     }
   };
 
-  const getMeterColor = () => {
-    if (passwordScore <= 1) return '#FF5757';
-    if (passwordScore <= 3) return '#F5B942';
-    return '#32D583';
-  };
-
   return (
     <SafeAreaView edges={['top', 'bottom']} style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar
+        barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={theme.background}
+      />
       <CustomToast toast={toast} onHide={hideToast} />
 
       <KeyboardAvoidingView
@@ -131,43 +131,83 @@ const ResetPasswordScreen = ({ route, navigation }) => {
         style={styles.flexOne}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.inner}>
-            <View>
-              {/* BACK BUTTON */}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* TOP BAR / BACK BUTTON */}
+            <View style={styles.topBar}>
               <TouchableOpacity
-                style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                style={[
+                  styles.backButton,
+                  { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+                ]}
                 onPress={() => navigation.goBack()}
                 activeOpacity={0.7}
               >
-                <Icon name="arrow-back" size={22} color={theme.text} />
+                <Ionicons name="arrow-back" size={20} color={theme.text} />
               </TouchableOpacity>
+            </View>
 
-              {/* HEADER */}
-              <View style={styles.headerBox}>
-                <View style={[styles.iconCircle, { backgroundColor: '#27160F' }]}>
-                  <Icon name="vpn-key" size={32} color={theme.accent} />
-                </View>
-                <Text style={[styles.title, { color: theme.text }]}>Set New Password</Text>
-                <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                  Create a new secure password for <Text style={{ color: theme.accent }}>{email}</Text>.
-                </Text>
+            {/* HEADER */}
+            <View style={styles.headerBox}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  {
+                    backgroundColor:
+                      theme.mode === 'dark' ? 'rgba(246, 59, 5, 0.15)' : 'rgba(246, 59, 5, 0.08)',
+                    borderColor: 'rgba(246, 59, 5, 0.3)',
+                  },
+                ]}
+              >
+                <Ionicons name="shield-checkmark-outline" size={32} color={theme.accent} />
               </View>
+              <Text style={[styles.title, { color: theme.text }]}>Set New Password</Text>
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                Create a new secure password for{' '}
+                <Text style={{ color: theme.accent, fontFamily: 'Inter-SemiBold' }}>{email}</Text>.
+              </Text>
+            </View>
 
+            {/* FORM CONTAINER */}
+            <View style={styles.formContainer}>
               {/* NEW PASSWORD INPUT */}
-              <View style={styles.inputContainer}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>New Password</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                  <Icon name="lock-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>New Password</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    {
+                      backgroundColor: theme.surfaceAlt,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={19}
+                    color={theme.textSecondary}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
-                    style={[styles.input, { color: theme.text }]}
+                    style={[styles.input, styles.passwordInput, { color: theme.text }]}
                     placeholder="Enter new password"
-                    placeholderTextColor={theme.textMuted}
+                    placeholderTextColor={theme.placeholder}
                     secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(p => !p)} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(p => !p)}
+                    activeOpacity={0.7}
+                    disabled={loading}
+                  >
                     <Ionicons
                       name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                       size={20}
@@ -177,33 +217,75 @@ const ResetPasswordScreen = ({ route, navigation }) => {
                 </View>
               </View>
 
-              {/* PASSWORD STRENGTH METER */}
+              {/* PASSWORD STRENGTH INDICATOR (IDENTICAL TO REGISTERSCREEN) */}
               {password.length > 0 && (
-                <View style={styles.meterContainer}>
-                  <View style={styles.meterRow}>
-                    <View style={[styles.meterBarBackground, { backgroundColor: theme.border }]}>
-                      <View
-                        style={[
-                          styles.meterBarFill,
-                          { width: `${(passwordScore / 5) * 100}%`, backgroundColor: getMeterColor() },
-                        ]}
-                      />
-                    </View>
-                    <Text style={[styles.strengthLabel, { color: getMeterColor() }]}>
+                <View style={styles.passwordStrengthContainer}>
+                  <View style={styles.passwordStrengthHeader}>
+                    <Text
+                      style={[
+                        styles.passwordStrengthLabel,
+                        { color: theme.textSecondary },
+                      ]}
+                    >
+                      Password Strength
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.passwordStrengthValue,
+                        passwordScore >= 4 && styles.passwordStrengthGood,
+                        passwordStrong && styles.passwordStrong,
+                      ]}
+                    >
                       {passwordStrength}
                     </Text>
                   </View>
 
-                  <View style={styles.reqGrid}>
-                    {passwordRequirements.map((req, idx) => (
-                      <View key={idx} style={styles.reqItem}>
-                        <Icon
-                          name={req.met ? 'check-circle' : 'cancel'}
-                          size={15}
-                          color={req.met ? '#32D583' : '#666666'}
-                        />
-                        <Text style={[styles.reqText, { color: req.met ? '#FFFFFF' : '#A3A3A3', fontWeight: req.met ? '600' : '400' }]}>
-                          {req.label}
+                  <View
+                    style={[
+                      styles.strengthBarBackground,
+                      { backgroundColor: theme.border },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.strengthBar,
+                        {
+                          width: `${Math.min((passwordScore / 5) * 100, 100)}%`,
+                        },
+                        passwordScore <= 2 && styles.strengthBarWeak,
+                        passwordScore === 3 && styles.strengthBarFair,
+                        passwordScore === 4 && styles.strengthBarGood,
+                        passwordScore === 5 && styles.strengthBarStrong,
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.requirementsRow}>
+                    {passwordRequirements.map(requirement => (
+                      <View style={styles.requirement} key={requirement.label}>
+                        <View
+                          style={[
+                            styles.requirementIcon,
+                            requirement.valid && styles.requirementIconValid,
+                          ]}
+                        >
+                          {requirement.valid && (
+                            <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+                          )}
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.requirementText,
+                            {
+                              color: requirement.valid
+                                ? '#35B86B'
+                                : theme.textSecondary,
+                            },
+                          ]}
+                        >
+                          {requirement.label}
                         </Text>
                       </View>
                     ))}
@@ -212,20 +294,45 @@ const ResetPasswordScreen = ({ route, navigation }) => {
               )}
 
               {/* CONFIRM PASSWORD INPUT */}
-              <View style={styles.inputContainer}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Confirm New Password</Text>
-                <View style={[styles.inputWrapper, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                  <Icon name="lock-outline" size={20} color={theme.textSecondary} style={styles.inputIcon} />
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Confirm Password</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    {
+                      backgroundColor: theme.surfaceAlt,
+                      borderColor:
+                        confirmPassword.length > 0
+                          ? passwordMatch
+                            ? '#35B86B'
+                            : '#FF5A5F'
+                          : theme.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={19}
+                    color={theme.textSecondary}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
-                    style={[styles.input, { color: theme.text }]}
-                    placeholder="Confirm new password"
-                    placeholderTextColor={theme.textMuted}
+                    style={[styles.input, styles.passwordInput, { color: theme.text }]}
+                    placeholder="Confirm your password"
+                    placeholderTextColor={theme.placeholder}
                     secureTextEntry={!showConfirmPassword}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
                   />
-                  <TouchableOpacity onPress={() => setShowConfirmPassword(p => !p)} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowConfirmPassword(p => !p)}
+                    activeOpacity={0.7}
+                    disabled={loading}
+                  >
                     <Ionicons
                       name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
                       size={20}
@@ -233,26 +340,53 @@ const ResetPasswordScreen = ({ route, navigation }) => {
                     />
                   </TouchableOpacity>
                 </View>
-                {confirmPassword.length > 0 && !passwordMatch && (
-                  <Text style={styles.mismatchError}>Passwords do not match</Text>
+
+                {/* MATCH STATUS (IDENTICAL TO REGISTERSCREEN) */}
+                {confirmPassword.length > 0 && (
+                  <View style={styles.matchStatus}>
+                    <View
+                      style={[
+                        styles.matchIcon,
+                        passwordMatch ? styles.matchIconValid : styles.matchIconInvalid,
+                      ]}
+                    >
+                      <Ionicons
+                        name={passwordMatch ? 'checkmark' : 'close'}
+                        size={11}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.matchText,
+                        passwordMatch ? styles.matchTextValid : styles.matchTextInvalid,
+                      ]}
+                    >
+                      {passwordMatch ? 'Passwords match' : 'Passwords do not match'}
+                    </Text>
+                  </View>
                 )}
               </View>
-            </View>
 
-            {/* RESET BUTTON */}
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.accent }, (loading || !passwordStrong || !passwordMatch) && styles.buttonDisabled]}
-              onPress={handleResetPassword}
-              disabled={loading || !passwordStrong || !passwordMatch}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Reset Password</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              {/* RESET BUTTON */}
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { backgroundColor: theme.accent },
+                  (loading || !passwordStrong || !passwordMatch) && styles.buttonDisabled,
+                ]}
+                onPress={handleResetPassword}
+                disabled={loading || !passwordStrong || !passwordMatch}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Reset Password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -266,126 +400,216 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  inner: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 16,
-    paddingBottom: 24,
-    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 8 : 12,
+    paddingBottom: 28,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerBox: {
     alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 20,
+    marginTop: 16,
+    marginBottom: 24,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 1,
     alignItems: 'center',
-    justify: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 26,
+    letterSpacing: -0.5,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
+    fontFamily: 'Inter-Regular',
     fontSize: 14,
+    lineHeight: 22,
     textAlign: 'center',
+    paddingHorizontal: 12,
   },
-  inputContainer: {
+  formContainer: {
+    flex: 1,
+    marginTop: 6,
+  },
+  inputGroup: {
     marginBottom: 16,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
+  inputLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    marginBottom: 8,
+    letterSpacing: 0.2,
   },
   inputWrapper: {
+    height: 56,
+    borderRadius: 15,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    fontSize: 15,
-  },
-  meterContainer: {
-    marginBottom: 16,
-  },
-  meterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  meterBarBackground: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginRight: 12,
-  },
-  meterBarFill: {
     height: '100%',
-    borderRadius: 3,
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
   },
-  strengthLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    width: 70,
-    textAlign: 'right',
+  passwordInput: {
+    paddingRight: 8,
   },
-  reqGrid: {
+  eyeButton: {
+    width: 48,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* PASSWORD STRENGTH (SAME AS REGISTERSCREEN) */
+  passwordStrengthContainer: {
+    marginTop: -2,
+    marginBottom: 18,
+  },
+  passwordStrengthHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 7,
   },
-  reqItem: {
+  passwordStrengthLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+  },
+  passwordStrengthValue: {
+    color: '#FF5A5F',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+  },
+  passwordStrengthGood: {
+    color: '#D6A23A',
+  },
+  passwordStrong: {
+    color: '#35B86B',
+  },
+  strengthBarBackground: {
+    height: 5,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 13,
+  },
+  strengthBar: {
+    height: '100%',
+    borderRadius: 10,
+  },
+  strengthBarWeak: {
+    backgroundColor: '#FF5A5F',
+  },
+  strengthBarFair: {
+    backgroundColor: '#D6A23A',
+  },
+  strengthBarGood: {
+    backgroundColor: '#D6A23A',
+  },
+  strengthBarStrong: {
+    backgroundColor: '#35B86B',
+  },
+  requirementsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  requirement: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '48%',
-    gap: 4,
   },
-  reqText: {
-    fontSize: 12,
-    flexShrink: 1,
+  requirementIcon: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    backgroundColor: '#333333',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 5,
   },
-  mismatchError: {
-    color: '#FF5757',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
+  requirementIconValid: {
+    backgroundColor: '#35B86B',
   },
+  requirementText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10.5,
+  },
+
+  /* MATCH STATUS */
+  matchStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  matchIcon: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  matchIconValid: {
+    backgroundColor: '#35B86B',
+  },
+  matchIconInvalid: {
+    backgroundColor: '#FF5A5F',
+  },
+  matchText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+  },
+  matchTextValid: {
+    color: '#35B86B',
+  },
+  matchTextInvalid: {
+    color: '#FF5A5F',
+  },
+
+  /* BUTTON */
   button: {
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 15,
     alignItems: 'center',
-    justify: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    marginBottom: 16,
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    letterSpacing: 0.1,
   },
 });
 

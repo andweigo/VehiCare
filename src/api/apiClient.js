@@ -185,6 +185,15 @@ apiClient.interceptors.response.use(
         used: responseData?.used,
         remaining: responseData?.remaining,
       });
+    } else if (status === 404) {
+      // 404 Not Found is expected during account/resource lookups (e.g. forgot password, user check)
+      // Log as info to avoid triggering noisy red error banners or cluttering console
+      console.info('[apiClient] Resource not found (404):', {
+        method: error?.config?.method?.toUpperCase() || 'GET',
+        url: requestPath,
+        fullURL,
+        message: responseData?.message || message,
+      });
     } else if (!isValidationError) {
       console.error('[apiClient] API Client Error:', message);
 
