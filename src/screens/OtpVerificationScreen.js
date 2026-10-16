@@ -123,7 +123,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     setLoading(true);
 
     try {
-      const response = await verifyOtp(email, code, purpose);
+      const response = await verifyOtp(email, purpose, code);
 
       if (response?.success) {
         showToast({
