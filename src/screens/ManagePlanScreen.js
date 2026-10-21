@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -15,6 +14,8 @@ import { getPaymentHistory, getSubscriptionStatus, subscribePlan } from '../api/
 import vehicleApi from '../api/vehicleApi';
 import SubscriptionManagementCard from '../components/SubscriptionManagementCard';
 import PaymentModal from '../components/PaymentModal';
+import CustomModal from '../components/CustomModal';
+import useCustomModal from '../hooks/useCustomModal';
 import { useAuth } from '../context/AuthContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import { useTheme } from '../theme/ThemeContext';
@@ -41,6 +42,7 @@ const formatDate = (dateStr) => {
 const ManagePlanScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { user, refreshUser } = useAuth();
+  const { modalState, showModal } = useCustomModal();
 
   const plan = user?.subscription_plan || 'free';
   const isGuest = !user;
@@ -65,6 +67,44 @@ const ManagePlanScreen = ({ navigation }) => {
   const [activePayment, setActivePayment] = useState(null);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [statusLoading, setStatusLoading] = useState(true);
+
+  const isCurrentMonthly = isPremium && subscriptionCycle === 'monthly';
+  const isCurrentYearly = isPremium && subscriptionCycle === 'yearly';
+
+  const isMonthlyDisabled = isCurrentMonthly || restrictionState === 'pending_verification' || restrictionState === 'refund_processing';
+  const isYearlyDisabled = isCurrentYearly || restrictionState === 'pending_verification' || restrictionState === 'refund_processing';
+
+  const monthlyButtonText = useMemo(() => {
+    if (isCurrentMonthly) return 'Current Active Plan';
+    if (restrictionState === 'pending_verification') return 'Verification Pending';
+    if (restrictionState === 'refund_processing') return 'Refund in Progress';
+    if (isPremium) return 'Switch to Monthly — ₱149/mo';
+    return 'Select Premium Monthly — ₱149/mo';
+  }, [isCurrentMonthly, restrictionState, isPremium]);
+
+  const monthlyButtonIcon = isCurrentMonthly
+    ? 'check-circle'
+    : restrictionState === 'pending_verification'
+    ? 'hourglass-empty'
+    : restrictionState === 'refund_processing'
+    ? 'refresh'
+    : 'star';
+
+  const yearlyButtonText = useMemo(() => {
+    if (isCurrentYearly) return 'Current Active Plan';
+    if (restrictionState === 'pending_verification') return 'Verification Pending';
+    if (restrictionState === 'refund_processing') return 'Refund in Progress';
+    if (isPremium) return 'Switch to Yearly — ₱1,490/yr';
+    return 'Select Premium Yearly — ₱1,490/yr';
+  }, [isCurrentYearly, restrictionState, isPremium]);
+
+  const yearlyButtonIcon = isCurrentYearly
+    ? 'check-circle'
+    : restrictionState === 'pending_verification'
+    ? 'hourglass-empty'
+    : restrictionState === 'refund_processing'
+    ? 'refresh'
+    : 'stars';
 
   const currentVehicleLimit = vehicleLimit;
   const registeredVehicleCount = registeredVehicles.length;
@@ -214,23 +254,64 @@ const ManagePlanScreen = ({ navigation }) => {
   });
 
   const handleSelectPlan = (cycle) => {
-    if (!canSubmitPayment && restrictionState === 'pending_verification') {
-      Alert.alert(
-        'Payment Pending Verification',
-        'Your previous payment is currently awaiting review by VehiCare admin. Please wait for verification.',
-      );
+    if (restrictionState === 'pending_verification') {
+      showModal({
+        title: 'Payment Pending Verification',
+        message: 'Your previous payment is currently awaiting review by VehiCare admin. Please wait for verification.',
+        type: 'warning',
+        primaryLabel: 'Got it',
+      });
       return;
     }
 
-    if (!canSubmitPayment && restrictionState === 'refund_processing') {
-      Alert.alert(
-        'Refund in Progress',
-        'Your previous payment is currently being refunded. Please wait until your refund is completed before submitting another payment.',
-      );
+    if (restrictionState === 'refund_processing') {
+      showModal({
+        title: 'Refund in Progress',
+        message: 'Your previous payment is currently being refunded. Please wait until your refund is completed before submitting another payment.',
+        type: 'warning',
+        primaryLabel: 'Got it',
+      });
+      return;
+    }
+
+    if ((cycle === 'monthly' && isCurrentMonthly) || (cycle === 'yearly' && isCurrentYearly)) {
+      showModal({
+        title: 'Active Plan',
+        message: `You are already subscribed to the Premium ${cycle === 'yearly' ? 'Yearly' : 'Monthly'} plan.`,
+        type: 'info',
+        primaryLabel: 'OK',
+      });
       return;
     }
 
     setSelectedCycle(cycle);
+    setShowConfirmModal(true);
+  };
+
+  const handleChangeBilling = () => {
+    if (restrictionState === 'pending_verification') {
+      showModal({
+        title: 'Payment Pending Verification',
+        message: 'Your previous payment is currently awaiting review by VehiCare admin. Please wait for verification.',
+        type: 'warning',
+        primaryLabel: 'Got it',
+      });
+      return;
+    }
+
+    if (restrictionState === 'refund_processing') {
+      showModal({
+        title: 'Refund in Progress',
+        message: 'Your previous payment is currently being refunded. Please wait until your refund is completed before submitting another payment.',
+        type: 'warning',
+        primaryLabel: 'Got it',
+      });
+      return;
+    }
+
+    // Toggle to the alternate billing cycle
+    const targetCycle = subscriptionCycle === 'monthly' ? 'yearly' : 'monthly';
+    setSelectedCycle(targetCycle);
     setShowConfirmModal(true);
   };
 
@@ -253,11 +334,12 @@ const ManagePlanScreen = ({ navigation }) => {
       await loadSubscriptionData();
 
       const priceText = selectedCycle === 'yearly' ? '₱1,490.00' : '₱149.00';
-      Alert.alert(
-        'Payment Submitted!',
-        `Your ${priceText} Premium payment has been submitted successfully (Reference: ${res?.payment?.reference_number || 'VC-Payment'}). It is now awaiting admin verification.`,
-        [{ text: 'OK' }],
-      );
+      showModal({
+        title: 'Payment Submitted!',
+        message: `Your ${priceText} Premium payment has been submitted successfully (Reference: ${res?.payment?.reference_number || 'VC-Payment'}). It is now awaiting admin verification.`,
+        type: 'success',
+        primaryLabel: 'OK',
+      });
     } catch (error) {
       console.error('Subscription error:', error);
       const validationErrors = error?.response?.data?.errors;
@@ -270,7 +352,13 @@ const ManagePlanScreen = ({ navigation }) => {
         error?.response?.data?.payment?.[0] ||
         error?.message ||
         'Failed to process subscription payment.';
-      Alert.alert('Submission Failed', message);
+      showModal({
+        title: 'Submission Failed',
+        message,
+        type: 'error',
+        primaryLabel: 'Close',
+        destructive: true,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -738,8 +826,8 @@ const ManagePlanScreen = ({ navigation }) => {
 
           {/* 2. Premium Monthly Card */}
           <TouchableOpacity
-            activeOpacity={canSubmitPayment ? 0.88 : 1}
-            disabled={!canSubmitPayment}
+            activeOpacity={!isMonthlyDisabled ? 0.88 : 1}
+            disabled={isMonthlyDisabled}
             onPress={() => handleSelectPlan('monthly')}
             style={[
               styles.compareCard,
@@ -749,7 +837,7 @@ const ManagePlanScreen = ({ navigation }) => {
                 borderColor:
                   selectedCycle === 'monthly' ? theme.accent : theme.border,
                 borderWidth: selectedCycle === 'monthly' ? 2 : 1,
-                opacity: canSubmitPayment ? 1 : 0.65,
+                opacity: isMonthlyDisabled && !isCurrentMonthly ? 0.65 : 1,
               },
             ]}
           >
@@ -824,28 +912,39 @@ const ManagePlanScreen = ({ navigation }) => {
 
             <TouchableOpacity
               activeOpacity={0.85}
-              disabled={!canSubmitPayment}
+              disabled={isMonthlyDisabled}
               onPress={() => handleSelectPlan('monthly')}
               style={[
                 styles.cardSelectButton,
-                { backgroundColor: canSubmitPayment ? theme.accent : theme.border },
+                {
+                  backgroundColor: isCurrentMonthly
+                    ? theme.accentSoft
+                    : isMonthlyDisabled
+                    ? theme.border
+                    : theme.accent,
+                },
               ]}
             >
-              <Icon name="star" size={17} color="#FFFFFF" />
-              <Text style={styles.cardSelectButtonText}>
-                {canSubmitPayment
-                  ? 'Select Premium Monthly — ₱149/mo'
-                  : restrictionState === 'pending_verification'
-                  ? 'Verification Pending'
-                  : 'Refund in Progress'}
+              <Icon
+                name={monthlyButtonIcon}
+                size={17}
+                color={isCurrentMonthly ? theme.accent : '#FFFFFF'}
+              />
+              <Text
+                style={[
+                  styles.cardSelectButtonText,
+                  isCurrentMonthly && { color: theme.accent },
+                ]}
+              >
+                {monthlyButtonText}
               </Text>
             </TouchableOpacity>
           </TouchableOpacity>
 
           {/* 3. Premium Yearly Card */}
           <TouchableOpacity
-            activeOpacity={canSubmitPayment ? 0.88 : 1}
-            disabled={!canSubmitPayment}
+            activeOpacity={!isYearlyDisabled ? 0.88 : 1}
+            disabled={isYearlyDisabled}
             onPress={() => handleSelectPlan('yearly')}
             style={[
               styles.compareCard,
@@ -855,7 +954,7 @@ const ManagePlanScreen = ({ navigation }) => {
                 borderColor:
                   selectedCycle === 'yearly' ? theme.accent : theme.border,
                 borderWidth: selectedCycle === 'yearly' ? 2 : 1,
-                opacity: canSubmitPayment ? 1 : 0.65,
+                opacity: isYearlyDisabled && !isCurrentYearly ? 0.65 : 1,
               },
             ]}
           >
@@ -940,20 +1039,31 @@ const ManagePlanScreen = ({ navigation }) => {
 
             <TouchableOpacity
               activeOpacity={0.85}
-              disabled={!canSubmitPayment}
+              disabled={isYearlyDisabled}
               onPress={() => handleSelectPlan('yearly')}
               style={[
                 styles.cardSelectButton,
-                { backgroundColor: canSubmitPayment ? theme.accent : theme.border },
+                {
+                  backgroundColor: isCurrentYearly
+                    ? theme.accentSoft
+                    : isYearlyDisabled
+                    ? theme.border
+                    : theme.accent,
+                },
               ]}
             >
-              <Icon name="stars" size={17} color="#FFFFFF" />
-              <Text style={styles.cardSelectButtonText}>
-                {canSubmitPayment
-                  ? 'Select Premium Yearly — ₱1,490/yr'
-                  : restrictionState === 'pending_verification'
-                  ? 'Verification Pending'
-                  : 'Refund in Progress'}
+              <Icon
+                name={yearlyButtonIcon}
+                size={17}
+                color={isCurrentYearly ? theme.accent : '#FFFFFF'}
+              />
+              <Text
+                style={[
+                  styles.cardSelectButtonText,
+                  isCurrentYearly && { color: theme.accent },
+                ]}
+              >
+                {yearlyButtonText}
               </Text>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -966,7 +1076,7 @@ const ManagePlanScreen = ({ navigation }) => {
           subscriptionStatus={subscriptionStatus}
           expiresAt={expiresAt}
           vehicleLimit={vehicleLimit}
-          onChangeBilling={() => canSubmitPayment && setShowConfirmModal(true)}
+          onChangeBilling={handleChangeBilling}
         />
 
         {/* PAYMENT HISTORY SECTION */}
@@ -1136,6 +1246,9 @@ const ManagePlanScreen = ({ navigation }) => {
         userEmail={user?.email}
         userName={user?.name}
       />
+
+      {/* Custom Alert & Feedback Modal */}
+      <CustomModal {...modalState} />
     </SafeAreaView>
   );
 };

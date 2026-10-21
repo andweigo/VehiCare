@@ -385,21 +385,18 @@
             const dataValues = @json($aiChartData);
 
             new Chart(overviewCtx.getContext('2d'), {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [
                         {
                             label: 'AI Diagnostic Runs',
                             data: dataValues,
-                            borderColor: '#F63B05',
-                            backgroundColor: 'rgba(246, 59, 5, 0.12)',
-                            borderWidth: 2.5,
-                            pointBackgroundColor: '#F63B05',
-                            pointBorderColor: '#FFFFFF',
-                            pointRadius: 3.5,
-                            fill: true,
-                            tension: 0.35
+                            backgroundColor: '#F63B05',
+                            hoverBackgroundColor: '#FF5722',
+                            borderRadius: 4,
+                            borderSkipped: false,
+                            maxBarThickness: 28,
                         }
                     ]
                 },
@@ -414,17 +411,34 @@
                             bodyColor: '#A1A1AA',
                             borderColor: '#222222',
                             borderWidth: 1,
-                            padding: 10
+                            padding: 10,
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed.y;
+                                    return ` ${val} consultation${val === 1 ? '' : 's'}`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#71717A', font: { size: 10 } }
+                            grid: { display: false },
+                            ticks: {
+                                color: '#71717A',
+                                font: { size: 10 },
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 15
+                            }
                         },
                         y: {
                             beginAtZero: true,
-                            ticks: { precision: 0, color: '#71717A', font: { size: 10 } },
+                            ticks: {
+                                precision: 0,
+                                stepSize: 1,
+                                color: '#71717A',
+                                font: { size: 10 }
+                            },
                             grid: { color: 'rgba(255, 255, 255, 0.05)' }
                         }
                     }

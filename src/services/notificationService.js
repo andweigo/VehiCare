@@ -1,6 +1,7 @@
 import apiClient from '../api/apiClient';
 import { DeviceEventEmitter } from 'react-native';
 import { getToken } from '../services/storageService';
+import { setDeviceBadgeCount } from './deviceBadgeService';
 
 export const NOTIFICATION_READ_STATE_CHANGED = 'notificationReadStateChanged';
 
@@ -98,12 +99,17 @@ export const getUnreadCount = async () => {
   try {
     const token = await getToken();
     if (!token || String(token).startsWith('guest')) {
+      setDeviceBadgeCount(0);
       return 0;
     }
 
     const response = await apiClient.get('/notifications/unread-count');
     const count = response?.data?.data?.unread_count;
-    return Number.isInteger(count) && count >= 0 ? count : null;
+    if (Number.isInteger(count) && count >= 0) {
+      setDeviceBadgeCount(count);
+      return count;
+    }
+    return null;
   } catch (err) {
     if (err?.response?.status !== 401) {
       console.warn('[notificationService] Failed to fetch unread count:', err?.message);
@@ -116,6 +122,8 @@ export const markAsRead = async id => {
   try {
     await apiClient.patch(`/notifications/${id}/read`);
     DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
+    // Refresh unread count to sync device badge
+    getUnreadCount();
     return true;
   } catch (err) {
     console.warn('[notificationService] Failed to mark notification as read:', err?.message);
@@ -126,6 +134,7 @@ export const markAsRead = async id => {
 export const markAllAsRead = async () => {
   try {
     await apiClient.patch('/notifications/read-all');
+    setDeviceBadgeCount(0);
     DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
     return true;
   } catch (err) {
@@ -168,6 +177,7 @@ export default {
   DEFAULT_PREFERENCES,
   fetchNotifications,
   getUnreadCount,
+  setDeviceBadgeCount,
   markAsRead,
   markAllAsRead,
   getNotificationPreferences,

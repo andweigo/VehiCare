@@ -1,0 +1,156 @@
+import { getAiErrorMessage } from '../src/utils/aiErrorHelper';
+
+describe('ChatErrorHandling & Contextual Messaging', () => {
+  it('returns exact contextual guidance for image failure', () => {
+    const error = {
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'MEDIA_PROCESSING_FAILED',
+            message: 'Gemini could not confirm that the uploaded media is ready.',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error, inputType: 'image' });
+    expect(result.message).toBe(
+      "We couldn't process your image. Please check your connection and ensure the image is clear and in a supported format, then try again. You can also describe the vehicle issue in text."
+    );
+    expect(result.retryable).toBe(true);
+  });
+
+  it('returns exact contextual guidance for video failure', () => {
+    const error = {
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'MEDIA_PROCESSING_FAILED',
+            message: 'Gemini media processing failed.',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error, inputType: 'video' });
+    expect(result.message).toBe(
+      "We couldn't analyze your video. Please check the supported file format, size, and duration, then try again. Alternatively, upload a photo or describe the vehicle symptoms."
+    );
+    expect(result.retryable).toBe(true);
+  });
+
+  it('returns exact contextual guidance for voice recording failure', () => {
+    const error = {
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'MEDIA_UPLOAD_FAILED',
+            message: 'Gemini could not accept the uploaded media.',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error, inputType: 'voice' });
+    expect(result.message).toBe(
+      "We couldn't process your voice recording. Please try recording again in a quiet environment or describe the vehicle issue in text."
+    );
+    expect(result.retryable).toBe(true);
+  });
+
+  it('returns exact network failure message on connection error', () => {
+    const networkError = {
+      message: 'Network Error',
+      code: 'ERR_NETWORK',
+    };
+
+    const result = getAiErrorMessage({ error: networkError, inputType: 'text' });
+    expect(result.message).toBe(
+      "We couldn't connect to VehiCare at this time. Please check your internet connection and try again."
+    );
+    expect(result.retryable).toBe(true);
+    expect(result.code).toBe('NETWORK_ERROR');
+  });
+
+  it('returns temporary processing issue message for 503 and high-demand errors', () => {
+    const error503 = {
+      response: {
+        status: 503,
+        data: {
+          error: {
+            code: 'AI_SERVICE_UNAVAILABLE',
+            message: 'The requested Gemini model is unavailable.',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error: error503, inputType: 'text' });
+    expect(result.message).toBe(
+      "VehiCare couldn't complete your request at this time due to a temporary processing issue. Please try again shortly."
+    );
+    expect(result.retryable).toBe(true);
+  });
+
+  it('returns specific video size limit guidance on 413 or MEDIA_TOO_LARGE', () => {
+    const error413 = {
+      response: {
+        status: 413,
+        data: {
+          error: {
+            code: 'MEDIA_TOO_LARGE',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error: error413, inputType: 'video' });
+    expect(result.message).toContain('30MB');
+    expect(result.message).toContain('video file exceeds');
+    expect(result.retryable).toBe(false);
+  });
+
+  it('returns specific format guidance on 415 unsupported format', () => {
+    const error415 = {
+      response: {
+        status: 415,
+        data: {
+          error: {
+            code: 'UNSUPPORTED_MEDIA_TYPE',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error: error415, inputType: 'video' });
+    expect(result.message).toBe(
+      'The video format is not supported. Please upload an MP4, MOV, or 3GP video file.'
+    );
+    expect(result.retryable).toBe(false);
+  });
+
+  it('returns appropriate plan guidance when user quota is reached', () => {
+    const quotaError = {
+      response: {
+        status: 403,
+        data: {
+          reason: 'ai_limit_reached',
+        },
+      },
+    };
+
+    const guestResult = getAiErrorMessage({ error: quotaError, inputType: 'text', plan: 'guest' });
+    expect(guestResult.message).toContain('guest diagnostic allowance');
+    expect(guestResult.message).toContain('sign in or create an account');
+
+    const freeResult = getAiErrorMessage({ error: quotaError, inputType: 'text', plan: 'free' });
+    expect(freeResult.message).toContain('monthly AI diagnostic allowance');
+    expect(freeResult.message).toContain('VehiCare Premium');
+
+    const premiumResult = getAiErrorMessage({ error: quotaError, inputType: 'text', plan: 'premium' });
+    expect(premiumResult.message).toContain('consultation limit for this billing period');
+  });
+});

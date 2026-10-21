@@ -180,6 +180,8 @@ const Sidebar = ({ navigation, activeScreen = 'Dashboard', onClose, topInset = 0
       <View style={[styles.headerDivider, { backgroundColor: theme.border }]} />
 
       <UserAccountCard
+        navigation={navigation}
+        plan={user?.subscription_plan || user?.plan || 'FREE'}
         username={profileName}
         handle={user?.username || user?.handle || user?.email?.split('@')[0] || '@vehicare'}
         email={profileEmail}
@@ -192,7 +194,12 @@ const Sidebar = ({ navigation, activeScreen = 'Dashboard', onClose, topInset = 0
             console.log('Switch account', account);
           }
         }}
-        onAddAccount={() => navigation.navigate('AddAccount')}
+        onAddAccount={() => {
+          onClose?.();
+          if (navigation?.navigate) {
+            navigation.navigate('Register');
+          }
+        }}
         onLogout={async () => {
           signOutModal.openConfirmSignOutModal();
         }}

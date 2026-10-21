@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Notifications\PaymentApprovedNotification;
 use App\Notifications\PaymentRejectedNotification;
 use App\Notifications\PaymentSubmittedNotification;
+use App\Notifications\PremiumGrantedNotification;
+use App\Notifications\PremiumRevokedNotification;
 use App\Notifications\RefundCompletedNotification;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -117,6 +119,19 @@ class SubscriptionService
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
         }
+
+        ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
+            "payment-submitted:{$payment->id}",
+            'New Subscription Purchase',
+            "User {$user->name} ({$user->email}) purchased a {$payment->billing_cycle} Premium subscription (Ref: {$payment->reference_number}) for ₱" . number_format((float) $payment->amount, 2) . '.',
+            [
+                'payment_id' => $payment->id,
+                'user_id' => $payment->user_id,
+                'reference_number' => $payment->reference_number,
+                'amount' => $payment->amount,
+                'billing_cycle' => $payment->billing_cycle,
+            ],
+        );
 
         return $payment;
     }
@@ -361,8 +376,18 @@ class SubscriptionService
                 'vehicle_limit' => User::VEHICLE_LIMIT_PREMIUM,
             ]);
 
+            // Notify user that they have been granted Premium access
+            $user->notify(new PremiumGrantedNotification($grant));
+
             return $grant->fresh(['admin', 'user']);
         });
+
+        try {
+            $state = $this->getSubscriptionState($user);
+            event(new PaymentStatusUpdated(null, $state, $user->id));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
+        }
 
         ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
             "premium-granted:{$grant->id}",
@@ -452,6 +477,16 @@ class SubscriptionService
             ]);
         });
 
+        // Notify user that their Premium access was revoked
+        $user->notify(new PremiumRevokedNotification($reason));
+
+        try {
+            $state = $this->getSubscriptionState($user);
+            event(new PaymentStatusUpdated(null, $state, $user->id));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Broadcast PaymentStatusUpdated skipped: ' . $e->getMessage());
+        }
+
         ($this->adminNotifications ?? app(AdminNotificationService::class))->notify(
             'premium-revoked:' . $user->id . ':' . now()->timestamp,
             'Premium access revoked',
@@ -509,7 +544,7 @@ class SubscriptionService
         return [
             'user' => $evaluatedUser,
             'restriction_state' => $restrictionState,
-            'can_submit_payment' => in_array($restrictionState, ['none', 'refund_completed'], true) && $evaluatedUser->subscription_plan !== User::SUBSCRIPTION_PREMIUM,
+            'can_submit_payment' => in_array($restrictionState, ['none', 'refund_completed'], true),
             'active_payment' => $activeRestrictionPayment ?? $latestPayment,
             'payments' => Payment::where('user_id', $user->id)->orderByDesc('created_at')->get(),
         ];

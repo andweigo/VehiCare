@@ -103,34 +103,36 @@
             const userValues = @json($uniqueUserData);
 
             new Chart(ctx, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [
                         {
+                            type: 'bar',
                             label: 'AI Diagnostic Runs',
                             data: dataValues,
-                            borderColor: '#F63B05',
-                            backgroundColor: 'rgba(246, 59, 5, 0.12)',
-                            borderWidth: 2.5,
-                            pointBackgroundColor: '#F63B05',
-                            pointBorderColor: '#FFFFFF',
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            fill: true,
-                            tension: 0.35
+                            backgroundColor: '#F63B05',
+                            hoverBackgroundColor: '#FF5722',
+                            borderRadius: 4,
+                            borderSkipped: false,
+                            maxBarThickness: 32,
+                            order: 2,
                         },
                         {
+                            type: 'line',
                             label: 'Unique Active Users',
                             data: userValues,
                             borderColor: '#38BDF8',
-                            backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                            backgroundColor: 'rgba(56, 189, 248, 0.10)',
                             borderWidth: 2,
-                            borderDash: [5, 5],
+                            borderDash: [4, 4],
                             pointBackgroundColor: '#38BDF8',
+                            pointBorderColor: '#FFFFFF',
                             pointRadius: 3,
+                            pointHoverRadius: 5,
                             fill: false,
-                            tension: 0.35
+                            tension: 0.25,
+                            order: 1,
                         }
                     ]
                 },
@@ -164,26 +166,36 @@
                             borderWidth: 1,
                             padding: 12,
                             boxPadding: 6,
-                            usePointStyle: true
+                            usePointStyle: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const val = context.parsed.y;
+                                    return ` ${label}: ${val}`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)',
-                                drawBorder: false
+                                display: false,
                             },
                             ticks: {
                                 color: '#71717A',
                                 font: {
                                     size: 10
-                                }
+                                },
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 15
                             }
                         },
                         y: {
                             beginAtZero: true,
                             ticks: {
                                 precision: 0,
+                                stepSize: 1,
                                 color: '#71717A',
                                 font: {
                                     size: 10

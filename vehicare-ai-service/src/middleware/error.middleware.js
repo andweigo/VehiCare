@@ -2,21 +2,34 @@ import logger from '../utils/logger.js';
 
 export const errorHandlerMiddleware = (err, req, res, next) => {
   const requestId = req.headers['x-request-id'] || req.body?.request_id || null;
-  const isPayloadTooLarge = err.type === 'entity.too.large';
-  const isInvalidJson = err.type === 'entity.parse.failed';
+  const isPayloadTooLarge = err.type === 'entity.too.large' || err.code === 'MEDIA_TOO_LARGE';
+  const isInvalidJson = err.type === 'entity.parse.failed' || err.code === 'INVALID_REQUEST_SCHEMA';
+  const isRangeError = err instanceof RangeError;
+
   const statusCode = isPayloadTooLarge
     ? 413
     : isInvalidJson
       ? 400
-      : err.statusCode || (err.code === 'QUEUE_FULL' || err.code === 'QUEUE_TIMEOUT' ? 429 : 500);
+      : err.statusCode || (
+        err.code === 'QUEUE_FULL' || err.code === 'QUEUE_TIMEOUT'
+          ? 429
+          : isRangeError
+            ? 400
+            : 500
+      );
+
   const errorCode = isPayloadTooLarge
     ? 'MEDIA_TOO_LARGE'
     : isInvalidJson
       ? 'INVALID_REQUEST_SCHEMA'
-      : err.code || 'AI_SERVICE_UNAVAILABLE';
+      : err.code || (isRangeError ? 'INVALID_MEDIA' : 'AI_SERVICE_UNAVAILABLE');
+
   const retryable = typeof err.retryable === 'boolean'
     ? err.retryable
-    : statusCode === 429 || statusCode >= 500;
+    : isRangeError
+      ? false
+      : (statusCode === 429 || statusCode >= 500);
+
   const message = isPayloadTooLarge
     ? 'The request or attached media is too large to process.'
     : isInvalidJson
@@ -24,15 +37,18 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
       : err.userMessage || (
         err.statusCode && err.code
           ? err.message
-          : 'An internal error occurred in the AI microservice.'
+          : isRangeError
+            ? 'The attached media or request input could not be processed.'
+            : 'An internal error occurred in the AI microservice.'
       );
 
   logger.error('UNHANDLED_EXCEPTION', requestId, {
     errorCode,
+    errorMessage: err.message || String(err),
     statusCode,
     retryable,
     exception: err.constructor?.name || 'Error',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: err.stack,
   });
 
   res.status(statusCode).json({

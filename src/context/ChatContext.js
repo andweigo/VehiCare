@@ -11,6 +11,7 @@ import React, {
 import { useAuth } from './AuthContext';
 import { useVehicle } from './VehicleContext';
 import vehicleApi from '../api/vehicleApi';
+import { getAiErrorMessage } from '../utils/aiErrorHelper';
 import {
   loadActiveChatSessions,
   saveActiveChatSessions,
@@ -568,27 +569,14 @@ export const ChatProvider = ({ children }) => {
         return { stale: true };
       }
 
-      const reason = error?.response?.data?.reason;
-      const isLimitError = reason === 'ai_limit_reached' || error?.response?.status === 403;
-      let errorText = error?.response?.data?.message
-        || error?.response?.data?.error?.message;
+      const inputType = requestPayload?.input_type
+        || requestPayload?.diagnosis?.input_type
+        || (requestPayload?.video ? 'video' : requestPayload?.image ? 'image' : requestPayload?.audio ? 'voice' : 'text');
+      const plan = isAuthenticated ? 'free' : 'guest';
+      const errorDetails = getAiErrorMessage({ error, inputType, plan });
+      const errorText = errorDetails.message;
+      const isRetryable = errorDetails.retryable;
 
-      if (!errorText && typeof error?.response?.data === 'string') {
-        const rawBody = error.response.data;
-        if (rawBody.includes('POST data is too large') || rawBody.includes('exceeds the limit')) {
-          errorText = 'The uploaded media file is too large for the server. Please try a shorter video or smaller file.';
-        } else if (rawBody.includes('failed to upload')) {
-          errorText = 'The media file could not be uploaded. Please verify your file size and network connection, then try again.';
-        }
-      }
-
-      if (!errorText) {
-        if (error?.response?.status === 413) {
-          errorText = 'The uploaded media file is too large. Please select a smaller file or shorter video.';
-        } else {
-          errorText = 'Sorry, I encountered an issue reaching the assistant. Please check your network connection and try again.';
-        }
-      }
       const savedError = addMessageToSession(sessionId, ownerUserId, {
         id: `assistant-err-${userMessageId}`,
         role: 'assistant',
@@ -605,7 +593,7 @@ export const ChatProvider = ({ children }) => {
           sessionId,
           userMessageId,
           error: savedError ? errorText : undefined,
-          retryable: savedError && !isLimitError,
+          retryable: savedError && isRetryable,
         },
       }));
       if (!savedError) requestPayloadsRef.current.delete(key);

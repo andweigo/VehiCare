@@ -22,11 +22,18 @@ const UserAccountCard = ({
   avatar,
   verified = true,
   darkMode = true,
+  navigation: navigationProp,
   onToggleDarkMode,
   onAddAccount,
   onLogout,
 }) => {
-  const navigation = useNavigation();
+  let hookNavigation = null;
+  try {
+    hookNavigation = useNavigation();
+  } catch (e) {
+    // Graceful fallback if rendered outside NavigationContext
+  }
+  const navigation = navigationProp || hookNavigation;
   const { theme, themeName } = useTheme();
 
   let sidebarContext = null;
@@ -44,52 +51,63 @@ const UserAccountCard = ({
     setVisible(false);
   };
 
-  const openProfile = () => {
+  const navigateTo = (screenName, params) => {
     closeModal();
     closeSidebar?.();
-    navigation.navigate('Profile');
-  };
 
-  const openSettings = () => {
-    closeModal();
-    closeSidebar?.();
-    navigation.navigate('Settings');
-  };
+    const nav = navigationProp || navigation;
+    if (!nav) {
+      console.warn(`[UserAccountCard] Cannot navigate to ${screenName}: navigation is unavailable`);
+      return;
+    }
 
-  const openPremium = () => {
-    closeModal();
-    closeSidebar?.();
-    navigation.navigate('Premium');
-  };
-
-  const openVehicles = () => {
-    closeModal();
-    closeSidebar?.();
-    navigation.navigate('Vehicles');
-  };
-
-  const openHelp = () => {
-    closeModal();
-    closeSidebar?.();
-    // navigate at the topmost navigator so HelpSupport route is handled
-    let root = navigation;
-    while (root && root.getParent && root.getParent() && root.getParent() !== root) {
+    // Traverse to root navigator if available so top-level stack routes can always be reached
+    let root = nav;
+    while (root && typeof root.getParent === 'function' && root.getParent() && root.getParent() !== root) {
       const p = root.getParent();
       if (!p) break;
       root = p;
     }
 
-    if (root && root.navigate) root.navigate('HelpSupport');
-    else navigation.navigate('HelpSupport');
+    try {
+      if (root && typeof root.navigate === 'function') {
+        root.navigate(screenName, params);
+      } else if (typeof nav.navigate === 'function') {
+        nav.navigate(screenName, params);
+      }
+    } catch (err) {
+      console.warn(`[UserAccountCard] Navigation to ${screenName} failed:`, err);
+    }
+  };
+
+  const openProfile = () => {
+    navigateTo('Profile');
+  };
+
+  const openSettings = () => {
+    navigateTo('Settings');
+  };
+
+  const openPremium = () => {
+    navigateTo('ManagePlan');
+  };
+
+  const openVehicles = () => {
+    navigateTo('Vehicles');
+  };
+
+  const openHelp = () => {
+    navigateTo('HelpSupport');
   };
 
   const openAddAccount = () => {
     closeModal();
+    closeSidebar?.();
 
     if (onAddAccount) {
       onAddAccount();
     } else {
-      navigation.navigate('AddAccount');
+      navigateTo('Register');
     }
   };
 
@@ -322,39 +340,37 @@ const UserAccountCard = ({
             {/* =====================================================
                 PREMIUM
                 ===================================================== */}
-            {plan.toUpperCase() !== 'PREMIUM' && (
-              <TouchableOpacity
-                style={styles.sectionHeader}
-                onPress={openPremium}
-                activeOpacity={0.7}
-              >
-                <View style={styles.sectionLeft}>
-<View style={[styles.iconContainer, { backgroundColor: theme.accentSoft }]}> 
+            <TouchableOpacity
+              style={styles.sectionHeader}
+              onPress={openPremium}
+              activeOpacity={0.7}
+            >
+              <View style={styles.sectionLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: theme.accentSoft }]}> 
                   <Ionicons
-                    name="star-outline"
+                    name={plan.toUpperCase() === 'PREMIUM' ? 'star' : 'star-outline'}
                     size={18}
                     color={theme.accent}
-                    />
-                  </View>
-
-                  <View>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                      VehiCare Premium
-                    </Text>
-
-                    <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-                      Unlock more vehicle care features
-                    </Text>
-                  </View>
+                  />
                 </View>
 
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color="#F63B05"
-                />
-              </TouchableOpacity>
-            )}
+                <View>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                    {plan.toUpperCase() === 'PREMIUM' ? 'Manage Subscription' : 'VehiCare Premium'}
+                  </Text>
+
+                  <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                    {plan.toUpperCase() === 'PREMIUM' ? 'View your Premium plan details' : 'Unlock more vehicle care features'}
+                  </Text>
+                </View>
+              </View>
+
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color="#F63B05"
+              />
+            </TouchableOpacity>
 
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
@@ -400,9 +416,9 @@ const UserAccountCard = ({
               onPress={openVehicles}
               activeOpacity={0.7}
             >
-            <View style={[styles.iconContainer, { backgroundColor: theme.accentSoft }]}> 
+              <View style={[styles.iconContainer, { backgroundColor: theme.accentSoft }]}> 
                 <Ionicons
-                  name="contrast-outline"
+                  name="car-outline"
                   size={18}
                   color={theme.accent}
                 />
@@ -435,7 +451,7 @@ const UserAccountCard = ({
             >
               <View style={[styles.iconContainer, { backgroundColor: theme.accentSoft }]}> 
                 <Ionicons
-                  name="contrast-outline"
+                  name="help-circle-outline"
                   size={18}
                   color={theme.accent}
                 />

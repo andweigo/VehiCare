@@ -36,7 +36,6 @@ import useRecentActivities from '../hooks/useRecentActivities';
 
 import { useTheme } from '../theme/ThemeContext';
 import { handleActivityPress } from '../utils/activityUtils';
-import { getUnreadCount } from '../services/notificationService';
 
 import {
     getDisplayValue,
@@ -95,27 +94,6 @@ const DashboardScreen = ({ navigation }) => {
   const [requestedFeature, setRequestedFeature] = useState('');
   const [requestedRoute, setRequestedRoute] = useState(null);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchUnread = async () => {
-      if (isAuthenticated) {
-        const count = await getUnreadCount();
-        if (isMounted && typeof count === 'number') {
-          setUnreadCount(count);
-        }
-      } else {
-        if (isMounted) setUnreadCount(0);
-      }
-    };
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 15000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [isAuthenticated]);
 
   const helpSignInModal = useNeedHelpSignInModal();
   const { recentActivities, refreshActivities } = useRecentActivities(3);
@@ -407,37 +385,6 @@ const DashboardScreen = ({ navigation }) => {
               <DashboardGreeting />
 
               <View style={styles.headerActions}>
-                {isAuthenticated && (
-                  <TouchableOpacity
-                    style={[
-                      styles.profileButton,
-                      {
-                        backgroundColor:
-                          theme.surfaceAlt,
-                        borderColor:
-                          theme.border,
-                      },
-                    ]}
-                    activeOpacity={0.8}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    onPress={() => navigation.navigate('Notifications')}
-                    accessibilityLabel="Notifications"
-                  >
-                    <Icon
-                      name={unreadCount > 0 ? 'notifications-active' : 'notifications-none'}
-                      size={22}
-                      color={unreadCount > 0 ? theme.accent : theme.text}
-                    />
-                    {unreadCount > 0 && (
-                      <View style={[styles.headerBadge, { backgroundColor: theme.accent }]}>
-                        <Text style={[styles.headerBadgeText, { color: '#FFFFFF' }]}>
-                          {unreadCount > 9 ? '9+' : unreadCount}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                )}
-
                 <TouchableOpacity
                   style={[
                     styles.profileButton,
@@ -1097,24 +1044,6 @@ const styles = StyleSheet.create({
     justifyContent:
       'center',
     position: 'relative',
-  },
-
-  headerBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  headerBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9,
-    fontWeight: '700',
   },
 
   // ==================================================

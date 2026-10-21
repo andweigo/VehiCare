@@ -193,6 +193,30 @@ const AIUsageDetailsModal = ({
               </View>
             </View>
 
+            {/* Linear Progress Bar reflecting true values */}
+            <View style={styles.modalProgressSection} testID="modal-progress-bar-container">
+              <View style={styles.modalProgressHeader}>
+                <Text style={[styles.modalProgressLabel, { color: theme.textSecondary || '#8E8E93' }]}>
+                  Consultation Quota Progress
+                </Text>
+                <Text style={[styles.modalProgressCount, { color: theme.text || '#FFF' }]}>
+                  {used} / {limit}
+                </Text>
+              </View>
+              <View style={[styles.modalProgressTrack, { backgroundColor: 'rgba(255, 255, 255, 0.08)' }]}>
+                <View
+                  testID="modal-progress-fill"
+                  style={[
+                    styles.modalProgressFill,
+                    {
+                      width: `${Math.min(100, Math.max(used > 0 ? 3 : 0, percentage))}%`,
+                      backgroundColor: exhausted ? '#F5501C' : (percentage >= 80 ? '#F59E0B' : (theme.accent || '#F5501C')),
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+
             {/* Contextual Tip Card */}
             <View
               style={[
@@ -362,6 +386,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     fontFamily: 'Inter-Regular',
+  },
+  modalProgressSection: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  modalProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalProgressLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+  },
+  modalProgressCount: {
+    fontSize: 12,
+    fontFamily: 'Outfit-Bold',
+    fontWeight: '700',
+  },
+  modalProgressTrack: {
+    height: 7,
+    borderRadius: 4,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  modalProgressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   tipCard: {
     flexDirection: 'row',

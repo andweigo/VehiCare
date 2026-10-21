@@ -362,6 +362,7 @@ export default function AskVehiCareScreen({
   */
 
   const scrollRef = useRef(null);
+  const textInputRef = useRef(null);
   const recordingIntervalRef = useRef(null);
   const screenMountedRef = useRef(false);
   const ownerUserId = user?.id || user?.uid || null;
@@ -1233,7 +1234,7 @@ export default function AskVehiCareScreen({
   };
 
   const handleRetryDiagnostic = async userMessageId => {
-    if (!currentSessionId || isSending) return;
+    if (!currentSessionId || isSendingLocally) return;
     setIsSendingLocally(true);
     try {
       const outcome = await retryDiagnosticRequest({
@@ -2229,31 +2230,78 @@ export default function AskVehiCareScreen({
                           </Text>
                         </TouchableOpacity>
                       )}
-                      {item.requestErrorFor
-                        && requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.status === 'failed'
-                        && requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.retryable && (
+                      {item.requestErrorFor && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          {requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.status === 'failed'
+                            && requestStates[`${currentSessionId}:${item.requestErrorFor}`]?.retryable && (
+                            <TouchableOpacity
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: theme.accent,
+                                backgroundColor: theme.accentSoft || 'rgba(246, 59, 5, 0.08)',
+                              }}
+                              disabled={isSendingLocally}
+                              onPress={() => handleRetryDiagnostic(item.requestErrorFor)}
+                              activeOpacity={0.8}
+                            >
+                              <Feather name="rotate-ccw" size={13} color={theme.accent} />
+                              <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: theme.accent }}>
+                                Try Again
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                           <TouchableOpacity
                             style={{
                               flexDirection: 'row',
                               alignItems: 'center',
                               gap: 6,
-                              marginTop: 10,
                               paddingHorizontal: 12,
                               paddingVertical: 8,
                               borderRadius: 10,
                               borderWidth: 1,
-                              borderColor: theme.accent,
+                              borderColor: theme.border,
+                              backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.05)',
                             }}
-                            disabled={isSending}
-                            onPress={() => handleRetryDiagnostic(item.requestErrorFor)}
+                            disabled={isSendingLocally}
+                            onPress={() => setShowMediaPickerModal(true)}
                             activeOpacity={0.8}
                           >
-                            <Feather name="rotate-ccw" size={14} color={theme.accent} />
-                            <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: theme.accent }}>
-                              Retry
+                            <Feather name="paperclip" size={13} color={theme.textSecondary} />
+                            <Text style={{ fontFamily: 'Outfit-Medium', fontSize: 11, color: theme.text }}>
+                              Upload Another File
                             </Text>
                           </TouchableOpacity>
-                        )}
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: theme.border,
+                              backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.05)',
+                            }}
+                            disabled={isSendingLocally}
+                            onPress={() => {
+                              textInputRef.current?.focus();
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="edit-3" size={13} color={theme.textSecondary} />
+                            <Text style={{ fontFamily: 'Outfit-Medium', fontSize: 11, color: theme.text }}>
+                              Describe in Words
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
 
                     <Text
@@ -2574,6 +2622,7 @@ export default function AskVehiCareScreen({
             </Pressable>
 
             <TextInput
+              ref={textInputRef}
               value={message}
               onChangeText={
                 setMessage

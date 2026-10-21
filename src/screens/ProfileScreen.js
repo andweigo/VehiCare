@@ -153,10 +153,7 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const handleUpgrade = () => {
-    Alert.alert(
-      'Upgrade to Premium',
-      'The premium subscription flow is not configured yet.',
-    );
+    navigation.navigate('ManagePlan');
   };
 
   const handleManagePlan = () => {

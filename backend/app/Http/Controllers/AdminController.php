@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\RepairShop;
 use App\Models\VehicleCorrectionRequest;
+use App\Models\AiUsageLog;
+use App\Models\Diagnostic;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -63,7 +65,8 @@ class AdminController extends Controller
             ->take(6)
             ->withCount('vehicles')
             ->get();
-        $diagnosticsPerformed = \App\Models\Diagnostic::count();
+        $diagnosticsCount = AiUsageLog::where('status', 'success')->count();
+        $diagnosticsPerformed = $diagnosticsCount > 0 ? $diagnosticsCount : Diagnostic::count();
         $repairShops = RepairShop::query()
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
@@ -92,13 +95,14 @@ class AdminController extends Controller
         $pendingAdminRequests = \App\Models\ServiceReferral::where('status', 'PENDING')->count();
         $pendingCorrectionRequests = VehicleCorrectionRequest::where('status', 'pending')->count();
 
-        // AI Activity Chart Data (Daily for last 30 days)
+        // AI Activity Chart Data (Daily for last 30 days - real successful runs from AiUsageLog)
         $startDate = \Carbon\Carbon::now()->subDays(30)->startOfDay();
-        $rawDailyUsage = \App\Models\Diagnostic::select(
+        $rawDailyUsage = AiUsageLog::select(
                 \Illuminate\Support\Facades\DB::raw('DATE(created_at) as date'),
                 \Illuminate\Support\Facades\DB::raw('COUNT(*) as total_runs')
             )
             ->where('created_at', '>=', $startDate)
+            ->where('status', 'success')
             ->groupBy(\Illuminate\Support\Facades\DB::raw('DATE(created_at)'))
             ->orderBy('date', 'ASC')
             ->get()

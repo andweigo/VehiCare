@@ -89,6 +89,27 @@ describe('AI Usage Donut Chart Component', () => {
     expect(root.findByProps({ testID: 'donut-left-half' })).toBeTruthy();
   });
 
+  it('renders heavy 93% usage (93/100) with full right arc and extended left arc', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <AIUsageDonut used={93} limit={100} size={100} strokeWidth={8} />
+      );
+    });
+
+    const root = tree.root;
+    const ratioText = root.findByProps({ testID: 'donut-ratio-text' });
+    expect(ratioText.props.children).toEqual([93, '/', 100]);
+
+    const rightHalf = root.findByProps({ testID: 'donut-right-half' });
+    const leftHalf = root.findByProps({ testID: 'donut-left-half' });
+    expect(rightHalf).toBeTruthy();
+    expect(leftHalf).toBeTruthy();
+    // 64 total dots * 0.93 = 60 dots (32 right half + 28 left half)
+    expect(rightHalf.props.children.length).toBe(32);
+    expect(leftHalf.props.children.length).toBe(28);
+  });
+
   it('renders exhausted / 100% usage with full ring and LIMIT indicator', () => {
     let tree;
     act(() => {
@@ -133,6 +154,16 @@ describe('AI Usage Details Modal Component', () => {
     const root = tree.root;
     const modal = root.findByProps({ testID: 'ai-usage-details-modal' });
     expect(modal.props.visible).toBe(true);
+
+    const progressBar = root.findByProps({ testID: 'modal-progress-bar-container' });
+    expect(progressBar).toBeTruthy();
+    const progressFill = root.findByProps({ testID: 'modal-progress-fill' });
+    expect(progressFill).toBeTruthy();
+    expect(progressFill.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ width: '25%' }),
+      ])
+    );
 
     const upgradeBtn = root.findByProps({ testID: 'upgrade-premium-button' });
     expect(upgradeBtn).toBeTruthy();
@@ -185,6 +216,11 @@ describe('AI Usage Card Component', () => {
 
     const donut = root.findByProps({ testID: 'dashboard-donut-ring' });
     expect(donut).toBeTruthy();
+
+    const progressBar = root.findByProps({ testID: 'ai-usage-progress-bar' });
+    expect(progressBar).toBeTruthy();
+    const progressFill = root.findByProps({ testID: 'ai-usage-progress-fill' });
+    expect(progressFill).toBeTruthy();
 
     act(() => {
       card.props.onPress();

@@ -15,14 +15,17 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public Payment $payment, public array $stateData = [])
+    public ?int $userId;
+
+    public function __construct(public ?Payment $payment = null, public array $stateData = [], ?int $userId = null)
     {
+        $this->userId = $userId ?? $this->payment?->user_id;
     }
 
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('user.' . $this->payment->user_id),
+            new PrivateChannel('user.' . ($this->userId ?? $this->payment?->user_id)),
         ];
     }
 
@@ -33,6 +36,27 @@ class PaymentStatusUpdated implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
+        if (! $this->payment) {
+            $user = $this->stateData['user'] ?? null;
+            return [
+                'payment_id' => null,
+                'user_id' => $this->userId,
+                'plan' => $user?->subscription_plan ?? 'premium',
+                'billing_cycle' => $user?->subscription_cycle ?? 'monthly',
+                'amount' => 0.0,
+                'payment_method' => 'manual',
+                'reference_number' => null,
+                'status' => 'approved',
+                'rejection_reason' => null,
+                'refund_status' => 'not_applicable',
+                'refund_amount' => null,
+                'submitted_at' => null,
+                'verified_at' => now()->toIso8601String(),
+                'refunded_at' => null,
+                'state_data' => $this->stateData,
+            ];
+        }
+
         return [
             'payment_id' => $this->payment->id,
             'user_id' => $this->payment->user_id,

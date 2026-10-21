@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Models\Payment;
 use App\Models\User;
 use App\Services\SubscriptionService;
+use App\Notifications\AdminActivityNotification;
+use App\Notifications\PremiumGrantedNotification;
+use App\Notifications\PremiumRevokedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
@@ -132,5 +135,65 @@ class AdminSubscriptionManagementTest extends TestCase
             'id' => $user->id,
             'subscription_plan' => User::SUBSCRIPTION_FREE,
         ]);
+    }
+
+    public function test_manual_premium_grant_notifies_user_of_premium_access(): void
+    {
+        Notification::fake();
+        Event::fake();
+
+        $admin = $this->makeAccount(User::ROLE_ADMIN);
+        $user = $this->makeAccount(User::ROLE_USER);
+
+        app(SubscriptionService::class)->grantManualPremium(
+            $user,
+            $admin,
+            User::SUBSCRIPTION_CYCLE_MONTHLY,
+            'Loyalty reward program'
+        );
+
+        Notification::assertSentTo($user, PremiumGrantedNotification::class);
+    }
+
+    public function test_user_subscription_purchase_notifies_active_admins(): void
+    {
+        Notification::fake();
+        Event::fake();
+
+        $admin = $this->makeAccount(User::ROLE_ADMIN);
+        $user = $this->makeAccount(User::ROLE_USER);
+
+        app(SubscriptionService::class)->submitPayment(
+            $user,
+            'premium',
+            User::SUBSCRIPTION_CYCLE_MONTHLY,
+            'card'
+        );
+
+        Notification::assertSentTo($admin, AdminActivityNotification::class, function ($notification) {
+            $data = $notification->toArray(new \stdClass());
+            return str_contains($data['title'], 'New Subscription Purchase');
+        });
+    }
+
+    public function test_manual_premium_revocation_notifies_user(): void
+    {
+        Notification::fake();
+        Event::fake();
+
+        $admin = $this->makeAccount(User::ROLE_ADMIN);
+        $user = $this->makeAccount(User::ROLE_USER);
+        $service = app(SubscriptionService::class);
+
+        $service->grantManualPremium(
+            $user,
+            $admin,
+            User::SUBSCRIPTION_CYCLE_MONTHLY,
+            'Temporary access'
+        );
+
+        $service->revokePremium($user, $admin, 'Subscription period finished');
+
+        Notification::assertSentTo($user, PremiumRevokedNotification::class);
     }
 }

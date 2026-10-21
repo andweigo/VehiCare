@@ -28,7 +28,7 @@ class AiActivityAdminController extends Controller
 
         $totalUsers = User::where('role', User::ROLE_USER)->count();
         $totalVehicles = Vehicle::count();
-        $totalDiagnostics = Diagnostic::count();
+        $totalDiagnostics = max(Diagnostic::count(), AiUsageLog::where('status', 'success')->count());
         $totalReferrals = ServiceReferral::count();
         $successfulRequests = AiUsageLog::where('status', 'success')
             ->where('created_at', '>=', $startDate)
@@ -48,6 +48,7 @@ class AiActivityAdminController extends Controller
                 DB::raw('COUNT(DISTINCT user_id) as unique_users')
             )
             ->where('created_at', '>=', $startDate)
+            ->where('status', 'success')
             ->groupBy(DB::raw('DATE(created_at)'))
             ->orderBy('date', 'ASC')
             ->get()

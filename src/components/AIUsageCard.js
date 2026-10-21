@@ -203,6 +203,30 @@ const AIUsageCard = ({
           </View>
         </View>
       </View>
+
+      {/* Progress Bar reflecting true values */}
+      <View style={styles.progressBarWrapper} testID="ai-usage-progress-bar">
+        <View style={[styles.progressBarTrack, { backgroundColor: 'rgba(255, 255, 255, 0.08)' }]}>
+          <View
+            testID="ai-usage-progress-fill"
+            style={[
+              styles.progressBarFill,
+              {
+                width: `${Math.min(100, Math.max(used > 0 ? 3 : 0, Math.round(limit > 0 ? (used / limit) * 100 : 0)))}%`,
+                backgroundColor: exhausted ? '#F5501C' : (used / limit >= 0.8 ? '#F59E0B' : (theme.accent || '#F5501C')),
+              },
+            ]}
+          />
+        </View>
+        <View style={styles.progressBarMeta}>
+          <Text style={[styles.progressCountText, { color: theme.textSecondary || '#8E8E93' }]}>
+            {used} of {limit} used
+          </Text>
+          <Text style={[styles.progressPercentText, { color: exhausted ? '#F5501C' : (theme.text || '#FFFFFF') }]}>
+            {Math.min(100, Math.round(limit > 0 ? (used / limit) * 100 : 0))}%
+          </Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -319,6 +343,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     fontFamily: 'Inter-SemiBold',
+  },
+  progressBarWrapper: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  progressBarMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  progressCountText: {
+    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+  },
+  progressPercentText: {
+    fontSize: 11,
+    fontFamily: 'Inter-SemiBold',
+    fontWeight: '700',
   },
 });
 

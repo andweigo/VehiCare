@@ -116,6 +116,13 @@ const hasValidMediaSignature = (mediaType, mimeType, bytes) => {
   return false;
 };
 
+export const isValidBase64 = (str) => {
+  if (typeof str !== 'string' || str.length === 0 || str.length % 4 !== 0) {
+    return false;
+  }
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(str);
+};
+
 export const validateAndDecodeMedia = (mediaBase64, inputType, mediaMime) => {
   const declaredMimeType = String(mediaMime || '').trim().toLowerCase();
   const mimeAliases = {
@@ -139,13 +146,20 @@ export const validateAndDecodeMedia = (mediaBase64, inputType, mediaMime) => {
   const cleanBase64 = String(mediaBase64)
     .replace(/^data:[^;]+;base64,/i, '')
     .trim();
-  const validBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
-  if (!cleanBase64 || !validBase64.test(cleanBase64)) {
+  if (!cleanBase64 || !isValidBase64(cleanBase64)) {
     throw makeError('INVALID_MEDIA', 'The uploaded media is empty or unreadable.', 400);
   }
 
-  const bytes = Buffer.from(cleanBase64, 'base64');
+  let bytes;
+  try {
+    bytes = Buffer.from(cleanBase64, 'base64');
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw makeError('MEDIA_TOO_LARGE', 'The uploaded media exceeds the supported memory limit.', 413, false, error);
+    }
+    throw makeError('INVALID_MEDIA', 'The uploaded media could not be decoded.', 400, false, error);
+  }
   if (!bytes.length || !hasValidMediaSignature(mediaType, mimeType, bytes)) {
     throw makeError('INVALID_MEDIA', 'The uploaded media content is unreadable or does not match its declared format.', 400);
   }

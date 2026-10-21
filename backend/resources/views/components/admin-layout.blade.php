@@ -285,7 +285,7 @@
         <!-- ========================================== -->
         <header class="lg:hidden sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[#222222] bg-[#111111] px-4">
             <div class="flex items-center gap-3">
-                <button @click="mobileMenuOpen = !mobileMenuOpen" class="p-1 text-[#A1A1AA] hover:text-white">
+                <button id="admin-mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen" class="p-1 text-[#A1A1AA] hover:text-white" aria-label="Open navigation menu">
                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                     </svg>
@@ -300,6 +300,206 @@
                 <button type="submit" class="text-xs font-heading font-semibold text-rose-400">Logout</button>
             </form>
         </header>
+
+        <!-- Mobile Drawer Backdrop -->
+        <div 
+            id="admin-mobile-drawer-backdrop"
+            x-show="mobileMenuOpen" 
+            x-cloak
+            x-transition:enter="transition-opacity ease-linear duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-linear duration-200"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            @click="mobileMenuOpen = false" 
+            class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm lg:hidden hidden"
+        ></div>
+
+        <!-- Mobile Drawer Sidebar -->
+        <aside 
+            id="admin-mobile-drawer"
+            x-show="mobileMenuOpen" 
+            x-cloak
+            x-transition:enter="transition ease-in-out duration-300 transform"
+            x-transition:enter-start="-translate-x-full"
+            x-transition:enter-end="translate-x-0"
+            x-transition:leave="transition ease-in-out duration-300 transform"
+            x-transition:leave-start="translate-x-0"
+            x-transition:leave-end="-translate-x-full"
+            class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-[#111111] border-r border-[#222222] shadow-2xl lg:hidden -translate-x-full"
+        >
+            <!-- Drawer Top Header -->
+            <div class="flex h-16 items-center justify-between px-5 border-b border-[#222222]">
+                <div class="flex items-center gap-3">
+                    <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-8 w-8 rounded-xl object-contain" />
+                    <div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-heading font-bold text-sm text-white">VehiCare</span>
+                            <span class="rounded bg-[#F63B05]/10 px-1.5 py-0.5 text-[9px] font-heading font-extrabold text-[#F63B05]">ADMIN</span>
+                        </div>
+                        <p class="text-[10px] text-[#666666] font-medium">Control Center</p>
+                    </div>
+                </div>
+                <button 
+                    id="admin-mobile-drawer-close"
+                    @click="mobileMenuOpen = false" 
+                    class="p-2 rounded-lg text-[#A1A1AA] hover:text-white hover:bg-[#181818] transition"
+                    aria-label="Close menu"
+                >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Drawer Navigation Sections -->
+            <nav class="flex-1 space-y-5 px-3 py-4 overflow-y-auto">
+                <!-- MAIN GROUP -->
+                <div>
+                    <p class="px-3 text-[10px] font-heading font-bold tracking-wider text-[#666666] uppercase mb-1.5">Main</p>
+                    <a href="{{ route('admin.dashboard') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.dashboard') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.dashboard') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                        </svg>
+                        <span>Overview</span>
+                    </a>
+                    <a href="{{ route('admin.users.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.users.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.users.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                        <span>Users</span>
+                    </a>
+                    <a href="{{ route('admin.vehicles.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.vehicles.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.vehicles.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0zM13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/>
+                        </svg>
+                        <span>Vehicles</span>
+                    </a>
+                    <a href="{{ route('admin.diagnostics.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.diagnostics.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.diagnostics.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                        <span>Diagnostics</span>
+                    </a>
+                </div>
+
+                <!-- SERVICES GROUP -->
+                <div>
+                    <p class="px-3 text-[10px] font-heading font-bold tracking-wider text-[#666666] uppercase mb-1.5">Services</p>
+                    <a href="{{ route('admin.repair-shops.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.repair-shops.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.repair-shops.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0v-4m0 4h4m-4-4l-3-3m3 3l3-3"/>
+                        </svg>
+                        <span>Repair Shops</span>
+                    </a>
+                    <a href="{{ route('admin.repair-assistance.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.repair-assistance.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.repair-assistance.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        </svg>
+                        <span>Repair Assistance</span>
+                    </a>
+                    <a href="{{ route('admin.service-referrals.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.service-referrals.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.service-referrals.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0v-4m0 4h4m-4-4l-3-3m3 3l3-3"/>
+                        </svg>
+                        <span>Service Referrals</span>
+                    </a>
+                    <a href="{{ route('admin.feedback.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.feedback.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.feedback.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                        </svg>
+                        <span>Feedback</span>
+                    </a>
+                    <a href="{{ route('admin.maintenance.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.maintenance.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.maintenance.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span>Maintenance</span>
+                    </a>
+                </div>
+
+                <!-- AI GROUP -->
+                <div>
+                    <p class="px-3 text-[10px] font-heading font-bold tracking-wider text-[#666666] uppercase mb-1.5">AI Engine</p>
+                    <a href="{{ route('admin.ai-activity.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.ai-activity.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.ai-activity.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <span>AI Activity</span>
+                    </a>
+                    <a href="{{ route('admin.reports.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.reports.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.reports.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <span>Reports</span>
+                    </a>
+                </div>
+
+                <!-- SYSTEM GROUP -->
+                <div>
+                    <p class="px-3 text-[10px] font-heading font-bold tracking-wider text-[#666666] uppercase mb-1.5">System</p>
+                    <a href="{{ route('admin.notifications.index') }}" class="group flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.notifications.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <span>Admin Activity</span>
+                        <span data-admin-notification-badge class="hidden min-w-5 rounded-full bg-[#F63B05] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white" aria-live="polite"></span>
+                    </a>
+                    <a href="{{ route('admin.announcements.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.announcements.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <span>Announcements</span>
+                    </a>
+                    <a href="{{ route('admin.health.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.health.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <span>System Health</span>
+                    </a>
+                    <a href="{{ route('admin.audit.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.audit.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <span>Admin Audit</span>
+                    </a>
+                    <a href="{{ route('admin.settings.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.settings.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.settings.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        </svg>
+                        <span>Settings</span>
+                    </a>
+                    <a href="{{ route('admin.correction-requests.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.correction-requests.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.correction-requests.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        <span>Correction Requests</span>
+                    </a>
+                    <a href="{{ route('admin.subscriptions.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.subscriptions.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.subscriptions.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        <span>Subscriptions</span>
+                    </a>
+                    <a href="{{ route('admin.admins.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.admins.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <svg class="h-4 w-4 {{ request()->routeIs('admin.admins.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                        <span>Admin Accounts</span>
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Bottom Profile & Logout -->
+            <div class="p-3 border-t border-[#222222] bg-[#181818]/60">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <img src="{{ route('admin.logo') }}" alt="VehiCare logo" class="h-8 w-8 shrink-0 rounded-xl object-contain" />
+                        <div class="min-w-0">
+                            <p class="text-xs font-heading font-bold text-white truncate">{{ auth()->user()->name ?? 'Administrator' }}</p>
+                            <p class="text-[10px] text-[#A1A1AA] truncate capitalize">{{ auth()->user()->role ?? 'Admin' }}</p>
+                        </div>
+                    </div>
+                    <form action="{{ route('admin.logout') }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit" title="Logout" class="p-2 text-[#A1A1AA] hover:text-[#F63B05] transition-colors">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </aside>
 
         <!-- ========================================== -->
         <!-- MAIN DESKTOP / CONTENT AREA                -->
@@ -424,6 +624,43 @@
                 if (document.visibilityState === 'visible') {
                     refreshUnreadCount();
                 }
+            });
+        })();
+
+        // Mobile Drawer Controller (Vanilla JS fallback for immediate responsiveness)
+        (() => {
+            const menuBtn = document.getElementById('admin-mobile-menu-btn');
+            const closeBtn = document.getElementById('admin-mobile-drawer-close');
+            const backdrop = document.getElementById('admin-mobile-drawer-backdrop');
+            const drawer = document.getElementById('admin-mobile-drawer');
+
+            const openDrawer = () => {
+                if (drawer && backdrop) {
+                    backdrop.classList.remove('hidden');
+                    drawer.classList.remove('-translate-x-full');
+                    drawer.classList.add('translate-x-0');
+                    document.body.classList.add('overflow-hidden');
+                }
+            };
+
+            const closeDrawer = () => {
+                if (drawer && backdrop) {
+                    drawer.classList.remove('translate-x-0');
+                    drawer.classList.add('-translate-x-full');
+                    backdrop.classList.add('hidden');
+                    document.body.classList.remove('overflow-hidden');
+                }
+            };
+
+            menuBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openDrawer();
+            });
+            closeBtn?.addEventListener('click', closeDrawer);
+            backdrop?.addEventListener('click', closeDrawer);
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeDrawer();
             });
         })();
     </script>

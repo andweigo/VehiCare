@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+const TOTAL_DOTS = 64;
+
 const AIUsageDonut = ({
   used = 0,
   limit = 20,
@@ -20,13 +22,43 @@ const AIUsageDonut = ({
   const exhausted = isExhausted || safeUsed >= safeLimit || percentage >= 100;
   const currentColor = exhausted ? exhaustedColor : activeColor;
 
-  // Angular progress (0 to 360 degrees)
-  const angle = (percentage / 100) * 360;
-  const rightAngle = Math.min(180, angle);
-  const leftAngle = Math.max(0, angle - 180);
-
   const halfSize = size / 2;
-  const innerSize = size - strokeWidth * 2;
+  const radius = Math.max(1, halfSize - strokeWidth / 2);
+  const innerSize = Math.max(10, size - strokeWidth * 2);
+
+  // Calculate seamless overlapping arc segments for reliable cross-platform rendering
+  const activeDotsCount = percentage >= 100
+    ? TOTAL_DOTS
+    : percentage > 0
+    ? Math.max(1, Math.round((percentage / 100) * TOTAL_DOTS))
+    : 0;
+
+  const arcDots = [];
+  for (let i = 0; i < activeDotsCount; i++) {
+    // Start from top (12 o'clock / -Math.PI / 2) and advance clockwise
+    const angle = (i / TOTAL_DOTS) * 2 * Math.PI - Math.PI / 2;
+    const cx = halfSize + radius * Math.cos(angle);
+    const cy = halfSize + radius * Math.sin(angle);
+
+    arcDots.push(
+      <View
+        key={`donut-dot-${i}`}
+        style={{
+          position: 'absolute',
+          left: cx - strokeWidth / 2,
+          top: cy - strokeWidth / 2,
+          width: strokeWidth,
+          height: strokeWidth,
+          borderRadius: strokeWidth / 2,
+          backgroundColor: currentColor,
+        }}
+      />
+    );
+  }
+
+  const halfThreshold = Math.floor(TOTAL_DOTS / 2);
+  const rightHalfDots = arcDots.slice(0, Math.min(arcDots.length, halfThreshold));
+  const leftHalfDots = arcDots.slice(halfThreshold);
 
   return (
     <View
@@ -77,62 +109,20 @@ const AIUsageDonut = ({
           {/* Right half (0 - 180 deg) */}
           <View
             testID="donut-right-half"
-            style={[
-              styles.halfContainer,
-              {
-                width: halfSize,
-                height: size,
-                left: halfSize,
-              },
-            ]}
+            pointerEvents="none"
+            style={[styles.halfWrapper, { width: size, height: size }]}
           >
-            <View
-              style={[
-                styles.halfCircle,
-                {
-                  width: size,
-                  height: size,
-                  borderRadius: halfSize,
-                  borderWidth: strokeWidth,
-                  borderColor: currentColor,
-                  left: -halfSize,
-                  borderLeftColor: 'transparent',
-                  borderBottomColor: 'transparent',
-                  transform: [{ rotate: `${-135 + rightAngle}deg` }],
-                },
-              ]}
-            />
+            {rightHalfDots}
           </View>
 
           {/* Left half (180 - 360 deg) */}
-          {angle > 180 && (
+          {percentage > 50 && (
             <View
               testID="donut-left-half"
-              style={[
-                styles.halfContainer,
-                {
-                  width: halfSize,
-                  height: size,
-                  left: 0,
-                },
-              ]}
+              pointerEvents="none"
+              style={[styles.halfWrapper, { width: size, height: size }]}
             >
-              <View
-                style={[
-                  styles.halfCircle,
-                  {
-                    width: size,
-                    height: size,
-                    borderRadius: halfSize,
-                    borderWidth: strokeWidth,
-                    borderColor: currentColor,
-                    left: 0,
-                    borderLeftColor: 'transparent',
-                    borderBottomColor: 'transparent',
-                    transform: [{ rotate: `${-135 + leftAngle}deg` }],
-                  },
-                ]}
-              />
+              {leftHalfDots}
             </View>
           )}
         </>
@@ -186,6 +176,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     overflow: 'hidden',
+  },
+  halfWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   halfCircle: {
     position: 'absolute',

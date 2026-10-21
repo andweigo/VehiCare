@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   ScrollView,
@@ -13,6 +12,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
+import CustomModal from './CustomModal';
+import useCustomModal from '../hooks/useCustomModal';
 
 const QR_IMAGE = require('../assets/qr.jpg');
 
@@ -27,6 +28,7 @@ const PaymentModal = ({
   userName = '',
 }) => {
   const { theme } = useTheme();
+  const { modalState, showModal, hideModal } = useCustomModal();
 
   // Payment Method: 'card' or 'gcash'
   const [paymentMethod, setPaymentMethod] = useState('card');
@@ -66,7 +68,12 @@ const PaymentModal = ({
 
   const handlePayPress = () => {
     if (paymentMethod === 'gcash' && !gcashRefNumber.trim()) {
-      Alert.alert('Reference Number Required', 'Please enter your GCash reference number to complete payment verification.');
+      showModal({
+        title: 'Reference Number Required',
+        message: 'Please enter your GCash reference number to complete payment verification.',
+        type: 'warning',
+        primaryLabel: 'Got it',
+      });
       return;
     }
 
@@ -80,7 +87,8 @@ const PaymentModal = ({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       visible={visible}
       transparent={true}
       animationType="slide"
@@ -548,6 +556,8 @@ const PaymentModal = ({
         </View>
       </View>
     </Modal>
+    <CustomModal {...modalState} />
+  </>
   );
 };
 

@@ -185,6 +185,7 @@ export const processDiagnosisRequest = async (payload) => {
             'MEDIA_PROCESSING_FAILED',
             'UNSUPPORTED_MEDIA_TYPE',
             'INVALID_MEDIA',
+            'MEDIA_TOO_LARGE',
           ].includes(geminiError.code) || (Boolean(mediaBase64) && geminiError.code === 'GEMINI_TIMEOUT');
 
           const isSynthetic = isSyntheticPlaceholder(symptoms);
@@ -445,11 +446,15 @@ export const processDiagnosisRequest = async (payload) => {
         };
       }
 
+      const isRange = err instanceof RangeError;
+      const errorCode = err.code || (isRange ? 'INVALID_MEDIA' : 'AI_SERVICE_UNAVAILABLE');
       logger.error('AI_PIPELINE_ERROR', requestId, {
         requestType,
         inputType,
         hasMedia: Boolean(mediaBase64),
-        errorCode: err.code || 'AI_SERVICE_UNAVAILABLE',
+        errorCode,
+        errorMessage: err.message || String(err),
+        stack: err.stack,
         totalDurationMs: Date.now() - startTime,
       });
       throw err;

@@ -158,6 +158,14 @@ const renderAppScreens = () => (
       component={ManagePlanScreen}
     />
     <Stack.Screen
+      name="Premium"
+      component={ManagePlanScreen}
+    />
+    <Stack.Screen
+      name="Subscription"
+      component={ManagePlanScreen}
+    />
+    <Stack.Screen
       name="Settings"
       component={SettingsScreen}
     />
