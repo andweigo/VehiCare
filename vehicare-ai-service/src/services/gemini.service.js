@@ -199,7 +199,6 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId }) => {
           mimeType,
           displayName: `vehicare-${mediaType}-${requestId}`,
           abortSignal,
-          httpOptions: { timeout: uploadTimeoutMs },
         },
       }),
       uploadTimeoutMs,
@@ -381,20 +380,20 @@ export const callGemini = async (params, client = null) => {
   const parts = [{ text: prompt }];
   let uploadedFile = null;
 
+  const isInlineCandidate = Boolean(
+    media && media.mediaType === 'image' && media.cleanBase64
+  );
+
   logger.info('AI_GEMINI_MEDIA_REQUEST', requestId, {
     requestType,
     inputType,
     hasMedia: Boolean(media),
     mimeType: media?.mimeType || null,
-    mediaSizeBytes: media?.bytes.length || 0,
-    uploadMethod: media?.mediaType === 'image' || media?.mediaType === 'audio' ? 'inline_data' : media ? 'gemini_files_api' : 'none',
+    mediaSizeBytes: media?.bytes?.length || 0,
+    uploadMethod: isInlineCandidate ? 'inline_data' : media ? 'gemini_files_api' : 'none',
   });
 
   try {
-    const isInlineCandidate =
-  media &&
-  media.mediaType === 'image' &&
-  Boolean(media.cleanBase64);
     if (isInlineCandidate && media?.cleanBase64) {
       parts.push({
         inlineData: {
