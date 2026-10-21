@@ -558,7 +558,15 @@ export const ChatProvider = ({ children }) => {
       if (
         identityEpochRef.current.epoch !== ownerEpoch ||
         String(identityEpochRef.current.userId ?? '') !== String(ownerUserId ?? '')
-      ) return { stale: true };
+      ) {
+        setRequestStates(previous => {
+          const next = { ...previous };
+          delete next[key];
+          return next;
+        });
+        requestPayloadsRef.current.delete(key);
+        return { stale: true };
+      }
 
       const reason = error?.response?.data?.reason;
       const isLimitError = reason === 'ai_limit_reached' || error?.response?.status === 403;
@@ -644,7 +652,15 @@ export const ChatProvider = ({ children }) => {
       if (
         identityEpochRef.current.epoch !== ownerEpoch ||
         String(identityEpochRef.current.userId ?? '') !== String(ownerUserId ?? '')
-      ) return { stale: true };
+      ) {
+        setRequestStates(previous => {
+          const next = { ...previous };
+          delete next[key];
+          return next;
+        });
+        requestPayloadsRef.current.delete(key);
+        return { stale: true };
+      }
 
       addMessageToSession(sessionId, ownerUserId, {
         id: `assistant-err-${userMessageId}`,

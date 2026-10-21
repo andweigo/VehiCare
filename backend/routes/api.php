@@ -22,6 +22,10 @@ Route::get('/health', function () {
     return response()->json([
         'status' => 'success',
         'message' => 'VehiCare API is running',
+        'php_version' => PHP_VERSION,
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'post_max_size' => ini_get('post_max_size'),
+        'memory_limit' => ini_get('memory_limit'),
     ]);
 });
 

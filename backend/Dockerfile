@@ -22,7 +22,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         echo 'max_execution_time = 120'; \
         echo 'max_input_time = 120'; \
         echo 'display_errors = Off'; \
-    } > /usr/local/etc/php/conf.d/uploads.ini
+    } > /usr/local/etc/php/conf.d/uploads.ini \
+    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+    && sed -i 's/upload_max_filesize = 2M/upload_max_filesize = 40M/g' "$PHP_INI_DIR/php.ini" \
+    && sed -i 's/post_max_size = 8M/post_max_size = 45M/g' "$PHP_INI_DIR/php.ini" \
+    && sed -i 's/memory_limit = 128M/memory_limit = 256M/g' "$PHP_INI_DIR/php.ini"
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

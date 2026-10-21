@@ -1046,7 +1046,7 @@ export default function AskVehiCareScreen({
     const isCustomOverride = typeof overrideText === 'string';
     const textToSend = isCustomOverride ? overrideText : message;
     const trimmed = textToSend.trim();
-    if ((!trimmed && !attachedImage && !attachedVideo && !attachedAudio) || isSending) {
+    if ((!trimmed && !attachedImage && !attachedVideo && !attachedAudio) || isSendingLocally) {
       return;
     }
 

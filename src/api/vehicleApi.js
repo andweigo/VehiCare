@@ -664,7 +664,7 @@ const vehicleApi = {
       }
       const response = await apiClient.post('/diagnostics', payload, {
         ...config,
-        timeout: isMultipart ? 370000 : 60000,
+        timeout: isMultipart ? 90000 : 60000,
         headers: requestHeaders,
       });
       return response?.data?.data || response?.data;
