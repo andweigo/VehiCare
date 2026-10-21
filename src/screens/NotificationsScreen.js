@@ -19,6 +19,7 @@ import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import notificationService from '../services/notificationService';
+import vehicleApi from '../api/vehicleApi';
 import { useTheme } from '../theme/ThemeContext';
 
 const CATEGORY_KEYS = [

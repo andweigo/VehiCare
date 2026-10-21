@@ -235,11 +235,7 @@ const WelcomeScreen = ({ navigation }) => {
   };
 
   const handleSignIn = () => {
-    navigation.navigate('Login', {
-      redirectTo: {
-        name: 'VehicleDetails',
-      },
-    });
+    navigation.navigate('Login');
   };
 
   const handleCreateAccount = () => {

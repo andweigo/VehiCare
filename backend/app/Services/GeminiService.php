@@ -331,6 +331,10 @@ class GeminiService
         try {
             $response = Http::timeout(60)
                 ->connectTimeout(15)
+                ->retry(2, 1500, function ($exception) {
+                    return $exception instanceof \Illuminate\Http\Client\ConnectionException
+                        || ($exception instanceof \Illuminate\Http\Client\RequestException && in_array($exception->response?->status(), [429, 500, 502, 503, 504], true));
+                }, throw: false)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'x-goog-api-key' => $this->apiKey,
@@ -365,15 +369,18 @@ class GeminiService
             /*
              * Gemini returned an HTTP error.
              */
+            $errorBody = $response->json() ?: $response->body();
             Log::error('[Gemini] Gemini API error', [
                 'model' => $model,
                 'status' => $response->status(),
+                'error' => is_array($errorBody) ? ($errorBody['error'] ?? $errorBody) : substr((string) $errorBody, 0, 500),
             ]);
 
         } catch (\Throwable $e) {
             Log::error('[Gemini] HTTP exception', [
                 'model' => $model,
                 'class' => get_class($e),
+                'message' => $e->getMessage(),
             ]);
         }
 
@@ -490,6 +497,11 @@ if ($hasMedia) {
         '- Inspect engine behavior.',
         '- Inspect leaks.',
         '- Inspect moving components.',
+        '',
+        'If it is audio or voice recording:',
+        '- Listen carefully to spoken descriptions of vehicle issues, symptoms, and concerns (in English, Filipino/Tagalog, or Taglish).',
+        '- Listen for mechanical acoustics (engine idle, knocking, ticking, squealing, grinding, misfires, rattles).',
+        '- Combine spoken user statements and any audible vehicle noise to form the diagnostic assessment.',
         '',
         'Do NOT claim to hear audio unless actual audio information is available.',
         'Do NOT invent visual findings.',

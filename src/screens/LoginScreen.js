@@ -210,13 +210,7 @@ const LoginScreen = ({ navigation, route }) => {
       await delay(1500);
 
       if (navigation.isFocused && navigation.isFocused()) {
-        const shouldSkipVehicleSetup =
-          result?.hasAccountVehicles &&
-          redirectTo?.name === 'VehicleDetails';
-
-        if (shouldSkipVehicleSetup) {
-          navigation.replace('Dashboard');
-        } else if (redirectTo?.name) {
+        if (redirectTo?.name && redirectTo.name !== 'VehicleDetails') {
           navigation.replace(redirectTo.name, redirectTo.params);
         } else {
           navigation.replace('Dashboard');
@@ -275,13 +269,7 @@ const LoginScreen = ({ navigation, route }) => {
           return;
         }
 
-        const shouldSkipVehicleSetup =
-          result?.hasAccountVehicles &&
-          redirectTo?.name === 'VehicleDetails';
-
-        if (shouldSkipVehicleSetup) {
-          navigation.replace('Dashboard');
-        } else if (redirectTo?.name) {
+        if (redirectTo?.name && redirectTo.name !== 'VehicleDetails') {
           navigation.replace(redirectTo.name, redirectTo.params);
         } else {
           navigation.replace('Dashboard');

@@ -570,39 +570,50 @@ class DiagnosticController extends Controller
             $analysis = null;
             $aiSource = 'gemini';
 
-            try {
-                $analysis = $this->aiServiceClient->analyzeSymptoms(
-                    $vehicleInfo,
-                    $validated['symptoms'],
-                    $mediaBase64,
-                    $mediaMime,
-                    $inputType,
-                    $validated['history'] ?? [],
-                    $requestId,
-                    $user?->id,
-                    $entitlements,
-                    $historicalContext,
-                    $diagnosticState
-                );
-                $aiSource = $analysis['ai_source'] ?? 'gemini';
-            } catch (AIServiceException $microserviceException) {
-                if ($isGeminiConfigured) {
-                    Log::warning('[DiagnosticController] Node.js AI service unavailable, attempting Gemini direct fallback', [
-                        'request_id' => $requestId,
-                        'reason' => $microserviceException->errorCode,
-                        'message' => $microserviceException->getMessage(),
-                    ]);
+            // Fast local database cache lookup for text diagnoses (instant response, zero external API failure risk)
+            if ($inputType === 'text' && empty($mediaBase64) && empty($validated['history'])) {
+                $cached = $this->cacheService->find($vehicleInfo, $validated['symptoms']);
+                if ($cached !== null) {
+                    $analysis = $cached;
+                    $aiSource = 'cache';
+                }
+            }
 
-                    $analysis = $this->geminiService->analyzeSymptoms(
+            if ($analysis === null) {
+                try {
+                    $analysis = $this->aiServiceClient->analyzeSymptoms(
                         $vehicleInfo,
                         $validated['symptoms'],
                         $mediaBase64,
                         $mediaMime,
-                        $validated['history'] ?? []
+                        $inputType,
+                        $validated['history'] ?? [],
+                        $requestId,
+                        $user?->id,
+                        $entitlements,
+                        $historicalContext,
+                        $diagnosticState
                     );
-                    $aiSource = 'gemini_direct_fallback';
-                } else {
-                    throw $microserviceException;
+                    $aiSource = $analysis['ai_source'] ?? 'gemini';
+                } catch (AIServiceException $microserviceException) {
+                    if ($isGeminiConfigured) {
+                        Log::warning('[DiagnosticController] Node.js AI service unavailable, attempting Gemini direct fallback', [
+                            'request_id' => $requestId,
+                            'reason' => $microserviceException->errorCode,
+                            'message' => $microserviceException->getMessage(),
+                        ]);
+
+                        $analysis = $this->geminiService->analyzeSymptoms(
+                            $vehicleInfo,
+                            $validated['symptoms'],
+                            $mediaBase64,
+                            $mediaMime,
+                            $validated['history'] ?? []
+                        );
+                        $aiSource = 'gemini_direct_fallback';
+                    } else {
+                        throw $microserviceException;
+                    }
                 }
             }
 
@@ -727,6 +738,11 @@ class DiagnosticController extends Controller
                         'exception' => get_class($e),
                     ]);
                 }
+            }
+
+            // Store successful text diagnosis in database cache for instant future retrieval
+            if ($aiSource !== 'cache' && $inputType === 'text' && empty($mediaBase64) && empty($validated['history']) && ($analysis['status'] ?? null) === 'diagnosis_ready') {
+                $this->cacheService->store($vehicleInfo, $validated['symptoms'], $analysis);
             }
 
             Log::info('[DiagnosticController] Diagnostic response generated successfully', [

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../theme/ThemeContext';
+import { useSidebar } from '../context/SidebarContext';
 
 const UserAccountCard = ({
   username = 'Andrei Obligar',
@@ -28,6 +29,14 @@ const UserAccountCard = ({
   const navigation = useNavigation();
   const { theme, themeName } = useTheme();
 
+  let sidebarContext = null;
+  try {
+    sidebarContext = useSidebar();
+  } catch (e) {
+    // Graceful fallback if rendered outside SidebarProvider
+  }
+  const closeSidebar = sidebarContext?.closeSidebar;
+
   const [visible, setVisible] = useState(false);
   const isDark = themeName === 'dark';
 
@@ -37,26 +46,31 @@ const UserAccountCard = ({
 
   const openProfile = () => {
     closeModal();
+    closeSidebar?.();
     navigation.navigate('Profile');
   };
 
   const openSettings = () => {
     closeModal();
+    closeSidebar?.();
     navigation.navigate('Settings');
   };
 
   const openPremium = () => {
     closeModal();
+    closeSidebar?.();
     navigation.navigate('Premium');
   };
 
   const openVehicles = () => {
     closeModal();
+    closeSidebar?.();
     navigation.navigate('Vehicles');
   };
 
   const openHelp = () => {
     closeModal();
+    closeSidebar?.();
     // navigate at the topmost navigator so HelpSupport route is handled
     let root = navigation;
     while (root && root.getParent && root.getParent() && root.getParent() !== root) {

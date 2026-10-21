@@ -14,7 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf \
     && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && { \
+        echo 'upload_max_filesize = 40M'; \
+        echo 'post_max_size = 45M'; \
+        echo 'memory_limit = 256M'; \
+        echo 'max_execution_time = 120'; \
+        echo 'max_input_time = 120'; \
+        echo 'display_errors = Off'; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

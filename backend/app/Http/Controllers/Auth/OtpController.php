@@ -121,7 +121,7 @@ class OtpController extends Controller
         $verifiedOtp = OtpCode::where('email', $email)
             ->where('purpose', OtpService::PURPOSE_PASSWORD_RESET)
             ->whereNotNull('verified_at')
-            ->where('updated_at', '>=', now()->subMinutes(15))
+            ->where('verified_at', '>=', now()->subMinutes(15))
             ->orderByDesc('id')
             ->first();
 
@@ -132,7 +132,7 @@ class OtpController extends Controller
             ], 400);
         }
 
-        if ($verifiedOtp->isExpired()) {
+        if ($verifiedOtp->isExpired() || ($verifiedOtp->verified_at && $verifiedOtp->verified_at->lt(now()->subMinutes(15)))) {
             return response()->json([
                 'success' => false,
                 'message' => 'The verification code has expired. Please request a new code.',

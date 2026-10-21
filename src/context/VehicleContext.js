@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -32,6 +33,9 @@ export const VehicleProvider = ({ children }) => {
     user,
     logoutSignal,
   } = useAuth();
+
+  const userId = user?.id || user?.uid || null;
+  const hasInitializedRef = useRef(false);
 
   /*
   |--------------------------------------------------------------------------
@@ -309,7 +313,9 @@ export const VehicleProvider = ({ children }) => {
     let cancelled = false;
 
     const syncVehicleState = async () => {
-      setLoading(true);
+      if (!hasInitializedRef.current) {
+        setLoading(true);
+      }
 
       try {
         if (isAuthenticated) {
@@ -333,6 +339,7 @@ export const VehicleProvider = ({ children }) => {
       } finally {
         if (!cancelled) {
           setLoading(false);
+          hasInitializedRef.current = true;
         }
       }
     };
@@ -344,7 +351,7 @@ export const VehicleProvider = ({ children }) => {
     };
   }, [
     isAuthenticated,
-    user,
+    userId,
     logoutSignal,
   ]);
 

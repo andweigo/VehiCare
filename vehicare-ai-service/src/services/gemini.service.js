@@ -252,7 +252,7 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId }) => {
             name: uploadedFile.name,
             config: {
               abortSignal,
-              httpOptions: { timeout: Math.max(1000, processDeadline - Date.now()) },
+
             },
           }),
           Math.max(1000, processDeadline - Date.now()),

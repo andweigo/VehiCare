@@ -19,6 +19,7 @@ class AIDiagnosticCacheTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['services.gemini_cache.enabled' => true]);
         $this->normalizer = new SymptomNormalizationService();
         $this->cacheService = new AIDiagnosticCacheService($this->normalizer);
     }

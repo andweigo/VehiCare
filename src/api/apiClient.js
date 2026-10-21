@@ -62,10 +62,19 @@ apiClient.interceptors.request.use(
     const guestUuid = await getGuestUuid();
     const hasToken = Boolean(token && String(token).trim());
 
+    const isFormData =
+      (typeof FormData !== 'undefined' && config.data instanceof FormData) ||
+      (config.data && typeof config.data === 'object' && Array.isArray(config.data._parts));
+
     config.headers = {
       ...(config.headers || {}),
       'X-Guest-UUID': guestUuid,
     };
+
+    if (isFormData && config.headers) {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
 
     if (hasToken) {
       if (!hasAuthTokenSnapshot) {

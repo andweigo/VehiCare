@@ -314,8 +314,9 @@ const MyVehiclesScreen = ({ navigation, route }) => {
       [displayVehicles],
     );
 
-  const canAddVehicle =
-    activeVehicleCount < vehicleLimit;
+  const canAddVehicle = isPremium
+    ? vehicleCount < vehicleLimit
+    : activeVehicleCount < vehicleLimit;
 
   /*
    * ============================================
@@ -1630,8 +1631,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
                 All Vehicles
               </Text>
 
-              {activeVehicleCount <
-                vehicleLimit && (
+              {canAddVehicle && (
                 <TouchableOpacity
                   style={
                     styles.addVehicleTextButton

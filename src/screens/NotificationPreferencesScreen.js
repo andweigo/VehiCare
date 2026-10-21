@@ -29,6 +29,18 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => {
   return { value, label };
 });
 
+const formatTimeLabel = (timeStr) => {
+  if (!timeStr) return '--:--';
+  const matched = TIME_OPTIONS.find((opt) => opt.value === timeStr);
+  if (matched) return matched.label;
+  const parts = String(timeStr).split(':');
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parts[1] || '00';
+  const period = h >= 12 ? 'PM' : 'AM';
+  const displayHour = h % 12 === 0 ? 12 : h % 12;
+  return `${displayHour.toString().padStart(2, '0')}:${m} ${period}`;
+};
+
 const NotificationPreferencesScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { t } = useLanguage();

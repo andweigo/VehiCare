@@ -90,15 +90,21 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   const handleBack = () => {
     if (step > 1) {
       previousStep();
-    } else {
-      if (isGuest && typeof exitGuestMode === 'function') {
-        exitGuestMode();
-      }
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('Welcome');
-      }
+      return;
+    }
+
+    if (isGuest && typeof exitGuestMode === 'function') {
+      exitGuestMode();
+      return;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    if (isAuthenticated) {
+      navigation.navigate('Dashboard');
     }
   };
 
@@ -108,15 +114,23 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
         previousStep();
         return true;
       }
+
       if (isGuest && typeof exitGuestMode === 'function') {
         exitGuestMode();
+        return true;
       }
+
       if (navigation.canGoBack()) {
         navigation.goBack();
         return true;
       }
-      navigation.navigate('Welcome');
-      return true;
+
+      if (isAuthenticated) {
+        navigation.navigate('Dashboard');
+        return true;
+      }
+
+      return false;
     });
 
     const unsubscribe = navigation.addListener('beforeRemove', e => {

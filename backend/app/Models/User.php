@@ -100,6 +100,11 @@ class User extends Authenticatable
         return $this->role === self::ROLE_ADMIN;
     }
 
+    public function isPremium(): bool
+    {
+        return $this->subscription_plan === self::SUBSCRIPTION_PREMIUM;
+    }
+
     public static function protectedAdminEmail(): string
     {
         return config('app.default_admin_email', 'admin@vehicare.local');

@@ -113,3 +113,8 @@ export const resetPassword = async (email, code, password) => {
   });
   return response?.data;
 };
+
+export const getMe = async () => {
+  const response = await apiClient.get('/user/me');
+  return normalizeAuthResponse(response);
+};

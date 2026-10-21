@@ -20,7 +20,7 @@ import {
 
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import NitroSound from 'react-native-nitro-sound';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Feather from 'react-native-vector-icons/Feather';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -260,6 +260,7 @@ export default function AskVehiCareScreen({
   const { theme } = useTheme();
   const { openSidebar } = useSidebar();
   const { t, language } = useLanguage();
+  const insets = useSafeAreaInsets();
   const {
     currentSession,
     currentSessionId,
@@ -305,6 +306,14 @@ export default function AskVehiCareScreen({
     isAuthenticated
       ? activeVehicle
       : pendingVehicle;
+
+  const selectableVehicles = useMemo(
+    () =>
+      Array.isArray(vehicles)
+        ? vehicles.filter(v => !v.isArchived && !v.archived_at)
+        : [],
+    [vehicles],
+  );
 
   const vehicleName =
     getVehicleDisplayName(
@@ -1151,7 +1160,7 @@ export default function AskVehiCareScreen({
           })),
       };
 
-      const activeSymptoms = trimmed || (currentAudio ? 'Audio recording of engine or vehicle noise' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
+      const activeSymptoms = trimmed || (currentAudio ? 'Voice consultation or audio recording of vehicle symptoms' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
       const payload = {
         vehicle_id: vehicleId,
         vehicle_name: safeVehicleName,
@@ -1317,7 +1326,7 @@ export default function AskVehiCareScreen({
     try {
       const result = await launchCamera({
         mediaType: 'video',
-        videoQuality: 'medium',
+        videoQuality: Platform.OS === 'android' ? 'low' : 'medium',
         durationLimit: usageStats?.video?.max_duration_seconds || 30,
       });
 
@@ -1327,10 +1336,10 @@ export default function AskVehiCareScreen({
 
       const asset = result.assets[0];
       const videoConfig = usageStats?.video || { max_size_mb: 15, max_duration_seconds: 30 };
-      const fileSizeMb = ((asset.fileSize || 0) / (1024 * 1024)).toFixed(1);
+      const fileSizeMb = Number(((asset.fileSize || 0) / (1024 * 1024)).toFixed(1));
       const durationSec = Math.round(asset.duration || 0);
 
-      if (fileSizeMb > videoConfig.max_size_mb) {
+      if (fileSizeMb > Number(videoConfig.max_size_mb || 15)) {
         Alert.alert(
           'Video Too Large',
           `This video is ${fileSizeMb} MB. Your plan allows videos up to ${videoConfig.max_size_mb} MB.`
@@ -1338,7 +1347,7 @@ export default function AskVehiCareScreen({
         return;
       }
 
-      if (durationSec > videoConfig.max_duration_seconds) {
+      if (durationSec > Number(videoConfig.max_duration_seconds || 30)) {
         Alert.alert(
           'Video Too Long',
           `This video is ${durationSec}s long. Your plan allows videos up to ${videoConfig.max_duration_seconds} seconds.`
@@ -1375,10 +1384,10 @@ export default function AskVehiCareScreen({
 
       const asset = result.assets[0];
       const videoConfig = usageStats?.video || { max_size_mb: 15, max_duration_seconds: 30 };
-      const fileSizeMb = ((asset.fileSize || 0) / (1024 * 1024)).toFixed(1);
+      const fileSizeMb = Number(((asset.fileSize || 0) / (1024 * 1024)).toFixed(1));
       const durationSec = Math.round(asset.duration || 0);
 
-      if (fileSizeMb > videoConfig.max_size_mb) {
+      if (fileSizeMb > Number(videoConfig.max_size_mb || 15)) {
         Alert.alert(
           'Video Too Large',
           `This video is ${fileSizeMb} MB. Your plan allows videos up to ${videoConfig.max_size_mb} MB.`
@@ -1386,7 +1395,7 @@ export default function AskVehiCareScreen({
         return;
       }
 
-      if (durationSec > videoConfig.max_duration_seconds) {
+      if (durationSec > Number(videoConfig.max_duration_seconds || 30)) {
         Alert.alert(
           'Video Too Long',
           `This video is ${durationSec}s long. Your plan allows videos up to ${videoConfig.max_duration_seconds} seconds.`
@@ -1773,201 +1782,145 @@ export default function AskVehiCareScreen({
           />
         </Pressable>
 
-        {showVehicleDropdown && (
+      </View>
+
+      {/* VEHICLE SELECTION MODAL DROPDOWN */}
+      <Modal
+        visible={showVehicleDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowVehicleDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowVehicleDropdown(false)}
+        >
           <View
             style={[
-              styles.vehicleDropdown,
+              styles.vehicleDropdownModal,
               {
-                backgroundColor:
-                  theme.surface,
-                borderColor:
-                  theme.border,
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                top: insets.top + (Platform.OS === 'ios' ? 104 : 96),
               },
             ]}
+            onStartShouldSetResponder={() => true}
           >
             <Text
               style={[
                 styles.dropdownLabel,
-                {
-                  color:
-                    theme.textSecondary,
-                },
+                { color: theme.textSecondary },
               ]}
             >
               DIAGNOSTIC VEHICLE
             </Text>
 
-            {isAuthenticated &&
-            vehicles.length > 0 ? (
+            {isAuthenticated && selectableVehicles.length > 0 ? (
               <ScrollView
-                style={
-                  styles.vehicleList
-                }
+                style={styles.vehicleList}
                 nestedScrollEnabled
-                showsVerticalScrollIndicator={
-                  false
-              }
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
-                {vehicles.map(
-                  vehicle => {
-                    const isActive =
-                      activeVehicle &&
-                      String(
-                        activeVehicle.id,
-                      ) ===
-                        String(
-                          vehicle.id,
-                        );
+                {selectableVehicles.map(vehicle => {
+                  const isActive =
+                    activeVehicle &&
+                    String(activeVehicle.id) === String(vehicle.id);
 
-                    return (
-                      <Pressable
-                        key={
-                          vehicle.id
-                        }
+                  return (
+                    <TouchableOpacity
+                      key={vehicle.id}
+                      activeOpacity={0.75}
+                      style={[
+                        styles.vehicleOption,
+                        {
+                          backgroundColor: isActive ? theme.surfaceAlt : 'transparent',
+                          borderColor: isActive ? theme.border : 'transparent',
+                        },
+                      ]}
+                      onPress={() => handleVehicleSelect(vehicle)}
+                    >
+                      <View
                         style={[
-                          styles.vehicleOption,
+                          styles.vehicleOptionIcon,
                           {
-                            backgroundColor:
-                              isActive
-                                ? theme.surfaceAlt
-                                : 'transparent',
-                            borderColor:
-                              isActive
-                                ? theme.border
-                                : 'transparent',
+                            backgroundColor: isActive
+                              ? theme.accent + '18'
+                              : theme.surfaceAlt,
                           },
                         ]}
-                        onPress={() =>
-                          handleVehicleSelect(
-                            vehicle,
-                          )
-                        }
                       >
+                        <MaterialIcons
+                          name={getVehicleIconConfig(vehicle).name}
+                          size={18}
+                          color={isActive ? theme.accent : theme.textSecondary}
+                        />
+                      </View>
+
+                      <View style={styles.vehicleOptionInfo}>
+                        <Text
+                          style={[
+                            styles.vehicleOptionName,
+                            { color: theme.text },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {getVehicleDisplayName(vehicle, 'Vehicle')}
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.vehicleOptionDetails,
+                            { color: theme.textSecondary },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {getVehicleDisplayDetails(
+                            vehicle,
+                            'Vehicle details unavailable',
+                          )}
+                        </Text>
+                      </View>
+
+                      {isActive && (
                         <View
                           style={[
-                            styles.vehicleOptionIcon,
-                            {
-                              backgroundColor:
-                                isActive
-                                  ? theme.accent +
-                                    '18'
-                                  : theme.surfaceAlt,
-                            },
+                            styles.activeBadge,
+                            { backgroundColor: theme.accent + '18' },
                           ]}
                         >
-                          <MaterialIcons
-                            name={getVehicleIconConfig(vehicle).name}
-                            size={18}
-                            color={
-                              isActive
-                                ? theme.accent
-                                : theme.textSecondary
-                            }
-                          />
-                        </View>
-
-                        <View
-                          style={
-                            styles.vehicleOptionInfo
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.vehicleOptionName,
-                              {
-                                color:
-                                  theme.text,
-                              },
-                            ]}
-                            numberOfLines={
-                              1
-                            }
-                          >
-                            {getVehicleDisplayName(
-                              vehicle,
-                              'Vehicle',
-                            )}
-                          </Text>
-
-                          <Text
-                            style={[
-                              styles.vehicleOptionDetails,
-                              {
-                                color:
-                                  theme.textSecondary,
-                              },
-                            ]}
-                            numberOfLines={
-                              1
-                            }
-                          >
-                            {getVehicleDisplayDetails(
-                              vehicle,
-                              'Vehicle details unavailable',
-                            )}
-                          </Text>
-                        </View>
-
-                        {isActive && (
                           <View
                             style={[
-                              styles.activeBadge,
-                              {
-                                backgroundColor:
-                                  theme.accent +
-                                  '18',
-                              },
+                              styles.activeDot,
+                              { backgroundColor: theme.accent },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.activeBadgeText,
+                              { color: theme.accent },
                             ]}
                           >
-                            <View
-                              style={[
-                                styles.activeDot,
-                                {
-                                  backgroundColor:
-                                    theme.accent,
-                                },
-                              ]}
-                            />
-
-                            <Text
-                              style={[
-                                styles.activeBadgeText,
-                                {
-                                  color:
-                                    theme.accent,
-                                },
-                              ]}
-                            >
-                              ACTIVE
-                            </Text>
-                          </View>
-                        )}
-                      </Pressable>
-                    );
-                  },
-                )}
+                            ACTIVE
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             ) : (
-              <View
-                style={
-                  styles.emptyVehicleState
-                }
-              >
+              <View style={styles.emptyVehicleState}>
                 <Ionicons
                   name="car-outline"
                   size={22}
-                  color={
-                    theme.textSecondary
-                  }
+                  color={theme.textSecondary}
                 />
-
                 <Text
                   style={[
                     styles.emptyVehicleText,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
+                    { color: theme.textSecondary },
                   ]}
                 >
                   {isAuthenticated
@@ -1977,147 +1930,95 @@ export default function AskVehiCareScreen({
               </View>
             )}
 
-              {/* CURRENT VEHICLE */}
-
-              <View
-                style={[
-                  styles.currentVehicleBox,
-                  {
-                    borderTopColor:
-                      theme.border,
-                  },
-                ]}
-              >
-                <View
-                  style={
-                    styles.currentVehicleHeader
-                  }
+            {/* CURRENT VEHICLE */}
+            <View
+              style={[
+                styles.currentVehicleBox,
+                { borderTopColor: theme.border },
+              ]}
+            >
+              <View style={styles.currentVehicleHeader}>
+                <Text
+                  style={[
+                    styles.currentVehicleLabel,
+                    { color: theme.textSecondary },
+                  ]}
                 >
-                  <Text
-                    style={[
-                      styles.currentVehicleLabel,
-                      {
-                        color:
-                          theme.textSecondary,
-                      },
-                    ]}
-                  >
-                    CURRENTLY ANALYZING
-                  </Text>
+                  CURRENTLY ANALYZING
+                </Text>
 
+                <View
+                  style={[
+                    styles.currentActiveBadge,
+                    { backgroundColor: theme.accent + '18' },
+                  ]}
+                >
                   <View
                     style={[
-                      styles.currentActiveBadge,
-                      {
-                        backgroundColor:
-                          theme.accent +
-                          '18',
-                      },
+                      styles.activeDot,
+                      { backgroundColor: theme.accent },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.activeBadgeText,
+                      { color: theme.accent },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.activeDot,
-                        {
-                          backgroundColor:
-                            theme.accent,
-                        },
-                      ]}
-                    />
-
-                    <Text
-                      style={[
-                        styles.activeBadgeText,
-                        {
-                          color:
-                            theme.accent,
-                        },
-                      ]}
-                    >
-                      ACTIVE
-                    </Text>
-                  </View>
+                    ACTIVE
+                  </Text>
                 </View>
-
-                <Text
-                  style={[
-                    styles.currentVehicleName,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {vehicleName}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.currentVehicleDetails,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {vehicleDetails}
-                </Text>
               </View>
 
-              {/* ADD VEHICLE */}
-
-              <Pressable
+              <Text
                 style={[
-                  styles.dropdownAction,
-                  {
-                    backgroundColor:
-                      theme.accent,
-                  },
-                  !isAuthenticated &&
-                    styles.dropdownActionDisabled,
+                  styles.currentVehicleName,
+                  { color: theme.text },
                 ]}
-                onPress={
-                  handleAddVehicle
-                }
+                numberOfLines={1}
               >
-                <Ionicons
-                  name={
-                    isAuthenticated
-                      ? 'add'
-                      : 'lock-closed-outline'
-                  }
-                  size={16}
-                  color={
-                    isAuthenticated
-                      ? theme.surface
-                      : theme.textSecondary
-                  }
-                  style={{
-                    marginRight: 6,
-                  }}
-                />
+                {vehicleName}
+              </Text>
 
-                <Text
-                  style={[
-                    styles.dropdownActionText,
-                    {
-                      color:
-                        isAuthenticated
-                          ? theme.surface
-                          : theme.textSecondary,
-                    },
-                  ]}
-                >
-                  {isAuthenticated
-                    ? 'Add New Vehicle'
-                    : 'Sign in to unlock'}
-                </Text>
-              </Pressable>
+              <Text
+                style={[
+                  styles.currentVehicleDetails,
+                  { color: theme.textSecondary },
+                ]}
+                numberOfLines={2}
+              >
+                {vehicleDetails}
+              </Text>
             </View>
-          )}
-        </View>
+
+            {/* ADD VEHICLE */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.dropdownAction,
+                { backgroundColor: theme.accent },
+                !isAuthenticated && styles.dropdownActionDisabled,
+              ]}
+              onPress={handleAddVehicle}
+            >
+              <Ionicons
+                name={isAuthenticated ? 'add' : 'lock-closed-outline'}
+                size={16}
+                color={isAuthenticated ? theme.surface : theme.textSecondary}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.dropdownActionText,
+                  { color: isAuthenticated ? theme.surface : theme.textSecondary },
+                ]}
+              >
+                {isAuthenticated ? 'Add New Vehicle' : 'Sign in to unlock'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ==================================================
           CHAT
@@ -3188,6 +3089,28 @@ const styles = StyleSheet.create({
     fontFamily: 'Outfit-Bold',
     fontSize: 12.5,
     flex: 1,
+  },
+
+  dropdownModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+
+  vehicleDropdownModal: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    elevation: 25,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
   },
 
   vehicleDropdown: {

@@ -285,7 +285,24 @@ class AuthController extends Controller
         }
 
         if (array_key_exists('phone_number', $validated)) {
-            $user->phone_number = $validated['phone_number'];
+            $rawPhone = $validated['phone_number'];
+            if ($rawPhone !== null && trim((string) $rawPhone) !== '') {
+                $cleanedPhone = preg_replace('/[\s\-()]/', '', trim((string) $rawPhone));
+                if (! preg_match('/^(09|\+639|639)\d{9}$/', $cleanedPhone)) {
+                    throw ValidationException::withMessages([
+                        'phone_number' => ['Please enter a valid Philippine mobile number (e.g., 09171234567 or +639171234567).'],
+                    ]);
+                }
+
+                // Normalize 639XXXXXXXXX to +639XXXXXXXXX
+                if (str_starts_with($cleanedPhone, '639')) {
+                    $cleanedPhone = '+' . $cleanedPhone;
+                }
+
+                $user->phone_number = $cleanedPhone;
+            } else {
+                $user->phone_number = null;
+            }
         }
 
         $user->save();

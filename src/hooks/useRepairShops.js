@@ -11,15 +11,12 @@ const SAVED_LOCATION_STORAGE_KEY = '@vehicare_last_location';
  * Common Philippines City Presets for Manual Map Exploration
  */
 export const LOCATION_PRESETS = [
-  { id: 'mindoro_oriental', name: 'Calapan, Oriental Mindoro', latitude: 13.4117, longitude: 121.1803, accuracy: 15 },
   { id: 'mindoro_socorro', name: 'Socorro, Oriental Mindoro', latitude: 13.0642, longitude: 121.4089, accuracy: 15 },
-  { id: 'mindoro_occidental', name: 'Mamburao, Occidental Mindoro', latitude: 13.2238, longitude: 120.5961, accuracy: 15 },
-  { id: 'quezon_city', name: 'Quezon City, Metro Manila', latitude: 14.6500, longitude: 121.0300, accuracy: 15 },
-  { id: 'manila', name: 'City of Manila', latitude: 14.5995, longitude: 120.9842, accuracy: 15 },
-  { id: 'pasig', name: 'Pasig City', latitude: 14.5764, longitude: 121.0851, accuracy: 15 },
-  { id: 'cebu', name: 'Cebu City', latitude: 10.3157, longitude: 123.8854, accuracy: 15 },
-  { id: 'davao', name: 'Davao City', latitude: 7.1907, longitude: 125.4553, accuracy: 15 },
+  { id: 'mindoro_pinamalayan', name: 'Pinamalayan, Oriental Mindoro', latitude: 13.0475, longitude: 121.4939, accuracy: 15 },
+  { id: 'mindoro_oriental', name: 'Oriental Mindoro (Province)', latitude: 13.1500, longitude: 121.3500, accuracy: 25 },
 ];
+
+export const DEFAULT_FALLBACK_LOCATION = LOCATION_PRESETS[0];
 
 /**
  * Save user's selected location to AsyncStorage
@@ -179,7 +176,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       return gpsFix;
     } else {
       // Fallback if GPS hardware fails
-      const fallbackPreset = LOCATION_PRESETS[1];
+      const fallbackPreset = DEFAULT_FALLBACK_LOCATION;
       setSelectedLocation(fallbackPreset, true);
       return fallbackPreset;
     }
@@ -196,17 +193,17 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       } else {
         setPermissionState('DENIED');
         if (!selectedLocation) {
-          setSelectedLocation(LOCATION_PRESETS[1], false);
+          setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);
         }
-        return LOCATION_PRESETS[1];
+        return DEFAULT_FALLBACK_LOCATION;
       }
     } catch (err) {
       console.warn('[useRepairShops] Request permission error:', err);
       setPermissionState('DENIED');
       if (!selectedLocation) {
-        setSelectedLocation(LOCATION_PRESETS[1], false);
+        setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);
       }
-      return LOCATION_PRESETS[1];
+      return DEFAULT_FALLBACK_LOCATION;
     }
   };
 
@@ -230,7 +227,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       const data = await fetchNearbyRepairShops({
         latitude: selectedLocation.latitude,
         longitude: selectedLocation.longitude,
-        radius: MAP_CONFIG.defaultRadiusMeters,
+        radius: selectedLocation.id === 'mindoro_oriental' ? 80000 : MAP_CONFIG.defaultRadiusMeters,
         vehicleType: 'all', // Fetch all nearby shops, then filter client side safely
       });
 
@@ -308,11 +305,11 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
           setSelectedLocationState(gpsFix);
         } else {
           // Priority 3: Fallback preset
-          setSelectedLocationState(LOCATION_PRESETS[1]);
+          setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         }
       } else {
         setPermissionState(perm.state === 'NOT_REQUESTED' ? 'NOT_REQUESTED' : 'DENIED');
-        setSelectedLocationState(LOCATION_PRESETS[1]);
+        setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         setLoading(false);
       }
     };

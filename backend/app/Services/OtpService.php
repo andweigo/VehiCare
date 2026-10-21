@@ -217,9 +217,10 @@ class OtpService
             ];
         }
 
-        // Mark OTP as verified
+        // Mark OTP as verified and allow a 15-minute window for subsequent actions (e.g. password reset)
         $otpRecord->update([
             'verified_at' => now(),
+            'expires_at' => now()->addMinutes(15),
         ]);
 
         // If registration verification, mark user as verified in DB

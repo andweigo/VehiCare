@@ -15,7 +15,12 @@ export const SidebarProvider = ({ children }) => {
 
   const updateActiveScreen = useCallback((routeName) => {
     if (routeName) {
-      setActiveScreen(routeName);
+      setActiveScreen(prev => {
+        if (prev && prev !== routeName) {
+          setIsOpen(false);
+        }
+        return routeName;
+      });
       const authScreens = ['Welcome', 'Login', 'Register', 'Auth', 'ForgotPassword'];
       if (authScreens.includes(routeName)) {
         setIsOpen(false);

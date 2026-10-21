@@ -562,9 +562,25 @@ export const ChatProvider = ({ children }) => {
 
       const reason = error?.response?.data?.reason;
       const isLimitError = reason === 'ai_limit_reached' || error?.response?.status === 403;
-      const errorText = error?.response?.data?.message
-        || error?.response?.data?.error?.message
-        || 'Sorry, I encountered an issue reaching the assistant. Please check your network connection and try again.';
+      let errorText = error?.response?.data?.message
+        || error?.response?.data?.error?.message;
+
+      if (!errorText && typeof error?.response?.data === 'string') {
+        const rawBody = error.response.data;
+        if (rawBody.includes('POST data is too large') || rawBody.includes('exceeds the limit')) {
+          errorText = 'The uploaded media file is too large for the server. Please try a shorter video or smaller file.';
+        } else if (rawBody.includes('failed to upload')) {
+          errorText = 'The media file could not be uploaded. Please verify your file size and network connection, then try again.';
+        }
+      }
+
+      if (!errorText) {
+        if (error?.response?.status === 413) {
+          errorText = 'The uploaded media file is too large. Please select a smaller file or shorter video.';
+        } else {
+          errorText = 'Sorry, I encountered an issue reaching the assistant. Please check your network connection and try again.';
+        }
+      }
       const savedError = addMessageToSession(sessionId, ownerUserId, {
         id: `assistant-err-${userMessageId}`,
         role: 'assistant',

@@ -119,6 +119,16 @@ const PersonalInformationScreen = ({ navigation }) => {
       return;
     }
 
+    const trimmedPhone = phoneNumber.trim();
+    if (trimmedPhone) {
+      const cleaned = trimmedPhone.replace(/[\s\-()]/g, '');
+      const phPhoneRegex = /^(09|\+639|639)\d{9}$/;
+      if (!phPhoneRegex.test(cleaned)) {
+        showToast('Please enter a valid Philippine mobile number (e.g., 09171234567 or +639171234567).');
+        return;
+      }
+    }
+
     if (!hasChanges) {
       showToast('No changes to save.');
       return;
@@ -132,7 +142,7 @@ const PersonalInformationScreen = ({ navigation }) => {
           displayName: trimmedName,
           photoURL: photoURL || null,
           phoneNumber:
-            phoneNumber.trim() || null,
+            trimmedPhone || null,
         });
       }
 
@@ -145,9 +155,12 @@ const PersonalInformationScreen = ({ navigation }) => {
         error,
       );
 
-      showToast(
-        'Unable to save your information right now. Please try again.',
-      );
+      const apiMsg =
+        error?.response?.data?.errors?.phone_number?.[0] ||
+        error?.response?.data?.message ||
+        'Unable to save your information right now. Please try again.';
+
+      showToast(apiMsg);
     } finally {
       setSaving(false);
     }

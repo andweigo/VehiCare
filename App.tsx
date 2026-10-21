@@ -20,7 +20,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import GlobalBottomTabBar from './src/components/GlobalBottomTabBar';
 import { ThemeProvider } from './src/theme/ThemeContext';
 
-export const navigationRef = createNavigationContainerRef();
+export const navigationRef = createNavigationContainerRef<any>();
 
 const App = () => {
   const activeScreenSyncRef = useRef<((name: string) => void) | null>(null);

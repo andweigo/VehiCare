@@ -173,9 +173,18 @@ class VehicleController extends Controller
             $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
             $lockedUser->checkSubscriptionStatus();
             $vehicleAllowance = $lockedUser->vehicleAllowance();
+            $isPremium = $lockedUser->isPremium();
 
-            if ($lockedUser->activeVehicles()->count() >= $vehicleAllowance) {
-                return ['allowed' => false, 'allowance' => $vehicleAllowance];
+            $countToCheck = $isPremium
+                ? $lockedUser->vehicles()->count()
+                : $lockedUser->activeVehicles()->count();
+
+            if ($countToCheck >= $vehicleAllowance) {
+                return [
+                    'allowed' => false,
+                    'allowance' => $vehicleAllowance,
+                    'is_premium' => $isPremium,
+                ];
             }
 
             $vehicle = $lockedUser->vehicles()->create($validated);
@@ -198,9 +207,13 @@ class VehicleController extends Controller
         }, 3);
 
         if (! $result['allowed']) {
+            $message = $result['is_premium']
+                ? 'Your Premium plan allows up to '.$result['allowance'].' vehicle profile(s) (including archived vehicles).'
+                : 'Your current plan allows only '.$result['allowance'].' active vehicle(s). Upgrade to add more vehicles.';
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Your current plan allows only '.$result['allowance'].' active vehicle(s). Upgrade to add more vehicles.',
+                'message' => $message,
             ], 422);
         }
 

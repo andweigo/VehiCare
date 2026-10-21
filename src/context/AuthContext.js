@@ -15,6 +15,7 @@ import {
 } from '../api/apiClient';
 
 import {
+  getMe as getMeApi,
   googleLogin,
   googleRegister,
   login as loginWithBackend,
@@ -287,38 +288,22 @@ export const AuthProvider = ({
               return;
             }
 
+            const existingToken = await getToken();
+            const persistedToken =
+              existingToken &&
+              String(existingToken).trim()
+                ? existingToken
+                : null;
+            const persistedUser = await getUser();
+
             if (firebaseUser) {
-              const existingToken =
-                await getToken();
-
-              const persistedToken =
-                existingToken &&
-                String(
-                  existingToken,
-                ).trim()
-                  ? existingToken
-                  : null;
-
-              const persistedUser =
-                await getUser();
-
               const authUser =
                 buildAuthUser(
                   firebaseUser,
                   persistedUser,
                 );
 
-              if (!authUser) {
-                throw new Error(
-                  'Firebase user profile unavailable.',
-                );
-              }
-
-              /*
-               * If Firebase is authenticated and token exists,
-               * restore the account state.
-               */
-              if (persistedToken) {
+              if (persistedToken && authUser) {
                 await persistAuthState(
                   persistedToken,
                   authUser,
@@ -335,40 +320,42 @@ export const AuthProvider = ({
                     }
                   })
                   .catch(() => {});
+              } else if (!persistedToken) {
+                setAuthToken(null);
+                setToken(null);
+                setUser(null);
+              }
+            } else {
+              // Firebase is not signed in or not yet resolved
+              if (persistedToken && persistedUser) {
+                // Restore stored backend session without wiping
+                await persistAuthState(persistedToken, persistedUser);
+
+                // Verify session in background
+                getMeApi()
+                  .then(backendUserData => {
+                    if (isMounted && backendUserData) {
+                      const updated = buildAuthUser(null, {
+                        ...persistedUser,
+                        ...backendUserData,
+                      });
+                      updateUser(updated).catch(() => {});
+                    }
+                  })
+                  .catch(err => {
+                    console.warn('[AuthContext] Background session check note:', err?.message || err);
+                  });
               } else {
                 setAuthToken(null);
                 setToken(null);
                 setUser(null);
-                await clearAuthData();
               }
-            } else {
-              /*
-               * Firebase is logged out.
-               *
-               * Clear ONLY authentication state here.
-               *
-               * Do not touch the guest vehicle here.
-               * Logout() handles the explicit session cleanup.
-               */
-              setAuthToken(null);
-              setToken(null);
-              setUser(null);
-
-              await clearAuthData();
             }
           } catch (error) {
             console.warn(
-              'Firebase auth restore failed:',
+              'Auth session restore note:',
               error?.message || error,
             );
-
-            if (isMounted) {
-              setAuthToken(null);
-              setToken(null);
-              setUser(null);
-
-              await clearAuthData();
-            }
           } finally {
             if (isMounted) {
               setLoading(false);

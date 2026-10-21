@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { useAuth } from '../context/AuthContext';
@@ -203,8 +204,16 @@ const AppNavigator = () => {
   const { isAuthenticated, loading: authLoading, isGuest, isNewRegistration } = useAuth();
   const { activeVehicle, vehicles, loading: vehicleLoading, pendingVehicle } = useVehicle();
 
-  // Show clean branded splash screen while checking session or restoring vehicles
-  const isInitialLoading = authLoading || (isAuthenticated && vehicleLoading);
+  const [initialBootstrapDone, setInitialBootstrapDone] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && (!isAuthenticated || !vehicleLoading)) {
+      setInitialBootstrapDone(true);
+    }
+  }, [authLoading, isAuthenticated, vehicleLoading]);
+
+  // Show clean branded splash screen strictly during initial launch session bootstrap
+  const isInitialLoading = !initialBootstrapDone && (authLoading || (isAuthenticated && vehicleLoading));
 
   if (isInitialLoading) {
     return (
@@ -279,35 +288,19 @@ const AppNavigator = () => {
               {renderAppScreens()}
             </>
           )
-        ) : hasAccountVehicles ? (
-          <>
-            <Stack.Screen
-              name="Dashboard"
-              component={DashboardScreen}
-            />
-            <Stack.Screen
-              name="VehicleLoading"
-              component={VehicleLoadingScreen}
-            />
-            <Stack.Screen
-              name="VehicleDetails"
-              component={VehicleDetailsScreen}
-            />
-            {renderAppScreens()}
-          </>
         ) : (
           <>
             <Stack.Screen
-              name="VehicleDetails"
-              component={VehicleDetailsScreen}
+              name="Dashboard"
+              component={DashboardScreen}
             />
             <Stack.Screen
               name="VehicleLoading"
               component={VehicleLoadingScreen}
             />
             <Stack.Screen
-              name="Dashboard"
-              component={DashboardScreen}
+              name="VehicleDetails"
+              component={VehicleDetailsScreen}
             />
             {renderAppScreens()}
           </>

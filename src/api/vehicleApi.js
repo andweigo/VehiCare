@@ -654,16 +654,18 @@ const vehicleApi = {
       const config = authTokenSnapshot === undefined
         ? await buildAuthConfig()
         : { authTokenSnapshot };
-      const isMultipart = typeof FormData !== 'undefined' && payload instanceof FormData;
+      const isMultipart =
+        (typeof FormData !== 'undefined' && payload instanceof FormData) ||
+        (payload && typeof payload === 'object' && Array.isArray(payload._parts));
+      const requestHeaders = { ...(config.headers || {}) };
+      if (isMultipart) {
+        delete requestHeaders['Content-Type'];
+        delete requestHeaders['content-type'];
+      }
       const response = await apiClient.post('/diagnostics', payload, {
         ...config,
         timeout: isMultipart ? 370000 : 60000,
-        headers: {
-          ...(config.headers || {}),
-          ...(isMultipart
-            ? { 'Content-Type': 'multipart/form-data' }
-            : {}),
-        },
+        headers: requestHeaders,
       });
       return response?.data?.data || response?.data;
     } catch (error) {
