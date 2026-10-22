@@ -744,6 +744,15 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         source: 'diagnostic',
         diagnosisId: norm.id,
         relatedProblem: r.problem,
+        diagnosticRecord: {
+          ...diag,
+          problem: norm.problem,
+          severity: norm.severity,
+          possible_causes: (norm.possibleCauses && norm.possibleCauses.length > 0) ? norm.possibleCauses : (diag.possible_causes || diag.causes || []),
+          symptoms: (norm.symptoms && norm.symptoms.length > 0) ? norm.symptoms : (diag.symptoms || []),
+          troubleshooting_steps: (norm.troubleshootingSteps && norm.troubleshootingSteps.length > 0) ? norm.troubleshootingSteps : (diag.troubleshooting_steps || diag.steps || []),
+          summary: norm.summary || diag.summary || diag.description || '',
+        },
         createdAt: norm.createdAt,
       });
     });
@@ -1192,6 +1201,39 @@ export const ensureRecommendationGuide = (item, vehicleProfile) => {
 
   if (item.guide && Array.isArray(item.guide.steps) && item.guide.steps.length > 0) {
     return item.guide;
+  }
+
+  const rec = item.diagnosticRecord || item.raw || item || {};
+  const rawDiagSteps = rec.troubleshooting_steps || rec.troubleshootingSteps || item.troubleshooting_steps || item.steps;
+  if (Array.isArray(rawDiagSteps) && rawDiagSteps.length > 0) {
+    return {
+      difficulty: item.skill_level || 'Moderate',
+      estimatedTime: '15-25 minutes',
+      whyItMatters:
+        item.why_it_matters ||
+        item.description ||
+        item.reason ||
+        'Resolving this diagnostic finding early prevents component wear and secondary mechanical damage.',
+      tools: ['Protective gloves', 'Flashlight', 'Standard hand tools'],
+      safetyNotes: [
+        'Turn off vehicle ignition and allow engine components to cool before inspection.',
+        'Wear eye protection and protective gloves.',
+      ],
+      steps: rawDiagSteps.map((s, idx) => ({
+        number: idx + 1,
+        title: typeof s === 'string' ? `Step ${idx + 1}` : (s.title || `Step ${idx + 1}`),
+        instructions: typeof s === 'string' ? s : (s.instructions || s.step || s.text || ''),
+        check: typeof s === 'object' && s.check ? s.check : 'Inspect and confirm the component state before continuing.',
+      })),
+      completionCheck: {
+        title: 'Diagnostic Verification',
+        instructions: item.completion_check || 'Test vehicle and verify if the reported symptoms or diagnostic alert have subsided.',
+      },
+      outcomes: {
+        success: 'Diagnostic issue has been verified and resolved.',
+        failure: item.warning_signs || 'Issue persists; professional technician diagnosis is recommended.',
+      },
+    };
   }
 
   const titleText = `${item.title || ''}`.toLowerCase();

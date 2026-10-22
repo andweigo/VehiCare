@@ -98,8 +98,11 @@ class DeliverAnnouncement implements ShouldQueue, ShouldBeUnique
                         $inAppEnabled = DB::table('user_notification_preferences')
                             ->where('user_id', $recipient->id)
                             ->value('in_app_notifications');
+                        $pushEnabled = DB::table('user_notification_preferences')
+                            ->where('user_id', $recipient->id)
+                            ->value('push_notifications');
 
-                        if ($inAppEnabled !== null && ! (bool) $inAppEnabled) {
+                        if (($inAppEnabled !== null && ! (bool) $inAppEnabled) && ($pushEnabled !== null && ! (bool) $pushEnabled)) {
                             return;
                         }
 

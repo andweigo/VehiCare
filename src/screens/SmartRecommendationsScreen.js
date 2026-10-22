@@ -509,7 +509,11 @@ const SmartRecommendationsScreen = ({ navigation }) => {
           </View>
 
           {/* TITLE & ICON HEADER */}
-          <View style={styles.recommendationHeader}>
+          <TouchableOpacity
+            style={styles.recommendationHeader}
+            activeOpacity={0.75}
+            onPress={() => navigation.navigate('MaintenanceGuide', { item })}
+          >
             <View style={[styles.recommendationIcon, { backgroundColor: theme.accentSoft }]}>
               <Icon name={item.icon || 'build'} size={20} color={theme.accent} />
             </View>
@@ -519,7 +523,9 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                 {item.what_to_do || item.title}
               </Text>
             </View>
-          </View>
+
+            <Icon name="chevron-right" size={22} color={theme.textSecondary} />
+          </TouchableOpacity>
 
           {/* RELATED PROBLEM IF DIAGNOSTIC */}
           {item.source === 'diagnostic' && item.relatedProblem ? (
@@ -553,6 +559,27 @@ const SmartRecommendationsScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
+
+          {/* VIEW STEP-BY-STEP DIY GUIDE BUTTON */}
+          <TouchableOpacity
+            style={[
+              styles.viewGuideButton,
+              {
+                backgroundColor: theme.accentSoft,
+                borderColor: theme.accent,
+              },
+            ]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('MaintenanceGuide', { item })}
+          >
+            <View style={styles.viewGuideButtonLeft}>
+              <Icon name="menu-book" size={15} color={theme.accent} style={{ marginRight: 7 }} />
+              <Text style={[styles.viewGuideButtonText, { color: theme.accent }]}>
+                View Step-by-Step DIY Guide
+              </Text>
+            </View>
+            <Icon name="arrow-forward" size={16} color={theme.accent} />
+          </TouchableOpacity>
 
           {/* COLLAPSIBLE ACTION GUIDE & SAFETY SECTION */}
           {hasGuideDetails && (
@@ -1590,33 +1617,49 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                   )}
 
                   {/* Action buttons */}
-                  <View style={styles.modalActionsRow}>
+                  <View style={styles.modalActionsContainer}>
                     <TouchableOpacity
-                      style={[styles.modalActionPrimary, { backgroundColor: theme.accent }]}
+                      style={[styles.modalActionGuide, { backgroundColor: theme.accent }]}
                       activeOpacity={0.85}
                       onPress={() => {
-                        const problemText = selectedDiagnosisModal.problem;
+                        const targetItem = selectedDiagnosisModal.item;
                         setSelectedDiagnosisModal(null);
-                        navigation.navigate('AskVehiCare', {
-                          initialPrompt: `I need advice regarding: ${problemText}`,
-                        });
+                        navigation.navigate('MaintenanceGuide', { item: targetItem });
                       }}
                     >
-                      <Icon name="auto-awesome" size={18} color="#FFFFFF" />
-                      <Text style={styles.modalActionPrimaryText}>Ask VehiCare AI</Text>
+                      <Icon name="menu-book" size={18} color="#FFFFFF" />
+                      <Text style={styles.modalActionGuideText}>Open Step-by-Step DIY Guide</Text>
+                      <Icon name="arrow-forward" size={16} color="#FFFFFF" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[styles.modalActionSecondary, { borderColor: theme.border, backgroundColor: theme.surface }]}
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setSelectedDiagnosisModal(null);
-                        navigation.navigate('RepairShops');
-                      }}
-                    >
-                      <Icon name="place" size={18} color={theme.text} />
-                      <Text style={[styles.modalActionSecondaryText, { color: theme.text }]}>Find Repair Shop</Text>
-                    </TouchableOpacity>
+                    <View style={styles.modalActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.modalActionPrimary, { backgroundColor: theme.accentSoft, borderColor: theme.accent, borderWidth: 1 }]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          const problemText = selectedDiagnosisModal.problem;
+                          setSelectedDiagnosisModal(null);
+                          navigation.navigate('AskVehiCare', {
+                            initialPrompt: `I need advice regarding: ${problemText}`,
+                          });
+                        }}
+                      >
+                        <Icon name="auto-awesome" size={16} color={theme.accent} />
+                        <Text style={[styles.modalActionPrimaryText, { color: theme.accent }]}>Ask VehiCare AI</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.modalActionSecondary, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setSelectedDiagnosisModal(null);
+                          navigation.navigate('RepairShops');
+                        }}
+                      >
+                        <Icon name="place" size={16} color={theme.text} />
+                        <Text style={[styles.modalActionSecondaryText, { color: theme.text }]}>Find Repair Shop</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </>
               )}
@@ -2275,10 +2318,45 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     flex: 1,
   },
+  viewGuideButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  viewGuideButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewGuideButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12.5,
+  },
+  modalActionsContainer: {
+    marginTop: 10,
+    gap: 8,
+  },
+  modalActionGuide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  modalActionGuideText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
+    color: '#FFFFFF',
+  },
   modalActionsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
   },
   modalActionPrimary: {
     flex: 1,

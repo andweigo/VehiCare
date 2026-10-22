@@ -39,10 +39,12 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
   const [completedSteps, setCompletedSteps] = useState([]);
   const [outcomeStatus, setOutcomeStatus] = useState(null); // 'success' | 'failure' | null
   const [isDoneSaved, setIsDoneSaved] = useState(false);
+  const [isSubmittingDone, setIsSubmittingDone] = useState(false);
 
   const activeStepData = steps[currentStep] || steps[0] || {};
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === totalSteps - 1;
+  const isCurrentStepChecked = completedSteps.includes(currentStep + 1);
   const progressPercent = totalSteps > 0 ? Math.round(((currentStep + 1) / totalSteps) * 100) : 100;
 
   const toggleStepComplete = stepNum => {
@@ -52,17 +54,40 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
   };
 
   const handleMarkAsDone = async () => {
-    if (!item) return;
+    if (!item || isSubmittingDone) return;
+    setIsSubmittingDone(true);
     try {
       await markAsDone(item);
       setIsDoneSaved(true);
-      setTimeout(() => {
-        navigation.goBack();
-      }, 1000);
     } catch (err) {
       console.warn('Failed to mark guide item as done:', err);
+    } finally {
+      setIsSubmittingDone(false);
     }
   };
+
+  const handleOutcomeSelect = async status => {
+    setOutcomeStatus(status);
+    if (status === 'success') {
+      await handleMarkAsDone();
+    }
+  };
+
+  const diagData = useMemo(() => {
+    const rec = item?.diagnosticRecord || item?.raw || item || {};
+    const problem = item?.relatedProblem || rec.problem || rec.title || (item?.source === 'diagnostic' ? item?.title : null);
+    const severity = rec.severity || item?.severity || item?.priority || null;
+    const summary = rec.summary || rec.explanation || rec.description || item?.why_it_matters || item?.description || null;
+    const causes = Array.isArray(rec.possible_causes) && rec.possible_causes.length > 0
+      ? rec.possible_causes
+      : (Array.isArray(rec.causes) ? rec.causes : []);
+    const symptoms = Array.isArray(rec.symptoms) && rec.symptoms.length > 0
+      ? rec.symptoms
+      : (typeof rec.symptoms === 'string' && rec.symptoms ? [rec.symptoms] : []);
+
+    const hasData = Boolean(item?.source === 'diagnostic' || item?.relatedProblem || causes.length > 0 || symptoms.length > 0);
+    return { hasData, problem, severity, summary, causes, symptoms };
+  }, [item]);
 
   if (!item) {
     return (
@@ -150,6 +175,66 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
           </Text>
         </View>
 
+        {/* 2B. DIAGNOSTIC FINDINGS & SYMPTOMS (IF APPLICABLE) */}
+        {diagData.hasData && (
+          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.sectionHeaderRow}>
+              <Icon name="medical-services" size={18} color={theme.accent} />
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>DIAGNOSTIC FINDING & CAUSES</Text>
+              {diagData.severity && (
+                <View style={[styles.diagSeverityBadge, { backgroundColor: `${theme.accent}20` }]}>
+                  <Text style={[styles.diagSeverityText, { color: theme.accent }]}>
+                    {String(diagData.severity).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {diagData.problem && (
+              <View style={styles.diagProblemRow}>
+                <Text style={[styles.diagProblemLabel, { color: theme.textSecondary }]}>Observed Issue:</Text>
+                <Text style={[styles.diagProblemTitle, { color: theme.text }]}>{diagData.problem}</Text>
+              </View>
+            )}
+
+            {diagData.summary && (
+              <Text style={[styles.bodyText, { color: theme.textSecondary, marginBottom: 10 }]}>
+                {diagData.summary}
+              </Text>
+            )}
+
+            {diagData.causes.length > 0 && (
+              <View style={styles.diagCausesSection}>
+                <Text style={[styles.diagSubheading, { color: theme.textSecondary }]}>POSSIBLE ROOT CAUSES:</Text>
+                {diagData.causes.map((cause, idx) => (
+                  <View key={idx} style={styles.diagBulletRow}>
+                    <Text style={[styles.bulletDot, { color: theme.accent }]}>•</Text>
+                    <Text style={[styles.diagBulletText, { color: theme.text }]}>
+                      {typeof cause === 'string' ? cause : cause?.cause || cause?.title || String(cause)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {diagData.symptoms.length > 0 && (
+              <View style={[styles.diagSymptomsSection, { marginTop: 10 }]}>
+                <Text style={[styles.diagSubheading, { color: theme.textSecondary }]}>REPORTED SYMPTOMS:</Text>
+                <View style={styles.symptomsChipsRow}>
+                  {diagData.symptoms.map((symptom, idx) => (
+                    <View key={idx} style={[styles.symptomChip, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                      <Icon name="hearing" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                      <Text style={[styles.symptomChipText, { color: theme.text }]}>
+                        {typeof symptom === 'string' ? symptom : symptom?.symptom || String(symptom)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* 3. WHY THIS MATTERS */}
         {guide.whyItMatters ? (
           <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -204,10 +289,10 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
             {/* Progress Header */}
             <View style={styles.progressHeaderRow}>
               <Text style={[styles.stepCounterText, { color: theme.accent }]}>
-                STEP {currentStep + 1} OF {totalSteps}
+                {`STEP ${currentStep + 1} OF ${totalSteps}`}
               </Text>
               <Text style={[styles.progressPercentText, { color: theme.textSecondary }]}>
-                {progressPercent}% Complete
+                {`${progressPercent}% Complete`}
               </Text>
             </View>
 
@@ -250,6 +335,9 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
               <TouchableOpacity
                 style={[styles.stepCheckRow, { backgroundColor: completedSteps.includes(currentStep + 1) ? theme.accentSoft : theme.surfaceAlt }]}
                 activeOpacity={0.8}
+                accessibilityRole="checkbox"
+                accessibilityLabel="Toggle step completion"
+                accessibilityState={{ checked: completedSteps.includes(currentStep + 1) }}
                 onPress={() => toggleStepComplete(currentStep + 1)}
               >
                 <Icon
@@ -285,19 +373,44 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlBtn, { backgroundColor: theme.accent }]}
+                style={[
+                  styles.controlBtn,
+                  {
+                    backgroundColor: isCurrentStepChecked ? theme.accent : theme.surfaceAlt,
+                    opacity: isCurrentStepChecked ? 1 : 0.45,
+                  },
+                ]}
+                disabled={!isCurrentStepChecked}
                 onPress={() => {
-                  if (!isLastStep) {
+                  if (isCurrentStepChecked && !isLastStep) {
                     setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1));
                   }
                 }}
               >
-                <Text style={[styles.controlBtnText, { color: '#FFFFFF' }]}>
+                <Text
+                  style={[
+                    styles.controlBtnText,
+                    { color: isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary },
+                  ]}
+                >
                   {isLastStep ? 'Final Verification' : 'Next Step'}
                 </Text>
-                <Icon name="arrow-forward" size={18} color="#FFFFFF" />
+                <Icon
+                  name="arrow-forward"
+                  size={18}
+                  color={isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary}
+                />
               </TouchableOpacity>
             </View>
+
+            {!isCurrentStepChecked && (
+              <View style={styles.stepNoticeRow}>
+                <Icon name="info-outline" size={14} color={theme.accent} style={{ marginRight: 6 }} />
+                <Text style={[styles.stepNoticeText, { color: theme.textSecondary }]}>
+                  Please check the box above to confirm this step before proceeding.
+                </Text>
+              </View>
+            )}
 
           </View>
         ) : (
@@ -314,7 +427,7 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
             <View style={styles.sectionHeaderRow}>
               <Icon name="verified" size={20} color={theme.accent} />
               <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {guide.completionCheck.title || 'FINAL CHECK'}
+                {guide.completionCheck.title || 'FINAL VERIFICATION'}
               </Text>
             </View>
 
@@ -335,7 +448,7 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
                     borderColor: outcomeStatus === 'success' ? (theme.success || '#32D583') : theme.border,
                   },
                 ]}
-                onPress={() => setOutcomeStatus('success')}
+                onPress={() => handleOutcomeSelect('success')}
               >
                 <Icon name="sentiment-very-satisfied" size={18} color={theme.success || '#32D583'} />
                 <Text style={[styles.outcomePillText, { color: theme.text }]}>Yes, issue resolved</Text>
@@ -349,38 +462,94 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
                     borderColor: outcomeStatus === 'failure' ? '#FF5A5F' : theme.border,
                   },
                 ]}
-                onPress={() => setOutcomeStatus('failure')}
+                onPress={() => handleOutcomeSelect('failure')}
               >
                 <Icon name="sentiment-dissatisfied" size={18} color="#FF5A5F" />
                 <Text style={[styles.outcomePillText, { color: theme.text }]}>No, issue remains</Text>
               </TouchableOpacity>
             </View>
 
-            {outcomeStatus === 'success' && guide.outcomes?.success ? (
-              <Text style={[styles.outcomeNoteText, { color: theme.success || '#32D583' }]}>
-                ✓ {guide.outcomes.success}
-              </Text>
-            ) : null}
+            {outcomeStatus === 'success' && (
+              <View style={styles.successCelebrationBox}>
+                <View style={styles.successCelebrationHeader}>
+                  <Icon name="check-circle" size={24} color={theme.success || '#32D583'} />
+                  <Text style={[styles.successCelebrationTitle, { color: theme.success || '#32D583' }]}>
+                    Maintenance Verified & Completed!
+                  </Text>
+                </View>
+                <Text style={[styles.successCelebrationText, { color: theme.textSecondary }]}>
+                  {guide.outcomes?.success || 'Great job! This service task has been logged, increasing your vehicle health score.'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.returnButton, { backgroundColor: theme.accent }]}
+                  onPress={() => navigation.goBack()}
+                >
+                  <Icon name="arrow-back" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.returnButtonText}>Back to Maintenance</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-            {outcomeStatus === 'failure' && guide.outcomes?.failure ? (
-              <Text style={[styles.outcomeNoteText, { color: '#FF5A5F' }]}>
-                ⚠ {guide.outcomes.failure}
-              </Text>
-            ) : null}
+            {outcomeStatus === 'failure' && (
+              <View style={styles.failureHelpBox}>
+                <View style={styles.failureHelpHeader}>
+                  <Icon name="warning-amber" size={22} color="#FF5A5F" />
+                  <Text style={[styles.failureHelpTitle, { color: '#FF5A5F' }]}>
+                    Next Recommended Steps
+                  </Text>
+                </View>
+                <Text style={[styles.failureHelpText, { color: theme.textSecondary }]}>
+                  {guide.outcomes?.failure || 'Since the symptom persists, further diagnostic inspection or professional shop assistance is recommended to avoid vehicle strain.'}
+                </Text>
 
-            <TouchableOpacity
-              style={[
-                styles.markDoneBigBtn,
-                { backgroundColor: isDoneSaved ? (theme.success || '#32D583') : theme.accent },
-              ]}
-              activeOpacity={0.85}
-              onPress={handleMarkAsDone}
-            >
-              <Icon name="check-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.markDoneBigBtnText}>
-                {isDoneSaved ? 'Maintenance Completed!' : 'Mark Maintenance as Done'}
-              </Text>
-            </TouchableOpacity>
+                <View style={styles.failureActionsGroup}>
+                  <TouchableOpacity
+                    style={[styles.failureActionBtn, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}
+                    onPress={() => navigation.navigate('AskVehiCare', { initialQuery: `I followed the step-by-step guide for "${item.title}" on my ${getVehicleDisplayName(vehicleProfile, 'vehicle')}, but the issue is still not resolved. What should I check next?` })}
+                  >
+                    <Icon name="auto-awesome" size={16} color={theme.accent} style={{ marginRight: 6 }} />
+                    <Text style={[styles.failureActionBtnText, { color: theme.accent }]}>
+                      Ask VehiCare AI for Advice
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.failureActionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+                    onPress={() => navigation.navigate('RepairShops')}
+                  >
+                    <Icon name="storefront" size={16} color={theme.text} style={{ marginRight: 6 }} />
+                    <Text style={[styles.failureActionBtnText, { color: theme.text }]}>
+                      Find Nearby Repair Shops
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.markDoneSecondaryBtn, { borderColor: theme.border }]}
+                    onPress={handleMarkAsDone}
+                  >
+                    <Text style={[styles.markDoneSecondaryText, { color: theme.textSecondary }]}>
+                      {isDoneSaved ? 'Logged in Service History' : 'Mark Task as Done Anyway'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {!outcomeStatus && (
+              <TouchableOpacity
+                style={[
+                  styles.markDoneBigBtn,
+                  { backgroundColor: isDoneSaved ? (theme.success || '#32D583') : theme.accent },
+                ]}
+                activeOpacity={0.85}
+                onPress={handleMarkAsDone}
+              >
+                <Icon name="check-circle" size={20} color="#FFFFFF" />
+                <Text style={styles.markDoneBigBtnText}>
+                  {isDoneSaved ? 'Maintenance Completed!' : 'Mark Maintenance as Done'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -703,6 +872,88 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
     fontSize: 13,
   },
+  stepNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  stepNoticeText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    flex: 1,
+  },
+
+  /* DIAGNOSTIC DETAILS */
+  diagSeverityBadge: {
+    marginLeft: 'auto',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  diagSeverityText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.5,
+  },
+  diagProblemRow: {
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  diagProblemLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    marginBottom: 2,
+  },
+  diagProblemTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 14,
+  },
+  diagCausesSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(150, 150, 150, 0.2)',
+  },
+  diagSubheading: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  diagBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 4,
+  },
+  diagBulletText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+    flex: 1,
+  },
+  diagSymptomsSection: {
+    marginTop: 8,
+  },
+  symptomsChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  symptomChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  symptomChipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+  },
 
   /* VERIFICATION SECTION */
   outcomeQuestionText: {
@@ -734,6 +985,93 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginBottom: 14,
+  },
+  successCelebrationBox: {
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(50, 213, 131, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(50, 213, 131, 0.25)',
+  },
+  successCelebrationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  successCelebrationTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14.5,
+  },
+  successCelebrationText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  returnButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  returnButtonText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  failureHelpBox: {
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 90, 95, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 90, 95, 0.25)',
+  },
+  failureHelpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  failureHelpTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+  },
+  failureHelpText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  failureActionsGroup: {
+    gap: 8,
+  },
+  failureActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  failureActionBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12.5,
+  },
+  markDoneSecondaryBtn: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markDoneSecondaryText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    textDecorationLine: 'underline',
   },
   markDoneBigBtn: {
     flexDirection: 'row',

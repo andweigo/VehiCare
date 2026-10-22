@@ -106,6 +106,7 @@ export const getUnreadCount = async () => {
     const response = await apiClient.get('/notifications/unread-count');
     const count = response?.data?.data?.unread_count;
     if (Number.isInteger(count) && count >= 0) {
+      setDeviceBadgeCount(count).catch(() => {});
       return count;
     }
     return null;

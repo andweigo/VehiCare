@@ -18,8 +18,8 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
     companion object {
         const val MODULE_NAME = "VehiCareBadge"
-        const val CHANNEL_ID = "vehicare_badge_channel_silent"
-        const val CHANNEL_NAME = "VehiCare App Badge"
+        const val CHANNEL_ID = "vehicare_notifications_channel_v3"
+        const val CHANNEL_NAME = "VehiCare Push Notifications"
         const val NOTIFICATION_ID = 1001
     }
 
@@ -31,12 +31,11 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "VehiCare silent notification badge count"
+                description = "VehiCare alerts, announcements, and maintenance reminders"
                 setShowBadge(true)
-                setSound(null, null)
-                enableVibration(false)
+                enableVibration(true)
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -70,7 +69,7 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val pendingIntent = PendingIntent.getActivity(reactContext, 0, intent, flags)
 
             val title = "VehiCare"
-            val message = if (count == 1) "You have 1 unread notification" else "You have $count unread notifications"
+            val message = if (count == 1) "You have 1 new notification" else "You have $count new notifications"
 
             val notification = NotificationCompat.Builder(reactContext, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
@@ -80,12 +79,9 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
-                .setSilent(true)
-                .setDefaults(0)
-                .setVibrate(longArrayOf(0))
-                .setSound(null)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setContentIntent(pendingIntent)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .build()
 
             notificationManager.notify(NOTIFICATION_ID, notification)
