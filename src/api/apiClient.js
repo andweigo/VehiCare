@@ -160,8 +160,17 @@ apiClient.interceptors.response.use(
         normalizedPath.includes('/reset-password') ||
         normalizedPath.includes('/otp');
 
+      const reqAuthHeader = error?.config?.headers?.Authorization || error?.config?.headers?.authorization;
+      const hadAuthToken = Boolean(
+        reqAuthHeader &&
+        String(reqAuthHeader).trim().startsWith('Bearer ') &&
+        !String(reqAuthHeader).trim().endsWith('null') &&
+        !String(reqAuthHeader).trim().endsWith('undefined')
+      );
+
       if (
         !isAuthAttempt &&
+        hadAuthToken &&
         typeof unauthorizedHandler === 'function' &&
         !isHandlingUnauthorized
       ) {

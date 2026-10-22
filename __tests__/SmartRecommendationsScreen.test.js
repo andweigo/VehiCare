@@ -52,17 +52,24 @@ import renderer, { act } from 'react-test-renderer';
 import SmartRecommendationsScreen from '../src/screens/SmartRecommendationsScreen';
 
 describe('SmartRecommendationsScreen', () => {
+  let component;
+
   beforeEach(() => {
     jest.useFakeTimers();
   });
 
   afterEach(() => {
+    if (component) {
+      act(() => {
+        component.unmount();
+      });
+      component = null;
+    }
     jest.runOnlyPendingTimers();
     jest.useRealTimers();
   });
 
   it('renders cleanly without ReferenceError when recommendations is empty or loaded', () => {
-    let component;
     act(() => {
       component = renderer.create(
         <SmartRecommendationsScreen navigation={{ navigate: jest.fn(), goBack: jest.fn() }} />,

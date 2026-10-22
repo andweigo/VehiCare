@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   RefreshControl,
   ScrollView,
@@ -551,6 +552,53 @@ const RepairShopsScreen = ({ navigation, route }) => {
             </View>
 
             <ScrollView contentContainerStyle={styles.presetList} showsVerticalScrollIndicator={false}>
+              {/* CURRENT DEVICE LOCATION BUTTON */}
+              <TouchableOpacity
+                style={[
+                  styles.currentLocationOptionBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.12)' : '#F0F9FF',
+                    borderColor: isDark ? '#0284C7' : '#BAE6FD',
+                  },
+                ]}
+                activeOpacity={0.8}
+                onPress={async () => {
+                  setLocationModalVisible(false);
+                  const fix = await useCurrentGpsLocation();
+                  if (!fix) {
+                    Alert.alert(
+                      'GPS Location Access',
+                      'VehiCare needs device location to discover repair shops near you. Please enable location or grant permission in app settings.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Open Settings', onPress: () => LocationService.openSettings() },
+                      ]
+                    );
+                  }
+                }}
+              >
+                <View style={styles.presetLeft}>
+                  <View style={[styles.gpsIconCircle, { backgroundColor: isDark ? '#0284C7' : '#0284C7' }]}>
+                    <Icon name="my-location" size={18} color="#FFFFFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.presetName, { color: isDark ? '#38BDF8' : '#0369A1' }]}>
+                      Use My Current Location
+                    </Text>
+                    <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
+                      Locate real shops near your device GPS
+                    </Text>
+                  </View>
+                </View>
+                <Icon name="chevron-right" size={18} color={theme.textSecondary} />
+              </TouchableOpacity>
+
+              <View style={styles.modalDivider}>
+                <View style={[styles.modalDividerLine, { backgroundColor: theme.border }]} />
+                <Text style={[styles.modalDividerText, { color: theme.textSecondary }]}>OR SELECT CITY</Text>
+                <View style={[styles.modalDividerLine, { backgroundColor: theme.border }]} />
+              </View>
+
               {LOCATION_PRESETS.map((preset) => {
                 const isSelected = userLocation?.name === preset.name;
                 return (
@@ -1092,6 +1140,36 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 11,
     marginTop: 2,
+  },
+  currentLocationOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  gpsIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+    gap: 8,
+  },
+  modalDividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  modalDividerText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
   presetList: {
     padding: 20,

@@ -35,7 +35,8 @@ class AIServiceClient
         ?int $userId = null,
         array $entitlements = [],
         array $historicalContext = [],
-        array $diagnosticState = []
+        array $diagnosticState = [],
+        ?string $rootSymptom = null
     ): array {
         if ($this->secret === '') {
             throw new AIServiceException(
@@ -66,9 +67,12 @@ class AIServiceClient
                 'model' => $vehicleInfo['model'] ?? 'Unknown',
                 'year' => $vehicleInfo['year'] ?? 'Unknown',
                 'model_number' => $vehicleInfo['model_number'] ?? null,
+                'is_saved_vehicle' => $vehicleInfo['is_saved_vehicle'] ?? true,
+                'target_vehicle_desc' => $vehicleInfo['target_vehicle_desc'] ?? null,
             ],
             'diagnosis' => [
                 'symptoms' => $symptoms,
+                'root_symptom' => $rootSymptom ?: ($vehicleInfo['root_symptom'] ?? $symptoms),
                 'input_type' => $inputType,
                 'media_base64' => $mediaBase64,
                 'media_mime' => $mediaMime ?: 'image/jpeg',

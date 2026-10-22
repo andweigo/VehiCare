@@ -104,6 +104,24 @@ class DiagnosticController extends Controller
                 continue;
             }
 
+            // Exclude tasks already completed unless due again
+            $alreadyCompleted = \App\Models\MaintenanceRecord::where('user_id', $user->id)
+                ->where('vehicle_id', $vehicle->id)
+                ->where('status', 'completed')
+                ->where(function ($query) use ($cleanTitle, $subTitle) {
+                    $query->where('title', $cleanTitle)
+                        ->orWhere('title', 'like', '%' . $subTitle . '%');
+                })
+                ->where(function ($query) {
+                    $query->whereNull('due_date')
+                        ->orWhere('due_date', '>', now());
+                })
+                ->exists();
+
+            if ($alreadyCompleted) {
+                continue;
+            }
+
             $urgency = is_array($task) ? ($task['urgency'] ?? 'Routine') : 'Routine';
             $dueDays = match (strtoupper((string) $urgency)) {
                 'IMMEDIATE' => 1,
@@ -112,12 +130,31 @@ class DiagnosticController extends Controller
                 default => 14,
             };
 
+            $desc = is_array($task) ? ($task['description'] ?? null) : null;
+            if (is_array($task) && !empty($task['why_it_matters']) && empty($desc)) {
+                $desc = $task['why_it_matters'];
+            }
+
+            $notes = null;
+            if (is_array($task)) {
+                $meta = array_filter([
+                    'what_to_do' => $task['what_to_do'] ?? null,
+                    'why_it_matters' => $task['why_it_matters'] ?? null,
+                    'when_due' => $task['when_due'] ?? null,
+                    'skill_level' => $task['skill_level'] ?? null,
+                    'completion_check' => $task['completion_check'] ?? null,
+                ]);
+                if (!empty($meta)) {
+                    $notes = json_encode($meta);
+                }
+            }
+
             \App\Models\MaintenanceRecord::create([
                 'user_id' => $user->id,
                 'vehicle_id' => $vehicle->id,
                 'diagnostic_id' => $diagnostic->id,
                 'title' => $cleanTitle,
-                'description' => is_array($task) ? ($task['description'] ?? null) : null,
+                'description' => $desc,
                 'service_type' => is_array($task) ? ($task['service_type'] ?? 'General Inspection') : 'General Inspection',
                 'status' => 'pending',
                 'is_inspection' => true,
@@ -125,6 +162,7 @@ class DiagnosticController extends Controller
                 'performed_at' => null,
                 'due_date' => now()->addDays($dueDays),
                 'cost' => 0,
+                'notes' => $notes,
             ]);
         }
     }
@@ -215,6 +253,8 @@ class DiagnosticController extends Controller
             'vehicle_id' => 'nullable|integer|min:1',
             'request_id' => 'nullable|string|min:1|max:80',
             'symptoms' => 'required|string|max:2000',
+            'root_symptom' => 'nullable|string|max:2000',
+            'is_alternate_vehicle' => 'nullable',
             'input_type' => 'nullable|string|in:text,image,voice,video,audio',
             'image_base64' => ['nullable', 'string', 'max:' . ((int) $mediaLimits['max_image_mb'] * 1400)],
             'image_mime' => 'nullable|string|starts_with:image/',
@@ -237,6 +277,7 @@ class DiagnosticController extends Controller
         $vehicle = null;
         $rawVehicleId = $request->input('vehicle_id');
         $vehicleId = (is_numeric($rawVehicleId) && (int) $rawVehicleId > 0) ? (int) $rawVehicleId : null;
+        $isExplicitAlternateVehicle = $request->boolean('is_alternate_vehicle') || ($request->has('vehicle_id') && is_null($rawVehicleId));
         $entitlements = $this->entitlementService->getEntitlements($user);
         if ($user) {
             $vehicleQuery = $user->vehicles()
@@ -249,10 +290,9 @@ class DiagnosticController extends Controller
                     $freeEligibleVehicleId = (int) $activeVehicleIds->first();
                 }
             }
-            $eligibleVehicleId = $vehicleId
-                ?: ($entitlements['plan'] === 'free' ? $freeEligibleVehicleId : $user->active_vehicle_id);
-            if ($eligibleVehicleId) {
-                $vehicle = (clone $vehicleQuery)->findOrFail($eligibleVehicleId);
+
+            if ($vehicleId) {
+                $vehicle = (clone $vehicleQuery)->findOrFail($vehicleId);
                 if ($entitlements['plan'] === 'free'
                     && (int) $freeEligibleVehicleId !== (int) $vehicle->id) {
                     return response()->json([
@@ -261,6 +301,9 @@ class DiagnosticController extends Controller
                         'message' => 'Select your eligible active vehicle before requesting a diagnosis.',
                     ], 403);
                 }
+            } elseif (! $isExplicitAlternateVehicle && $user->active_vehicle_id) {
+                // Only default to user active vehicle when vehicle_id was not explicitly omitted or designated alternate
+                $vehicle = (clone $vehicleQuery)->find($user->active_vehicle_id);
             }
         }
 
@@ -547,6 +590,17 @@ class DiagnosticController extends Controller
             return response()->json(['status' => 'success', 'data' => $responseData], 200);
         }
 
+        $rootSymptom = $validated['root_symptom'] ?? null;
+        if (empty($rootSymptom) && !empty($validated['history'])) {
+            foreach ($validated['history'] as $turn) {
+                if (($turn['role'] ?? null) === 'user' && !empty($turn['content'])) {
+                    $rootSymptom = $turn['content'];
+                    break;
+                }
+            }
+        }
+        $rootSymptom = $rootSymptom ?: $validated['symptoms'];
+
         $vehicleInfo = [
             'type' => $this->toSafeString($vehicle?->vehicleType?->name ?? $request->input('vehicle_type'), 'Vehicle'),
             'brand' => $this->toSafeString($vehicle?->custom_brand ?: ($vehicle?->vehicleBrand?->name ?? $request->input('vehicle_name')), 'Unknown'),
@@ -554,17 +608,21 @@ class DiagnosticController extends Controller
             'year' => $this->toSafeString($vehicle?->custom_year ?: ($vehicle?->vehicleYear?->year ?? 'Unknown'), 'Unknown'),
             'model_number' => $this->toSafeString($vehicle?->model_number ?? null, ''),
             'preferred_language' => $request->header('X-User-Language', 'en'),
+            'is_saved_vehicle' => $vehicle !== null,
+            'target_vehicle_desc' => $vehicle === null ? ($request->input('vehicle_name') ?: $request->input('vehicle_type')) : null,
+            'root_symptom' => $rootSymptom,
         ];
 
         Log::info('[DiagnosticController] AI request prepared', [
             'input_type' => $inputType,
             'user_id' => $user?->id,
             'has_vehicle' => $vehicle !== null,
+            'is_saved_vehicle' => $vehicle !== null,
             'history_turns' => count($validated['history'] ?? []),
         ]);
 
         // Resolve entitlements and authorized historical context
-        $historicalContext = $this->entitlementService->getAuthorizedHistoricalContext($user, $vehicle);
+        $historicalContext = $vehicle ? $this->entitlementService->getAuthorizedHistoricalContext($user, $vehicle) : [];
 
         try {
             $analysis = null;
@@ -592,7 +650,8 @@ class DiagnosticController extends Controller
                         $user?->id,
                         $entitlements,
                         $historicalContext,
-                        $diagnosticState
+                        $diagnosticState,
+                        $rootSymptom
                     );
                     $aiSource = $analysis['ai_source'] ?? 'gemini';
                 } catch (AIServiceException $microserviceException) {
@@ -764,7 +823,16 @@ class DiagnosticController extends Controller
                         'name' => $vehicleInfo['brand'] . ' ' . $vehicleInfo['model'],
                         'type' => $vehicleInfo['type'],
                         'year' => $vehicleInfo['year'],
-                    ] : null,
+                        'is_saved_vehicle' => true,
+                    ] : [
+                        'id' => null,
+                        'name' => trim(($vehicleInfo['brand'] ?? '') . ' ' . ($vehicleInfo['model'] ?? '')) ?: ($vehicleInfo['type'] ?? 'Alternate Vehicle'),
+                        'type' => $vehicleInfo['type'] ?? 'car',
+                        'year' => $vehicleInfo['year'] ?? null,
+                        'is_saved_vehicle' => false,
+                    ],
+                    'image_vehicle_match' => $analysis['image_vehicle_match'] ?? 'not_applicable',
+                    'image_vehicle_details' => $analysis['image_vehicle_details'] ?? null,
                     'symptoms' => $diagnostic->symptoms,
                     'input_type' => $diagnostic->input_type,
                     'summary' => $diagnostic->summary,

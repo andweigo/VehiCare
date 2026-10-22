@@ -495,11 +495,21 @@ export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehi
         const serviceType = typeof t === 'object' && t.service_type ? t.service_type : 'General Inspection';
         const description = typeof t === 'object' && t.description ? t.description : `Recommended inspection for ${norm.problem}`;
         const urgency = typeof t === 'object' && t.urgency ? t.urgency : (norm.severity === 'high' || norm.severity === 'critical' ? 'Urgent' : 'Routine');
+        const whatToDo = typeof t === 'object' && t.what_to_do ? t.what_to_do : title;
+        const whyItMatters = typeof t === 'object' && t.why_it_matters ? t.why_it_matters : description;
+        const whenDue = typeof t === 'object' && t.when_due ? t.when_due : 'Condition-based inspection / check';
+        const skillLevel = typeof t === 'object' && t.skill_level ? t.skill_level : 'Beginner-friendly';
+        const completionCheck = typeof t === 'object' && t.completion_check ? t.completion_check : 'Inspect and confirm component functions normally.';
         return {
           title: title.trim(),
           serviceType,
           description,
           urgency,
+          what_to_do: whatToDo,
+          why_it_matters: whyItMatters,
+          when_due: whenDue,
+          skill_level: skillLevel,
+          completion_check: completionCheck,
           isInspection: true,
           index: idx,
         };
@@ -522,6 +532,11 @@ export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehi
         serviceType: 'General Inspection',
         description: `Inspect and verify suspected causes for ${norm.problem}.`,
         urgency: priority,
+        what_to_do: actionTitle,
+        why_it_matters: `Inspect and verify suspected causes for ${norm.problem}.`,
+        when_due: 'Condition-based inspection / check',
+        skill_level: 'Beginner-friendly',
+        completion_check: 'Inspect and confirm component functions without abnormal noises or warnings.',
         isInspection: true,
         index: 0,
       }];
@@ -554,6 +569,11 @@ export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehi
         title: cleanTitle,
         serviceType: item.serviceType || 'General Inspection',
         description: item.description,
+        what_to_do: item.what_to_do || cleanTitle,
+        why_it_matters: item.why_it_matters || item.description || 'Helps ensure optimal vehicle reliability and prevent severe component damage.',
+        when_due: item.when_due || 'Condition-based inspection / check',
+        skill_level: item.skill_level || 'Beginner-friendly',
+        completion_check: item.completion_check || 'Inspect and confirm component functions normally.',
         category,
         icon,
         priority: item.urgency || 'Routine',
@@ -611,8 +631,14 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         if (typeof r === 'string') {
           return {
             title: r,
+            category_section: 'helpful_tips',
             problem: norm.problem,
             preventive_action: r,
+            what_to_do: r,
+            why_it_matters: 'Helps prevent recurring component stress and premature wear.',
+            when_due: 'Ongoing preventive care / regular check',
+            skill_level: 'Beginner-friendly',
+            completion_check: 'Perform regular visual check and confirm normal operation.',
             reason: 'Helps prevent recurring component stress and premature wear.',
             warning_signs: 'Watch for unusual sounds, handling changes, or indicator lights.',
             safety_precaution: 'Consult a professional if abnormal behavior returns.',
@@ -621,8 +647,14 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         }
         return {
           title: r.title || `Prevent ${norm.problem}`,
+          category_section: r.category_section || (norm.severity === 'high' || norm.severity === 'critical' ? 'do_this_now' : 'helpful_tips'),
           problem: r.problem || norm.problem,
           preventive_action: r.preventive_action || r.action || r.title,
+          what_to_do: r.what_to_do || r.preventive_action || r.title,
+          why_it_matters: r.why_it_matters || r.reason || 'Protects components from recurring failure.',
+          when_due: r.when_due || 'Ongoing preventive care / periodic check',
+          skill_level: r.skill_level || 'Beginner-friendly',
+          completion_check: r.completion_check || 'Inspect and confirm component functions properly.',
           reason: r.reason || 'Protects components from recurring failure.',
           warning_signs: r.warning_signs || 'Monitor for early warning signs.',
           safety_precaution: r.safety_precaution || 'Seek technician inspection if needed.',
@@ -663,8 +695,14 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
 
       recItems = [{
         title: habitTitle,
+        category_section: norm.severity === 'high' || norm.severity === 'critical' ? 'do_this_now' : 'helpful_tips',
         problem: norm.problem,
         preventive_action: preventiveAction,
+        what_to_do: preventiveAction,
+        why_it_matters: reason,
+        when_due: 'Ongoing preventive care / periodic check',
+        skill_level: 'Beginner-friendly',
+        completion_check: 'Perform visual check and confirm normal operation.',
         reason,
         warning_signs: warningSigns,
         safety_precaution: safetyPrecaution,
@@ -689,12 +727,18 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         problem: r.problem,
         description: r.preventive_action,
         preventive_action: r.preventive_action,
+        category_section: r.category_section || (norm.severity === 'high' || norm.severity === 'critical' ? 'do_this_now' : 'helpful_tips'),
+        what_to_do: r.what_to_do || r.preventive_action || r.title,
+        why_it_matters: r.why_it_matters || r.reason || 'Helps reduce risk of recurring issues.',
+        when_due: r.when_due || 'Ongoing preventive care / periodic check',
+        skill_level: r.skill_level || 'Beginner-friendly',
+        completion_check: r.completion_check || 'Perform visual check and confirm normal operation.',
         reason: r.reason,
         warning_signs: r.warning_signs,
         safety_precaution: r.safety_precaution,
         category,
         icon,
-        priority: 'Important',
+        priority: norm.severity === 'high' || norm.severity === 'critical' ? 'Urgent' : 'Important',
         scoreImpact: 5,
         sortOrder: 2,
         source: 'diagnostic',
@@ -718,7 +762,13 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
       recommendations.push({
         ...item,
         type: 'preventive',
+        category_section: item.priority === 'Important' ? 'coming_up_soon' : 'helpful_tips',
         preventive_action: item.description,
+        what_to_do: item.title,
+        why_it_matters: item.description || 'Regular check ensures vehicle safety and prevents premature wear.',
+        when_due: 'Per owner manual schedule / regular check',
+        skill_level: 'Beginner-friendly',
+        completion_check: 'Confirm component is verified and in good condition.',
         reason: 'Regular routine check for optimal vehicle safety and longevity.',
         warning_signs: 'Inspect regularly before warning symptoms develop.',
         safety_precaution: 'Follow standard vehicle maintenance safety protocols.',
@@ -729,6 +779,104 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
 
   recommendations.sort((a, b) => (a.sortOrder || 3) - (b.sortOrder || 3));
   return recommendations;
+};
+
+/**
+ * Categorize and prioritize recommendations into the 3 user-facing sections:
+ * 1. Do This Now: High relevance — critical safety checks, overdue items, active unresolved diagnostic issues
+ * 2. Coming Up Soon: Scheduled maintenance approaching due date/mileage based on records/schedule
+ * 3. Helpful Tips: Simple preventive care and useful habits relevant to vehicle type, usage, and beginner level
+ *
+ * Automatically deduplicates and excludes tasks already completed (unless due again).
+ */
+export const groupRecommendationsByTriSections = (
+  recommendations = [],
+  completedIds = new Set(),
+  vehicleProfile = {},
+) => {
+  const doThisNow = [];
+  const comingUpSoon = [];
+  const helpfulTips = [];
+  const seenKeys = new Set();
+
+  const isCompleted = item => {
+    if (!item) return false;
+    const idStr = String(item.id || '');
+    const titleKey = normalizeKey(item.title);
+    return (
+      completedIds.has(idStr) ||
+      (titleKey && completedIds.has(titleKey)) ||
+      (item.recommendationId && completedIds.has(String(item.recommendationId)))
+    );
+  };
+
+  (recommendations || []).forEach(item => {
+    if (!item) return;
+    const key = normalizeKey(item.title || item.name || item.id);
+    if (!key || seenKeys.has(key)) return;
+    seenKeys.add(key);
+
+    // Exclude tasks already completed unless due again
+    if (isCompleted(item)) {
+      return;
+    }
+
+    const priority = String(item.priority || item.urgency || '').toUpperCase();
+    const source = item.source || item.type;
+    const categorySec = item.category_section || item.categorySection;
+
+    // 1. Do This Now:
+    // Critical safety checks, overdue maintenance, active unresolved diagnostic issues
+    if (
+      categorySec === 'do_this_now' ||
+      priority === 'IMMEDIATE' ||
+      priority === 'URGENT' ||
+      priority === 'CRITICAL' ||
+      (source === 'diagnostic' && (priority === 'HIGH' || item.isInspection || item.is_inspection)) ||
+      item.isOverdue
+    ) {
+      doThisNow.push({
+        ...item,
+        section: 'do_this_now',
+        sectionLabel: 'Do This Now',
+        sectionSubtitle: 'Critical safety checks & active diagnostic issues',
+      });
+    }
+    // 2. Coming Up Soon:
+    // Scheduled routine maintenance approaching due date or condition
+    else if (
+      categorySec === 'coming_up_soon' ||
+      priority === 'IMPORTANT' ||
+      item.isDueSoon ||
+      source === 'maintenance_task' ||
+      item.serviceType ||
+      (item.category && ['engine_oil', 'brakes', 'chain_drive', 'fluids', 'tires_wheels'].includes(item.category.id || item.category))
+    ) {
+      comingUpSoon.push({
+        ...item,
+        section: 'coming_up_soon',
+        sectionLabel: 'Coming Up Soon',
+        sectionSubtitle: 'Approaching scheduled checks based on vehicle guidance',
+      });
+    }
+    // 3. Helpful Tips:
+    // Simple preventive care, habits, and beginner advice
+    else {
+      helpfulTips.push({
+        ...item,
+        section: 'helpful_tips',
+        sectionLabel: 'Helpful Tips',
+        sectionSubtitle: 'Simple preventive habits for everyday vehicle care',
+      });
+    }
+  });
+
+  return {
+    doThisNow,
+    comingUpSoon,
+    helpfulTips,
+    totalCount: doThisNow.length + comingUpSoon.length + helpfulTips.length,
+  };
 };
 
 /**

@@ -124,7 +124,7 @@ const isPivotRejection = (str) => {
   );
 };
 
-const formatAiResponseText = (data) => {
+export const formatAiResponseText = (data) => {
   if (!data) {
     return 'How can I assist you with your vehicle today?';
   }
@@ -204,52 +204,88 @@ const formatAiResponseText = (data) => {
     return respStr;
   }
 
-  const parts = [];
+  const sections = [];
 
-  // 1. Conclusion / Title & Likely Issue
-  const summaryText = data.summary || data.response;
-  if (summaryText) {
-    parts.push(`AI Assessment\nLikely Issue: ${summaryText}`);
-  }
+  // 1. What's happening to my vehicle? (Friendly, plain-language summary)
+  const ackHeader = [data.follow_up_ack, data.diagnostic_progress].filter(Boolean).join('\n\n');
+  const whatsHappening = ackHeader
+    ? `${ackHeader}\n\nHere is what is most likely happening: ${data.summary || data.whats_happening || ''}`.trim()
+    : (data.whats_happening || (
+        data.summary
+          ? `Hey, no worries! We'll figure this out together. Here's what's happening: ${data.summary}`
+          : (data.response || 'We are evaluating your vehicle symptoms.')
+      ));
+  sections.push(whatsHappening.trim());
 
-  // 2. Compact Confidence Indicator
-  if (data.confidence) {
-    const score = typeof data.confidence === 'object' && data.confidence.score !== undefined
-      ? Math.round(Number(data.confidence.score))
-      : (typeof data.confidence === 'string'
-        ? (data.confidence.toUpperCase() === 'HIGH' ? 85 : data.confidence.toUpperCase() === 'MEDIUM' ? 65 : 40)
-        : 75);
-    const levelStr = typeof data.confidence === 'object' ? (data.confidence.level || 'MEDIUM') : String(data.confidence);
-    parts.push(`Confidence: ${score}% · ${levelStr.toUpperCase()}`);
-  }
-
-  // 3. Single Primary Cause
+  // 2. What might be causing it? (Top 2-3 plausible causes in plain everyday language)
   const causes = Array.isArray(data.possible_causes)
     ? data.possible_causes
     : (Array.isArray(data.possibleCauses) ? data.possibleCauses : []);
 
   if (causes.length > 0) {
-    const primary = causes[0];
-    const primaryName = typeof primary === 'string' ? primary : (primary?.cause || primary?.name || 'Primary component issue');
-    const primaryReason = typeof primary === 'object' && primary?.reason ? `\n${primary.reason}` : '';
-    parts.push(`Most Likely: ${primaryName}${primaryReason}`);
+    const topCauses = causes.slice(0, 3);
+    const causesList = topCauses.map((c, idx) => {
+      const name = typeof c === 'string' ? c : (c?.cause || c?.name || 'Component Issue');
+      const reason = typeof c === 'object' && c?.reason ? `\n   ${c.reason.trim()}` : '';
+      return `${idx + 1}. ${name}${reason}`;
+    }).join('\n\n');
+
+    sections.push(`What might be causing it?\n\n${causesList}`);
   }
 
-  // 4. One Immediate Action
-  const actions = Array.isArray(data.recommended_actions)
-    ? data.recommended_actions
-    : (Array.isArray(data.recommendedActions) ? data.recommendedActions : []);
+  // 3. Is it safe to keep using? (Cautious brake safety enforcement)
+  const isBrakeIssue = Boolean(
+    (data.summary && /brake/i.test(data.summary)) ||
+    (data.whats_happening && /brake/i.test(data.whats_happening)) ||
+    (data.safety_guidance && /brake/i.test(data.safety_guidance)) ||
+    (Array.isArray(data.possible_causes) && data.possible_causes.some(c => /brake/i.test(typeof c === 'string' ? c : (c?.cause || '')))) ||
+    (Array.isArray(data.reported) && data.reported.some(r => /brake/i.test(r)))
+  );
 
-  if (actions.length > 0) {
-    const firstAction = typeof actions[0] === 'string' ? actions[0] : (actions[0]?.action || actions[0]?.text || String(actions[0]));
-    parts.push(`Try This First: ${firstAction}`);
+  if (data.safety_guidance) {
+    let safetyText = data.safety_guidance.trim();
+    if (isBrakeIssue && (safetyText.toLowerCase().includes('safe to continue') || safetyText.toLowerCase().includes('short distances'))) {
+      safetyText = 'Brakes are a critical safety system. If you notice grinding, reduced braking feel, or abnormal brake behavior, stop safely and arrange a professional inspection rather than assuming continued travel is safe.';
+    }
+    sections.push(`Is it safe to use?\n${safetyText}`);
+  } else if (data.severity || data.urgency) {
+    const sev = String(data.severity || '').toUpperCase();
+    if (isBrakeIssue) {
+      sections.push(`Is it safe to use?\nBrakes are a critical safety system. If braking feels weaker, the sound is grinding, or the brake behaves abnormally, stop in a safe place and arrange an inspection rather than continuing travel.`);
+    } else if (sev === 'CRITICAL' || sev === 'HIGH') {
+      sections.push(`Is it safe to use?\nIf the issue is sudden, severe, or affects braking or steering, pull over somewhere safe and avoid continuing the ride until assessed. Arrange a safe inspection rather than assuming it's harmless.`);
+    } else {
+      sections.push(`Is it safe to use?\nIf the symptom is mild and intermittent, you can continue carefully for short distances, but arrange a safe checkup before long trips.`);
+    }
   }
 
-  if (parts.length === 0) {
+  // 4. Safe checks a beginner can perform
+  const diyChecks = Array.isArray(data.safe_diy_checks) && data.safe_diy_checks.length > 0
+    ? data.safe_diy_checks
+    : (Array.isArray(data.recommended_actions) ? data.recommended_actions : (Array.isArray(data.recommendedActions) ? data.recommendedActions : []));
+
+  if (diyChecks.length > 0) {
+    const checksList = diyChecks.slice(0, 2).map(act => {
+      const text = typeof act === 'string' ? act : (act?.action || act?.title || act?.text || String(act));
+      return `• ${text.trim()}`;
+    }).join('\n');
+    sections.push(`Safe checks you can perform:\n${checksList}`);
+  }
+
+  // 5. When to ask a mechanic for help
+  if (data.mechanic_guidance) {
+    sections.push(`When to ask a mechanic for help:\n${data.mechanic_guidance.trim()}`);
+  } else if (data.professional_help?.reason) {
+    sections.push(`When to ask a mechanic for help:\n${data.professional_help.reason.trim()}`);
+  } else if (String(data.severity || '').toUpperCase() === 'HIGH' || String(data.severity || '').toUpperCase() === 'CRITICAL') {
+    sections.push(`When to ask a mechanic for help:\nIf unusual noises persist, warning lights stay on, or performance drops significantly, have a professional mechanic inspect it.`);
+  }
+
+  if (sections.length === 0) {
     return data.response || data.summary || 'Diagnostic evaluation complete.';
   }
 
-  return parts.join('\n\n');
+  return sections.join('\n\n');
 };
 
 export default function AskVehiCareScreen({
@@ -804,7 +840,7 @@ export default function AskVehiCareScreen({
         PermissionsAndroid.PERMISSIONS.CAMERA,
         {
           title: 'Camera Permission Required',
-          message: 'VehiCare needs access to your camera to take photos or record videos of your vehicle.',
+          message: 'VehiCare needs access to your camera to take photos or record videos of your vehicle symptoms.',
           buttonPositive: 'Allow',
           buttonNegative: 'Deny',
         },
@@ -814,17 +850,24 @@ export default function AskVehiCareScreen({
         return true;
       }
 
-      Alert.alert(
-        'Camera Access Required',
-        'VehiCare needs camera access to take photos or record videos of vehicle issues. Please grant permission in App Info settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => Linking.openSettings(),
-          },
-        ],
-      );
+      if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+        Alert.alert(
+          'Camera Permission Permanently Denied',
+          'Camera permission is needed to capture photos and videos of vehicle issues. Please enable it in App Info settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Camera Permission Denied',
+          'VehiCare needs camera access to capture vehicle symptoms.',
+        );
+      }
       return false;
     } catch (err) {
       console.warn('[AskVehiCareScreen] Camera permission error:', err);
@@ -837,16 +880,18 @@ export default function AskVehiCareScreen({
       return true;
     }
 
+    // Android 13+ (API 33+) uses the system Photo Picker which requires no storage permissions.
+    if (Platform.Version >= 33) {
+      return true;
+    }
+
+    // Android 10-12 (API 29-32) supports scoped storage for system picker
+    if (Platform.Version >= 29) {
+      return true;
+    }
+
     try {
-      let targetPermission = PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-
-      if (Platform.Version >= 33) {
-        targetPermission =
-          mediaType === 'video'
-            ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO
-            : PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES;
-      }
-
+      const targetPermission = PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
       const isAlreadyGranted = await PermissionsAndroid.check(targetPermission);
       if (isAlreadyGranted) {
         return true;
@@ -854,7 +899,7 @@ export default function AskVehiCareScreen({
 
       const granted = await PermissionsAndroid.request(targetPermission, {
         title: `${mediaType === 'video' ? 'Video' : 'Photo'} Library Permission Required`,
-        message: `VehiCare needs access to your device storage to pick ${mediaType === 'video' ? 'videos' : 'photos'} of vehicle symptoms.`,
+        message: `VehiCare needs access to pick ${mediaType === 'video' ? 'videos' : 'photos'} of vehicle symptoms.`,
         buttonPositive: 'Allow',
         buttonNegative: 'Deny',
       });
@@ -863,21 +908,19 @@ export default function AskVehiCareScreen({
         return true;
       }
 
-      if (Platform.Version >= 29) {
-        return true;
+      if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+        Alert.alert(
+          'Media Library Access Permanently Denied',
+          `VehiCare needs permission to access your ${mediaType === 'video' ? 'videos' : 'photos'}. Please grant access in App Info settings.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ],
+        );
       }
-
-      Alert.alert(
-        'Media Library Access Required',
-        `VehiCare needs permission to access your ${mediaType === 'video' ? 'videos' : 'photos'}. Please grant access in App Info settings.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => Linking.openSettings(),
-          },
-        ],
-      );
       return false;
     } catch (err) {
       console.warn('[AskVehiCareScreen] Media library permission error:', err);
@@ -999,18 +1042,33 @@ export default function AskVehiCareScreen({
         resultData?.description ||
         `Completed diagnosis for ${diagProblem}.`;
 
+      const isSavedVehicleTarget = resultData?.vehicle?.is_saved_vehicle !== false;
+      const targetVehId = isSavedVehicleTarget ? (resultData?.vehicle?.id || activeVehicle?.id || activeVehicle?.vehicle_id) : null;
+      const targetVehName = resultData?.vehicle?.name || activeVehicle?.name || activeVehicle?.make || 'Vehicle';
+
       activityService.addActivity({
         type: 'diagnosis_completed',
         title: `Diagnosis: ${diagProblem}`,
         description: diagSummary,
-        vehicleId: activeVehicle?.id || activeVehicle?.vehicle_id,
-        vehicleName: activeVehicle?.name || activeVehicle?.make || 'Active Vehicle',
+        vehicleId: targetVehId,
+        vehicleName: targetVehName,
         userId: ownerUserId,
         metadata: {
           diagnosisId: resultData?.id || resultData?.diagnosis_id || null,
           severity: resultData?.diagnosis?.severity || resultData?.severity || 'medium',
+          isAlternateVehicle: !isSavedVehicleTarget,
+          imageVehicleMatch: resultData?.image_vehicle_match || 'not_applicable',
         },
       });
+
+      if (resultData?.image_vehicle_match === 'possible_mismatch') {
+        const details = resultData?.image_vehicle_details;
+        const detectedDesc = [details?.category, details?.estimated_make, details?.estimated_model].filter(Boolean).join(' ') || 'a different vehicle';
+        Alert.alert(
+          'Vehicle Mismatch Detected',
+          `The uploaded photo appears to depict ${detectedDesc} rather than your saved vehicle. VehiCare has evaluated the photo as an alternate vehicle without modifying your saved vehicle profile.`
+        );
+      }
     }
 
     await loadUsageStats();
@@ -1161,12 +1219,16 @@ export default function AskVehiCareScreen({
           })),
       };
 
+      const firstUserMsg = chatMessages.find(m => (m.role === 'user' || m.sender === 'user') && (m.text || m.message));
+      const rootComplaint = firstUserMsg ? (firstUserMsg.text || firstUserMsg.message) : trimmed;
+
       const activeSymptoms = trimmed || (currentAudio ? 'Voice consultation or audio recording of vehicle symptoms' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
       const payload = {
         vehicle_id: vehicleId,
         vehicle_name: safeVehicleName,
         vehicle_type: safeVehicleType,
         symptoms: activeSymptoms,
+        root_symptom: rootComplaint,
         input_type: currentAudio ? 'voice' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
         video_duration: currentVideo?.durationSec || 0,
         audio_duration: currentAudio?.durationSec || 0,
@@ -1268,6 +1330,15 @@ export default function AskVehiCareScreen({
   |--------------------------------------------------------------------------
   */
 
+  const handleMediaOption = (action) => {
+    setShowMediaPickerModal(false);
+    setTimeout(() => {
+      if (typeof action === 'function') {
+        action();
+      }
+    }, 200);
+  };
+
   const capturePhoto = async () => {
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) return;
@@ -1276,21 +1347,46 @@ export default function AskVehiCareScreen({
       const result = await launchCamera({
         mediaType: 'photo',
         quality: 0.8,
+        saveToPhotos: false,
       });
 
-      if (result.didCancel || !result.assets?.[0]) {
+      if (result.didCancel) {
         return;
       }
 
-      const asset = result.assets[0];
+      if (result.errorCode) {
+        if (result.errorCode === 'camera_unavailable') {
+          Alert.alert('Camera Unavailable', 'Camera hardware is not available on this device.');
+        } else if (result.errorCode === 'permission') {
+          Alert.alert('Camera Permission Needed', 'Camera permission was not granted. Please allow camera access in App Info settings.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]);
+        } else {
+          Alert.alert('Camera Error', result.errorMessage || 'Unable to open camera.');
+        }
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Photo Error', 'No image file was captured.');
+        return;
+      }
+
+      const rawUri = asset.uri;
+      const fileName = asset.fileName || (rawUri ? rawUri.split('/').pop() : null) || 'camera_photo.jpg';
+      const mime = asset.type || (fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+
       setAttachedVideo(null);
       setAttachedImage({
-        uri: asset.uri,
-        fileName: asset.fileName || 'camera_photo.jpg',
-        mime: asset.type || 'image/jpeg',
+        uri: rawUri,
+        fileName,
+        mime,
       });
     } catch (err) {
       console.warn('[AskVehiCareScreen] Camera Photo Error:', err);
+      Alert.alert('Camera Error', 'An unexpected error occurred while launching the camera.');
     }
   };
 
@@ -1304,19 +1400,41 @@ export default function AskVehiCareScreen({
         selectionLimit: 1,
       });
 
-      if (result.didCancel || !result.assets?.[0]) {
+      if (result.didCancel) {
         return;
       }
 
-      const asset = result.assets[0];
+      if (result.errorCode) {
+        if (result.errorCode === 'permission') {
+          Alert.alert('Photo Access Needed', 'Permission to access photos was not granted. Please allow access in App Info settings.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]);
+        } else {
+          Alert.alert('Gallery Error', result.errorMessage || 'Unable to open image gallery.');
+        }
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Gallery Error', 'No image file was selected.');
+        return;
+      }
+
+      const rawUri = asset.uri;
+      const fileName = asset.fileName || (rawUri ? rawUri.split('/').pop() : null) || 'photo.jpg';
+      const mime = asset.type || (fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+
       setAttachedVideo(null);
       setAttachedImage({
-        uri: asset.uri,
-        fileName: asset.fileName || 'photo.jpg',
-        mime: asset.type || 'image/jpeg',
+        uri: rawUri,
+        fileName,
+        mime,
       });
     } catch (err) {
       console.warn('[AskVehiCareScreen] Photo Pick Error:', err);
+      Alert.alert('Gallery Error', 'An unexpected error occurred while selecting a photo.');
     }
   };
 
@@ -1329,13 +1447,21 @@ export default function AskVehiCareScreen({
         mediaType: 'video',
         videoQuality: Platform.OS === 'android' ? 'low' : 'medium',
         durationLimit: usageStats?.video?.max_duration_seconds || 30,
+        saveToPhotos: false,
       });
 
-      if (result.didCancel || !result.assets?.[0]) {
+      if (result.didCancel) {
         return;
       }
 
-      const asset = result.assets[0];
+      if (result.errorCode) {
+        Alert.alert('Video Camera Error', result.errorMessage || 'Unable to record video.');
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
       const videoConfig = usageStats?.video || { max_size_mb: 15, max_duration_seconds: 30 };
       const fileSizeMb = Number(((asset.fileSize || 0) / (1024 * 1024)).toFixed(1));
       const durationSec = Math.round(asset.duration || 0);
@@ -1379,11 +1505,18 @@ export default function AskVehiCareScreen({
         selectionLimit: 1,
       });
 
-      if (result.didCancel || !result.assets?.[0]) {
+      if (result.didCancel) {
         return;
       }
 
-      const asset = result.assets[0];
+      if (result.errorCode) {
+        Alert.alert('Gallery Video Error', result.errorMessage || 'Unable to select video.');
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
       const videoConfig = usageStats?.video || { max_size_mb: 15, max_duration_seconds: 30 };
       const fileSizeMb = Number(((asset.fileSize || 0) / (1024 * 1024)).toFixed(1));
       const durationSec = Math.round(asset.duration || 0);
@@ -1407,13 +1540,13 @@ export default function AskVehiCareScreen({
       setAttachedImage(null);
       setAttachedVideo({
         uri: asset.uri,
-        fileName: asset.fileName || 'video.mp4',
+        fileName: asset.fileName || 'selected_video.mp4',
         fileSizeMb,
         durationSec,
         mime: asset.type || 'video/mp4',
       });
     } catch (err) {
-      console.warn('[AskVehiCareScreen] Video Pick Error:', err);
+      console.warn('[AskVehiCareScreen] Select Video Error:', err);
     }
   };
 
@@ -2834,10 +2967,7 @@ export default function AskVehiCareScreen({
               <TouchableOpacity
                 style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
                 activeOpacity={0.75}
-                onPress={() => {
-                  setShowMediaPickerModal(false);
-                  capturePhoto();
-                }}
+                onPress={() => handleMediaOption(capturePhoto)}
               >
                 <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
                   <Ionicons name="camera" size={20} color={theme.accent} />
@@ -2852,10 +2982,7 @@ export default function AskVehiCareScreen({
               <TouchableOpacity
                 style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
                 activeOpacity={0.75}
-                onPress={() => {
-                  setShowMediaPickerModal(false);
-                  selectPhoto();
-                }}
+                onPress={() => handleMediaOption(selectPhoto)}
               >
                 <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
                   <Ionicons name="images" size={20} color={theme.accent} />
@@ -2874,10 +3001,7 @@ export default function AskVehiCareScreen({
               <TouchableOpacity
                 style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
                 activeOpacity={0.75}
-                onPress={() => {
-                  setShowMediaPickerModal(false);
-                  captureVideo();
-                }}
+                onPress={() => handleMediaOption(captureVideo)}
               >
                 <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
                   <Ionicons name="videocam" size={20} color={theme.accent} />
@@ -2894,10 +3018,7 @@ export default function AskVehiCareScreen({
               <TouchableOpacity
                 style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
                 activeOpacity={0.75}
-                onPress={() => {
-                  setShowMediaPickerModal(false);
-                  selectVideo();
-                }}
+                onPress={() => handleMediaOption(selectVideo)}
               >
                 <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
                   <Ionicons name="film" size={20} color={theme.accent} />

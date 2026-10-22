@@ -1,5 +1,7 @@
-import { PermissionsAndroid, Platform } from 'react-native';
+import { Alert, Linking, NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import { check, PERMISSIONS, request, RESULTS } from 'react-native-permissions';
+
+const { VehiCareLocation } = NativeModules;
 
 /**
  * Location Accuracy Status Thresholds (in meters)
@@ -79,26 +81,70 @@ export class LocationService {
           PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
         ]);
 
-        const fineGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
-        const coarseGranted = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+        const fineResult = granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+        const coarseResult = granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION];
 
-        if (fineGranted) {
+        if (fineResult === PermissionsAndroid.RESULTS.GRANTED) {
           return { state: 'GRANTED_PRECISE', isGranted: true, isPrecise: true };
         }
-        if (coarseGranted) {
+        if (coarseResult === PermissionsAndroid.RESULTS.GRANTED) {
           return { state: 'GRANTED_APPROXIMATE', isGranted: true, isPrecise: false };
         }
-        return { state: 'DENIED', isGranted: false, isPrecise: false };
+
+        const isNeverAskAgain =
+          fineResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN ||
+          coarseResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
+
+        return {
+          state: isNeverAskAgain ? 'PERMANENTLY_DENIED' : 'DENIED',
+          isGranted: false,
+          isPrecise: false,
+          isPermanentlyDenied: isNeverAskAgain,
+        };
       } else {
         const fineRequest = await request(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
         if (fineRequest === RESULTS.GRANTED) {
           return { state: 'GRANTED_PRECISE', isGranted: true, isPrecise: true };
         }
-        return { state: 'DENIED', isGranted: false, isPrecise: false };
+        return {
+          state: fineRequest === RESULTS.BLOCKED ? 'PERMANENTLY_DENIED' : 'DENIED',
+          isGranted: false,
+          isPrecise: false,
+          isPermanentlyDenied: fineRequest === RESULTS.BLOCKED,
+        };
       }
     } catch (err) {
       console.warn('[LocationService] Permission request error:', err);
-      return { state: 'DENIED', isGranted: false, isPrecise: false };
+      return { state: 'DENIED', isGranted: false, isPrecise: false, isPermanentlyDenied: false };
+    }
+  }
+
+  /**
+   * Open app / system location settings
+   */
+  static async openSettings() {
+    try {
+      if (VehiCareLocation?.openLocationSettings) {
+        await VehiCareLocation.openLocationSettings();
+      } else {
+        await Linking.openSettings();
+      }
+    } catch (e) {
+      await Linking.openSettings();
+    }
+  }
+
+  /**
+   * Check if location providers (GPS or Network) are enabled
+   */
+  static async isLocationEnabled() {
+    try {
+      if (VehiCareLocation?.isLocationEnabled) {
+        return await VehiCareLocation.isLocationEnabled();
+      }
+      return true;
+    } catch (e) {
+      return true;
     }
   }
 
@@ -112,94 +158,123 @@ export class LocationService {
    */
   static async getFreshHighAccuracyLocation({
     maxAgeMs = 30000,
-    targetAccuracyMeters = 10,
-    acquisitionTimeoutMs = 12000,
+    targetAccuracyMeters = 25,
+    acquisitionTimeoutMs = 10000,
   } = {}) {
     const perm = await this.checkPermissionState();
     if (!perm.isGranted) {
       const requested = await this.requestPermissions();
       if (!requested.isGranted) {
-        throw new Error('PERMISSION_DENIED');
+        const err = new Error(requested.isPermanentlyDenied ? 'PERMISSION_PERMANENTLY_DENIED' : 'PERMISSION_DENIED');
+        err.isPermanentlyDenied = requested.isPermanentlyDenied;
+        throw err;
       }
     }
 
-    return new Promise((resolve, reject) => {
-      let bestFix = null;
-      let watchId = null;
-      let isDone = false;
-
-      const finishAcquisition = async () => {
-        if (isDone) return;
-        isDone = true;
-
-        if (watchId !== null && global.navigator?.geolocation) {
-          try {
-            global.navigator.geolocation.clearWatch(watchId);
-          } catch (e) {}
-        }
-
-        if (bestFix && bestFix.latitude && bestFix.longitude) {
-          const accuracyInfo = getAccuracyStatus(bestFix.accuracy);
-          const geocodedName = await LocationService.reverseGeocode(bestFix.latitude, bestFix.longitude);
-          
-          resolve({
-            latitude: bestFix.latitude,
-            longitude: bestFix.longitude,
-            accuracy: bestFix.accuracy,
+    // 1. Try Native Android VehiCareLocation module
+    if (VehiCareLocation?.getCurrentLocation) {
+      try {
+        const loc = await VehiCareLocation.getCurrentLocation({ timeout: acquisitionTimeoutMs });
+        if (loc && loc.latitude && loc.longitude) {
+          const accuracyInfo = getAccuracyStatus(loc.accuracy);
+          const geocodedName = await LocationService.reverseGeocode(loc.latitude, loc.longitude);
+          return {
+            latitude: Number(loc.latitude),
+            longitude: Number(loc.longitude),
+            accuracy: Number(loc.accuracy || 15),
             accuracyStatus: accuracyInfo.status,
             accuracyLabel: accuracyInfo.label,
             accuracyShortLabel: accuracyInfo.shortLabel,
             accuracyColor: accuracyInfo.color,
             isGoodAccuracy: accuracyInfo.isGood,
-            timestamp: bestFix.timestamp,
+            timestamp: loc.timestamp || Date.now(),
             isPrecise: perm.isPrecise,
-            source: 'gps_fused',
+            source: loc.provider || 'gps',
             name: geocodedName || (perm.isPrecise ? 'Verified GPS Location' : 'Approximate Location'),
-          });
-        } else {
-          reject(new Error('LOCATION_UNAVAILABLE'));
+          };
         }
-      };
-
-      // Set acquisition timeout (~10s)
-      const timer = setTimeout(() => {
-        finishAcquisition();
-      }, acquisitionTimeoutMs);
-
-      // Validate & inspect each position reading
-      const handleReading = (coords, timestamp) => {
-        const now = Date.now();
-        const readingTime = timestamp || now;
-        const ageMs = now - readingTime;
-
-        // 1. Reject stale cached readings older than maxAgeMs
-        if (ageMs > maxAgeMs) {
-          console.warn('[LocationService] Rejected stale location fix (age: ' + Math.round(ageMs / 1000) + 's)');
-          return;
+      } catch (nativeErr) {
+        if (nativeErr?.code === 'LOCATION_SERVICES_DISABLED') {
+          const disabledErr = new Error('LOCATION_SERVICES_DISABLED');
+          disabledErr.code = 'LOCATION_SERVICES_DISABLED';
+          throw disabledErr;
         }
+        if (nativeErr?.code === 'PERMISSION_DENIED') {
+          throw new Error('PERMISSION_DENIED');
+        }
+        console.warn('[LocationService] Native module location error:', nativeErr?.message || nativeErr);
+      }
+    }
 
-        const accuracy = Number(coords.accuracy ?? 150);
-        const fix = {
-          latitude: Number(coords.latitude),
-          longitude: Number(coords.longitude),
-          accuracy: accuracy,
-          timestamp: readingTime,
+    // 2. Fallback to navigator.geolocation if available (e.g. polyfill or web)
+    if (global.navigator && global.navigator.geolocation) {
+      return new Promise((resolve, reject) => {
+        let bestFix = null;
+        let watchId = null;
+        let isDone = false;
+
+        const finishAcquisition = async () => {
+          if (isDone) return;
+          isDone = true;
+
+          if (watchId !== null) {
+            try {
+              global.navigator.geolocation.clearWatch(watchId);
+            } catch (e) {}
+          }
+
+          if (bestFix && bestFix.latitude && bestFix.longitude) {
+            const accuracyInfo = getAccuracyStatus(bestFix.accuracy);
+            const geocodedName = await LocationService.reverseGeocode(bestFix.latitude, bestFix.longitude);
+
+            resolve({
+              latitude: bestFix.latitude,
+              longitude: bestFix.longitude,
+              accuracy: bestFix.accuracy,
+              accuracyStatus: accuracyInfo.status,
+              accuracyLabel: accuracyInfo.label,
+              accuracyShortLabel: accuracyInfo.shortLabel,
+              accuracyColor: accuracyInfo.color,
+              isGoodAccuracy: accuracyInfo.isGood,
+              timestamp: bestFix.timestamp,
+              isPrecise: perm.isPrecise,
+              source: 'gps_fused',
+              name: geocodedName || (perm.isPrecise ? 'Verified GPS Location' : 'Approximate Location'),
+            });
+          } else {
+            reject(new Error('LOCATION_UNAVAILABLE'));
+          }
         };
 
-        // Keep best fix (lowest accuracy value in meters)
-        if (!bestFix || fix.accuracy < bestFix.accuracy) {
-          bestFix = fix;
-        }
-
-        // 2. High accuracy target achieved -> resolve immediately
-        if (fix.accuracy <= targetAccuracyMeters) {
-          clearTimeout(timer);
+        const timer = setTimeout(() => {
           finishAcquisition();
-        }
-      };
+        }, acquisitionTimeoutMs);
 
-      // Subscribe to fresh device location updates
-      if (global.navigator && global.navigator.geolocation) {
+        const handleReading = (coords, timestamp) => {
+          const now = Date.now();
+          const readingTime = timestamp || now;
+          const ageMs = now - readingTime;
+
+          if (ageMs > maxAgeMs) return;
+
+          const accuracy = Number(coords.accuracy ?? 150);
+          const fix = {
+            latitude: Number(coords.latitude),
+            longitude: Number(coords.longitude),
+            accuracy: accuracy,
+            timestamp: readingTime,
+          };
+
+          if (!bestFix || fix.accuracy < bestFix.accuracy) {
+            bestFix = fix;
+          }
+
+          if (fix.accuracy <= targetAccuracyMeters) {
+            clearTimeout(timer);
+            finishAcquisition();
+          }
+        };
+
         try {
           global.navigator.geolocation.getCurrentPosition(
             (pos) => handleReading(pos.coords, pos.timestamp),
@@ -213,15 +288,13 @@ export class LocationService {
             { enableHighAccuracy: true, distanceFilter: 1, maximumAge: 0 }
           );
         } catch (e) {
-          console.warn('[LocationService] Geolocation subscription error:', e);
           clearTimeout(timer);
           reject(new Error('LOCATION_UNAVAILABLE'));
         }
-      } else {
-        clearTimeout(timer);
-        reject(new Error('GEOLOCATION_NOT_SUPPORTED'));
-      }
-    });
+      });
+    }
+
+    throw new Error('GEOLOCATION_NOT_SUPPORTED');
   }
 
   /**

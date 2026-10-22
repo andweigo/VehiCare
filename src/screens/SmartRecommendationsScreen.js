@@ -29,6 +29,7 @@ import {
   getHealthBarColor,
   getVehicleIconName,
   getVehicleRecommendations,
+  groupRecommendationsByTriSections,
   mergeRecommendations,
   normalizeDiagnosticRecord,
 } from '../utils/maintenanceUtils';
@@ -249,6 +250,8 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     [diagnostics, repairRecords, vehicleProfile],
   );
 
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'do_this_now' | 'coming_up_soon' | 'helpful_tips'
+
   /*
   |--------------------------------------------------------------------------
   | COMPLETION STATE PERSISTENCE
@@ -276,6 +279,18 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
     return ids;
   }, [completedRecommendations, localCompletedIds]);
+
+  const triSections = useMemo(
+    () => groupRecommendationsByTriSections(recommendations, completedRecommendationIds, vehicleProfile),
+    [recommendations, completedRecommendationIds, vehicleProfile],
+  );
+
+  const displayedItems = useMemo(() => {
+    if (activeTab === 'do_this_now') return triSections.doThisNow;
+    if (activeTab === 'coming_up_soon') return triSections.comingUpSoon;
+    if (activeTab === 'helpful_tips') return triSections.helpfulTips;
+    return recommendations;
+  }, [activeTab, triSections, recommendations]);
 
   const isRecommendationCompleted = useCallback(
     itemOrId => {
@@ -403,20 +418,28 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                 <View
                   style={[
                     styles.sourceBadge,
-                    item.source === 'diagnostic'
-                      ? { backgroundColor: theme.accentSoft, borderColor: theme.accent }
-                      : { backgroundColor: theme.border, borderColor: theme.border },
+                    item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
+                      ? { backgroundColor: 'rgba(255, 90, 95, 0.16)', borderColor: '#FF5A5F' }
+                      : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
+                      ? { backgroundColor: 'rgba(214, 162, 58, 0.16)', borderColor: '#D6A23A' }
+                      : { backgroundColor: 'rgba(50, 213, 131, 0.16)', borderColor: '#32D583' },
                   ]}
                 >
                   <Text
                     style={[
                       styles.sourceBadgeText,
-                      item.source === 'diagnostic'
-                        ? { color: theme.accent }
-                        : { color: theme.textSecondary },
+                      item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
+                        ? { color: '#FF5A5F' }
+                        : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
+                        ? { color: '#D6A23A' }
+                        : { color: '#32D583' },
                     ]}
                   >
-                    {item.source === 'diagnostic' ? 'DIAGNOSTIC' : 'PREVENTIVE MAINTENANCE'}
+                    {item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
+                      ? 'DO THIS NOW'
+                      : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
+                      ? 'COMING UP SOON'
+                      : 'HELPFUL TIP'}
                   </Text>
                 </View>
 
@@ -428,7 +451,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                     },
                   ]}
                 >
-                  {item.category.toUpperCase()}
+                  {typeof item.category === 'string' ? item.category.toUpperCase() : (item.category?.name || 'CARE').toUpperCase()}
                 </Text>
               </View>
 
@@ -439,10 +462,10 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                     color: theme.text,
                   },
                 ]}
-                numberOfLines={1}
+                numberOfLines={2}
                 ellipsizeMode="tail"
               >
-                {item.title}
+                {item.what_to_do || item.title}
               </Text>
             </View>
           </View>
@@ -456,54 +479,76 @@ const SmartRecommendationsScreen = ({ navigation }) => {
             </View>
           ) : null}
 
-          <Text
-            style={[
-              styles.recommendationDescription,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-            numberOfLines={4}
-            ellipsizeMode="tail"
-          >
-            {item.preventive_action || item.description}
-          </Text>
-
-          {item.reason ? (
-            <View style={{ backgroundColor: theme.border || '#292929', borderRadius: 8, padding: 10, marginTop: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <Icon name="psychology" size={15} color={theme.accent} style={{ marginRight: 6 }} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.accent, letterSpacing: 0.5 }}>
-                  PREVENTIVE REASON
+          {/* 5-QUESTION BEGINNER FRAMEWORK DETAILS */}
+          <View style={{ backgroundColor: theme.border || '#292929', borderRadius: 10, padding: 12, marginTop: 10, gap: 8 }}>
+            {/* Why it matters */}
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <Icon name="help-outline" size={13} color={theme.accent} style={{ marginRight: 5 }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.accent, letterSpacing: 0.5 }}>
+                  WHY IT MATTERS
                 </Text>
               </View>
               <Text style={{ fontSize: 12, color: theme.text, lineHeight: 17 }}>
-                {item.reason}
+                {item.why_it_matters || item.reason || item.preventive_action || item.description}
               </Text>
-
-              {item.warning_signs ? (
-                <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.1)' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
-                    WARNING SIGNS TO MONITOR:
-                  </Text>
-                  <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 16 }}>
-                    {item.warning_signs}
-                  </Text>
-                </View>
-              ) : null}
-
-              {item.safety_precaution ? (
-                <View style={{ marginTop: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.1)' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#FF5A5F', marginBottom: 2 }}>
-                    SAFETY BOUNDARY:
-                  </Text>
-                  <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 16 }}>
-                    {item.safety_precaution}
-                  </Text>
-                </View>
-              ) : null}
             </View>
-          ) : null}
+
+            {/* When to do it & Skill level row */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
+                  WHEN TO DO IT:
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary }} numberOfLines={1}>
+                  {item.when_due || (item.source === 'diagnostic' ? 'Check before next ride/drive' : 'Routine schedule')}
+                </Text>
+              </View>
+
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#35B86B', marginBottom: 2 }}>
+                  CAN I DO IT MYSELF?
+                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: theme.text }}>
+                  {item.skill_level || 'Beginner-friendly'}
+                </Text>
+              </View>
+            </View>
+
+            {/* How to know it's done */}
+            {item.completion_check ? (
+              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginBottom: 2 }}>
+                  HOW TO KNOW IT'S DONE:
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
+                  {item.completion_check}
+                </Text>
+              </View>
+            ) : null}
+
+            {item.warning_signs ? (
+              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
+                  WARNING SIGNS TO MONITOR:
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
+                  {item.warning_signs}
+                </Text>
+              </View>
+            ) : null}
+
+            {item.safety_precaution ? (
+              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FF5A5F', marginBottom: 2 }}>
+                  SAFETY BOUNDARY:
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
+                  {item.safety_precaution}
+                </Text>
+              </View>
+            ) : null}
+          </View>
 
           {item.source === 'diagnostic' ? (
             <TouchableOpacity
@@ -837,7 +882,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
               },
             ]}
           >
-            {healthStatus.label}
+            {typeof healthStatus === 'object' ? (healthStatus?.label || 'Looking Good') : (healthStatus || 'Looking Good')}
           </Text>
 
           <View
@@ -976,14 +1021,263 @@ const SmartRecommendationsScreen = ({ navigation }) => {
           </View>
         ) : null}
 
+        {recommendations.length > 0 ? (
+          <View style={styles.tabFilterRow}>
+            <TouchableOpacity
+              style={[
+                styles.tabFilterPill,
+                {
+                  backgroundColor: activeTab === 'all' ? theme.accent : theme.surface,
+                  borderColor: activeTab === 'all' ? theme.accent : theme.border,
+                },
+              ]}
+              onPress={() => setActiveTab('all')}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.tabFilterText,
+                  { color: activeTab === 'all' ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                All
+              </Text>
+              <View
+                style={[
+                  styles.tabFilterCount,
+                  {
+                    backgroundColor: activeTab === 'all' ? 'rgba(0,0,0,0.25)' : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: activeTab === 'all' ? '#FFFFFF' : theme.textSecondary,
+                  }}
+                >
+                  {triSections.totalCount}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabFilterPill,
+                {
+                  backgroundColor: activeTab === 'do_this_now' ? '#FF5A5F' : theme.surface,
+                  borderColor: activeTab === 'do_this_now' ? '#FF5A5F' : theme.border,
+                },
+              ]}
+              onPress={() => setActiveTab('do_this_now')}
+              activeOpacity={0.8}
+            >
+              <Icon
+                name="warning"
+                size={13}
+                color={activeTab === 'do_this_now' ? '#FFFFFF' : '#FF5A5F'}
+                style={{ marginRight: 2 }}
+              />
+              <Text
+                style={[
+                  styles.tabFilterText,
+                  { color: activeTab === 'do_this_now' ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                Do This Now
+              </Text>
+              {triSections.doThisNow.length > 0 && (
+                <View
+                  style={[
+                    styles.tabFilterCount,
+                    {
+                      backgroundColor: activeTab === 'do_this_now' ? 'rgba(0,0,0,0.25)' : 'rgba(255, 90, 95, 0.2)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: activeTab === 'do_this_now' ? '#FFFFFF' : '#FF5A5F',
+                    }}
+                  >
+                    {triSections.doThisNow.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabFilterPill,
+                {
+                  backgroundColor: activeTab === 'coming_up_soon' ? '#D6A23A' : theme.surface,
+                  borderColor: activeTab === 'coming_up_soon' ? '#D6A23A' : theme.border,
+                },
+              ]}
+              onPress={() => setActiveTab('coming_up_soon')}
+              activeOpacity={0.8}
+            >
+              <Icon
+                name="event"
+                size={13}
+                color={activeTab === 'coming_up_soon' ? '#FFFFFF' : '#D6A23A'}
+                style={{ marginRight: 2 }}
+              />
+              <Text
+                style={[
+                  styles.tabFilterText,
+                  { color: activeTab === 'coming_up_soon' ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                Coming Soon
+              </Text>
+              {triSections.comingUpSoon.length > 0 && (
+                <View
+                  style={[
+                    styles.tabFilterCount,
+                    {
+                      backgroundColor: activeTab === 'coming_up_soon' ? 'rgba(0,0,0,0.25)' : 'rgba(214, 162, 58, 0.2)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: activeTab === 'coming_up_soon' ? '#FFFFFF' : '#D6A23A',
+                    }}
+                  >
+                    {triSections.comingUpSoon.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabFilterPill,
+                {
+                  backgroundColor: activeTab === 'helpful_tips' ? (theme.success || '#35B86B') : theme.surface,
+                  borderColor: activeTab === 'helpful_tips' ? (theme.success || '#35B86B') : theme.border,
+                },
+              ]}
+              onPress={() => setActiveTab('helpful_tips')}
+              activeOpacity={0.8}
+            >
+              <Icon
+                name="lightbulb"
+                size={13}
+                color={activeTab === 'helpful_tips' ? '#FFFFFF' : (theme.success || '#35B86B')}
+                style={{ marginRight: 2 }}
+              />
+              <Text
+                style={[
+                  styles.tabFilterText,
+                  { color: activeTab === 'helpful_tips' ? '#FFFFFF' : theme.text },
+                ]}
+              >
+                Helpful Tips
+              </Text>
+              {triSections.helpfulTips.length > 0 && (
+                <View
+                  style={[
+                    styles.tabFilterCount,
+                    {
+                      backgroundColor: activeTab === 'helpful_tips' ? 'rgba(0,0,0,0.25)' : 'rgba(50, 213, 131, 0.2)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: activeTab === 'helpful_tips' ? '#FFFFFF' : (theme.success || '#35B86B'),
+                    }}
+                  >
+                    {triSections.helpfulTips.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.recommendationList}>
-          <FlatList
-            data={recommendations}
-            keyExtractor={item => item.id}
-            renderItem={renderRecommendation}
-            scrollEnabled={false}
-            contentContainerStyle={styles.recommendationListContent}
-          />
+          {activeTab === 'all' ? (
+            <View>
+              {/* 1. DO THIS NOW SECTION */}
+              {triSections.doThisNow.length > 0 && (
+                <View style={{ marginBottom: 20 }}>
+                  <View style={styles.triSectionHeader}>
+                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(255, 90, 95, 0.16)', borderColor: '#FF5A5F' }]}>
+                      <Icon name="warning" size={14} color="#FF5A5F" />
+                      <Text style={[styles.triSectionBadgeText, { color: '#FF5A5F' }]}>DO THIS NOW</Text>
+                    </View>
+                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
+                      High relevance: critical safety checks & active diagnostic issues
+                    </Text>
+                  </View>
+                  {triSections.doThisNow.map(item => (
+                    <View key={item.id}>{renderRecommendation({ item })}</View>
+                  ))}
+                </View>
+              )}
+
+              {/* 2. COMING UP SOON SECTION */}
+              {triSections.comingUpSoon.length > 0 && (
+                <View style={{ marginBottom: 20 }}>
+                  <View style={styles.triSectionHeader}>
+                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(214, 162, 58, 0.16)', borderColor: '#D6A23A' }]}>
+                      <Icon name="event" size={14} color="#D6A23A" />
+                      <Text style={[styles.triSectionBadgeText, { color: '#D6A23A' }]}>COMING UP SOON</Text>
+                    </View>
+                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
+                      Scheduled maintenance approaching due intervals
+                    </Text>
+                  </View>
+                  {triSections.comingUpSoon.map(item => (
+                    <View key={item.id}>{renderRecommendation({ item })}</View>
+                  ))}
+                </View>
+              )}
+
+              {/* 3. HELPFUL TIPS SECTION */}
+              {triSections.helpfulTips.length > 0 && (
+                <View style={{ marginBottom: 20 }}>
+                  <View style={styles.triSectionHeader}>
+                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(50, 213, 131, 0.16)', borderColor: '#32D583' }]}>
+                      <Icon name="lightbulb" size={14} color="#32D583" />
+                      <Text style={[styles.triSectionBadgeText, { color: '#32D583' }]}>HELPFUL TIPS</Text>
+                    </View>
+                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
+                      Simple preventive care and useful habits for beginners
+                    </Text>
+                  </View>
+                  {triSections.helpfulTips.map(item => (
+                    <View key={item.id}>{renderRecommendation({ item })}</View>
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : (
+            <View>
+              {displayedItems.length === 0 ? (
+                <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border, marginVertical: 15 }]}>
+                  <Icon name="check-circle" size={20} color={theme.success || '#35B86B'} style={{ marginRight: 10 }} />
+                  <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
+                    No pending items in this category. Everything is up to date!
+                  </Text>
+                </View>
+              ) : (
+                displayedItems.map(item => (
+                  <View key={item.id}>{renderRecommendation({ item })}</View>
+                ))
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -1743,6 +2037,57 @@ const styles = StyleSheet.create({
   modalActionSecondaryText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 13,
+  },
+  tabFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 14,
+    flexWrap: 'wrap',
+  },
+  tabFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  tabFilterText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+  },
+  tabFilterCount: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+  },
+  triSectionHeader: {
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  triSectionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  triSectionBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  triSectionSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    marginTop: 2,
+    marginLeft: 2,
   },
 });
 

@@ -280,6 +280,58 @@ export const AuthProvider = ({
       setLogoutSignal(c => c + 1);
     });
 
+    // Immediate synchronous storage bootstrap to prevent login flash on app restart
+    const bootstrapFromStorage = async () => {
+      try {
+        const storedToken = await getToken();
+        const persistedToken =
+          storedToken && String(storedToken).trim()
+            ? storedToken
+            : null;
+        const persistedUser = await getUser();
+
+        if (persistedToken && persistedUser && isMounted) {
+          setAuthToken(persistedToken);
+          setToken(persistedToken);
+          setUser(persistedUser);
+          setIsGuest(false);
+
+          // Validate existing session in background
+          getMeApi()
+            .then(backendUserData => {
+              if (isMounted && backendUserData) {
+                const updated = buildAuthUser(null, {
+                  ...persistedUser,
+                  ...backendUserData,
+                });
+                updateUser(updated).catch(() => {});
+              }
+            })
+            .catch(err => {
+              console.warn('[AuthContext] Startup session check note:', err?.message || err);
+            });
+        }
+      } catch (err) {
+        console.warn('[AuthContext] Storage bootstrap error:', err?.message || err);
+      } finally {
+        if (isMounted) {
+          const storedToken = await getToken().catch(() => null);
+          if (!storedToken && isMounted) {
+            setLoading(false);
+          }
+        }
+      }
+    };
+
+    bootstrapFromStorage();
+
+    // Fallback timer to ensure loading splash dismisses even if auth listeners hang or offline
+    const splashFallbackTimer = setTimeout(() => {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, 2000);
+
     const unsubscribe =
       onAuthStateChanged(
         async firebaseUser => {
@@ -295,12 +347,13 @@ export const AuthProvider = ({
                 ? existingToken
                 : null;
             const persistedUser = await getUser();
+            const currentUser = persistedUser || userRef.current;
 
             if (firebaseUser) {
               const authUser =
                 buildAuthUser(
                   firebaseUser,
-                  persistedUser,
+                  currentUser,
                 );
 
               if (persistedToken && authUser) {
@@ -311,7 +364,7 @@ export const AuthProvider = ({
                 // Background subscription sync on session restore
                 getSubscriptionStatus()
                   .then(statusData => {
-                    if (statusData?.user) {
+                    if (statusData?.user && isMounted) {
                       const updated = buildAuthUser(firebaseUser, {
                         ...authUser,
                         ...statusData.user,
@@ -327,16 +380,16 @@ export const AuthProvider = ({
               }
             } else {
               // Firebase is not signed in or not yet resolved
-              if (persistedToken && persistedUser) {
+              if (persistedToken && currentUser) {
                 // Restore stored backend session without wiping
-                await persistAuthState(persistedToken, persistedUser);
+                await persistAuthState(persistedToken, currentUser);
 
                 // Verify session in background
                 getMeApi()
                   .then(backendUserData => {
                     if (isMounted && backendUserData) {
                       const updated = buildAuthUser(null, {
-                        ...persistedUser,
+                        ...currentUser,
                         ...backendUserData,
                       });
                       updateUser(updated).catch(() => {});
@@ -345,7 +398,7 @@ export const AuthProvider = ({
                   .catch(err => {
                     console.warn('[AuthContext] Background session check note:', err?.message || err);
                   });
-              } else {
+              } else if (!persistedToken) {
                 setAuthToken(null);
                 setToken(null);
                 setUser(null);
@@ -358,6 +411,7 @@ export const AuthProvider = ({
             );
           } finally {
             if (isMounted) {
+              clearTimeout(splashFallbackTimer);
               setLoading(false);
             }
           }
@@ -366,6 +420,7 @@ export const AuthProvider = ({
 
     return () => {
       isMounted = false;
+      clearTimeout(splashFallbackTimer);
       clearUnauthorizedHandler();
 
       if (
@@ -860,10 +915,14 @@ export const AuthProvider = ({
 
   const updateUser =
     async nextUser => {
+      const currentToken =
+        (tokenRef.current && String(tokenRef.current).trim()) ||
+        (await getToken());
+
       const resolvedToken =
-        token &&
-        String(token).trim()
-          ? token
+        currentToken &&
+        String(currentToken).trim()
+          ? currentToken
           : null;
 
       await saveAuthData(

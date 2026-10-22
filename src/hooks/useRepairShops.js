@@ -126,8 +126,10 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       return gpsObj;
     } catch (err) {
       console.warn('[useRepairShops] GPS acquisition error:', err?.message || err);
-      if (err?.message === 'PERMISSION_DENIED') {
-        setPermissionState('DENIED');
+      if (err?.message === 'PERMISSION_DENIED' || err?.message === 'PERMISSION_PERMANENTLY_DENIED') {
+        setPermissionState(err?.message === 'PERMISSION_PERMANENTLY_DENIED' ? 'PERMANENTLY_DENIED' : 'DENIED');
+      } else if (err?.message === 'LOCATION_SERVICES_DISABLED') {
+        setError('Location services are turned off. Please enable device GPS.');
       } else {
         setError('Unable to acquire a fresh GPS location fix. Please ensure location services are enabled.');
       }
@@ -174,12 +176,8 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
     if (gpsFix) {
       setSelectedLocation(gpsFix, true);
       return gpsFix;
-    } else {
-      // Fallback if GPS hardware fails
-      const fallbackPreset = DEFAULT_FALLBACK_LOCATION;
-      setSelectedLocation(fallbackPreset, true);
-      return fallbackPreset;
     }
+    return null;
   }, [acquireFreshGps, setSelectedLocation]);
 
   // Request location permission explicitly

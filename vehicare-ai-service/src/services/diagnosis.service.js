@@ -5,6 +5,7 @@ import logger from '../utils/logger.js';
 import { parseAndCleanJson } from '../utils/response-parser.js';
 import { isRepairGuideIntent } from '../utils/symptom-normalizer.js';
 import { conversationOutputSchema, diagnosticOutputSchema } from '../validators/response.validator.js';
+import { filterAndSelectQuestions } from './question-dedup.js';
 import { cacheService } from './cache.service.js';
 import { dedupService } from './dedup.service.js';
 import { callGemini } from './gemini.service.js';
@@ -39,11 +40,18 @@ export const processDiagnosisRequest = async (payload) => {
     historical_context: historicalContext = {},
     diagnostic_state: diagnosticState = { assessments: [] },
   } = payload;
-  const { symptoms, input_type: inputType, media_base64: mediaBase64, media_mime: mediaMime, history } = diagnosis;
+  const {
+    symptoms,
+    root_symptom: rootSymptom,
+    input_type: inputType,
+    media_base64: mediaBase64,
+    media_mime: mediaMime,
+    history,
+  } = diagnosis;
   const language = userContext?.language || 'en';
 
   const isRepair = !mediaBase64 && isRepairGuideIntent(symptoms);
-  const isGeneral = !mediaBase64 && !isRepair && isGeneralQuestion(symptoms);
+  const isGeneral = !mediaBase64 && !isRepair && isGeneralQuestion(symptoms, history, diagnosticState);
   const requestType = isRepair ? 'repair' : (isGeneral ? 'conversation' : 'diagnostic');
 
   logger.info('AI_REQUEST_RECEIVED', requestId, {
@@ -58,11 +66,17 @@ export const processDiagnosisRequest = async (payload) => {
       : 0,
   });
 
+  const isAlternateVehicle = vehicleContext?.is_saved_vehicle === false;
+  const targetVehicleDesc = vehicleContext?.target_vehicle_desc || null;
+
   // 1. Generate Cache Key
   const cacheKeyParams = {
     requestType,
     vehicleContext,
     symptoms,
+    rootSymptom: rootSymptom || null,
+    isAlternateVehicle,
+    targetVehicleDesc,
     userLanguage: language,
     mediaBase64,
     inputType,
@@ -153,6 +167,9 @@ export const processDiagnosisRequest = async (payload) => {
         const prompt = buildDiagnosisPrompt({
           vehicleContext,
           symptoms,
+          rootSymptom,
+          isAlternateVehicle,
+          targetVehicleDesc,
           userLanguage: language,
           history,
           hasMedia: Boolean(mediaBase64),
@@ -204,6 +221,9 @@ export const processDiagnosisRequest = async (payload) => {
             const fallbackPrompt = buildDiagnosisPrompt({
               vehicleContext,
               symptoms,
+              rootSymptom,
+              isAlternateVehicle,
+              targetVehicleDesc,
               userLanguage: language,
               history,
               hasMedia: false,
@@ -289,14 +309,58 @@ export const processDiagnosisRequest = async (payload) => {
       } else {
         // Pre-normalize diagnostic structure to avoid superficial schema mismatches
         jsonObject.type = 'diagnostic';
+
+        // 1. Apply deterministic deduplication on clarification questions
+        const rawQuestions = Array.isArray(jsonObject.clarification_questions)
+          ? jsonObject.clarification_questions
+          : [];
+
+        const dedupResult = filterAndSelectQuestions({
+          proposedQuestions: rawQuestions,
+          history,
+          diagnosticState,
+          symptoms,
+          rootSymptom: rootSymptom || symptoms,
+          maxClarificationTurns: 2,
+        });
+
+        // Fill in follow_up_ack / diagnostic_progress if follow-up turn
+        const isFollowUpTurn = Boolean(rootSymptom && rootSymptom.trim() !== symptoms.trim()) ||
+          (Array.isArray(history) && history.length > 0);
+
+        if (isFollowUpTurn) {
+          if (!jsonObject.follow_up_ack || typeof jsonObject.follow_up_ack !== 'string') {
+            const shortAns = symptoms.length > 80 ? symptoms.slice(0, 80) + '...' : symptoms;
+            jsonObject.follow_up_ack = `Got it. "${shortAns}" helps narrow down the possibilities.`;
+          }
+          if (!jsonObject.diagnostic_progress || typeof jsonObject.diagnostic_progress !== 'string') {
+            jsonObject.diagnostic_progress = 'That narrows down the possible causes and helps rule out unrelated issues.';
+          }
+        }
+
+        // If turn limit or sufficient info reached, or no questions remain:
+        if (dedupResult.questions.length === 0) {
+          jsonObject.status = 'diagnosis_ready';
+          jsonObject.clarification_questions = [];
+        } else {
+          jsonObject.clarification_questions = dedupResult.questions;
+        }
+
         if (jsonObject.status !== 'needs_clarification') {
           jsonObject.status = 'diagnosis_ready';
         }
 
         if (jsonObject.status === 'needs_clarification') {
-          jsonObject.response = typeof jsonObject.response === 'string' && jsonObject.response.trim()
-            ? jsonObject.response.trim()
-            : (typeof jsonObject.summary === 'string' ? jsonObject.summary.trim() : 'Please clarify your vehicle symptoms so I can provide an accurate diagnosis.');
+          const ack = jsonObject.follow_up_ack || '';
+          const prog = jsonObject.diagnostic_progress || '';
+          const qText = jsonObject.clarification_questions?.[0]?.question || 'Please provide more details.';
+          const combinedResp = [ack, prog].filter(Boolean).join(' ');
+          jsonObject.response = combinedResp
+            ? `${combinedResp}\n\nOne question that helps narrow it down:\n${qText}`
+            : (typeof jsonObject.response === 'string' && jsonObject.response.trim()
+              ? jsonObject.response.trim()
+              : `One question that helps narrow it down:\n${qText}`);
+
           if (!Array.isArray(jsonObject.clarification_questions) || jsonObject.clarification_questions.length === 0) {
             jsonObject.clarification_questions = [
               {
@@ -552,6 +616,7 @@ const normalizeClarificationQuestions = (questions) => {
   }
 
   return questions
+    .slice(0, 1)
     .map((item) => {
       if (typeof item === 'string') {
         const trimmed = item.trim();

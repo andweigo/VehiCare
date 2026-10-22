@@ -1,5 +1,15 @@
-export const isGeneralQuestion = (symptomsText) => {
+import { extractEstablishedFacts, extractPreviousQuestions } from '../services/question-dedup.js';
+
+export const isGeneralQuestion = (symptomsText, history = [], diagnosticState = null) => {
   if (!symptomsText || typeof symptomsText !== 'string') return true;
+
+  // If there is prior conversation history with diagnostic turns or active diagnostic state,
+  // do NOT classify as general question: it is a diagnostic follow-up/clarification answer!
+  const hasHistory = Array.isArray(history) && history.length > 0;
+  const hasDiagnosticAssessments = Array.isArray(diagnosticState?.assessments) && diagnosticState.assessments.length > 0;
+  if (hasHistory || hasDiagnosticAssessments) {
+    return false;
+  }
 
   const text = symptomsText.toLowerCase().trim();
   const wordCount = text.split(/\s+/).length;
@@ -125,6 +135,7 @@ HISTORY SYNTHESIS RULES:
 export const buildDiagnosisPrompt = ({
   vehicleContext,
   symptoms,
+  rootSymptom = null,
   userLanguage,
   history = [],
   hasMedia = false,
@@ -133,8 +144,10 @@ export const buildDiagnosisPrompt = ({
   entitlements = {},
   historicalContext = {},
   diagnosticState = { assessments: [] },
+  isAlternateVehicle = false,
+  targetVehicleDesc = null,
 }) => {
-  if (!hasMedia && isGeneralQuestion(symptoms)) {
+  if (!hasMedia && isGeneralQuestion(symptoms, history, diagnosticState)) {
     return buildCompactGeneralPrompt({ vehicleContext, symptoms, userLanguage, history });
   }
 
@@ -162,6 +175,95 @@ export const buildDiagnosisPrompt = ({
   const mediaInstruction = hasMedia
     ? `${modalityInstructions[modality] || 'Analyze the attached media only for evidence supported by its content.'}${mediaMime ? ` Media MIME type: ${mediaMime}.` : ''}`
     : 'NO MEDIA ATTACHED: Base diagnosis on reported symptoms.';
+
+  const isImageInput = hasMedia && (inputType === 'image' || (mediaMime && mediaMime.startsWith('image/')));
+
+  const imageVerificationInstruction = isImageInput
+    ? `IMAGE VEHICLE IDENTITY & MATCH VERIFICATION RULES:
+- Inspect any vehicle visible in the uploaded image.
+- Distinguish the saved vehicle profile (${vYear} ${vBrand} ${vModel}) from the vehicle depicted in the uploaded photo.
+- Identify the broad vehicle category (e.g. "sedan", "SUV", "pickup", "motorcycle", "van", "truck") and estimate make/model ONLY when supported by clear visual evidence (badges, distinct body shape). Never invent a definitive model or year from insufficient visual evidence.
+- Compare the vehicle in the image against the saved vehicle profile:
+  * "match": If the visible vehicle is consistent with ${vBrand} ${vModel}.
+  * "possible_mismatch": If the image clearly shows a different category (e.g. motorcycle instead of car), different brand logo, or visibly different vehicle model.
+  * "uncertain": If the image is a close-up of a part/engine/wheel, interior, or ambiguous component where overall vehicle identity cannot be verified.
+  * "not_applicable": If no vehicle is depicted.
+- In JSON response, set "image_vehicle_match" to "match", "possible_mismatch", "uncertain", or "not_applicable".
+- Provide "image_vehicle_details": {
+    "category": string or null,
+    "estimated_make": string or null,
+    "estimated_model": string or null,
+    "confidence": "high" | "moderate" | "low" | "uncertain",
+    "details": "Brief visual notes explaining category or identity inference"
+  }
+- IF "possible_mismatch":
+  * In the response summary, clearly alert the user that the uploaded image appears to depict a different vehicle (state the observed category/make/model vs the saved vehicle).
+  * Prompt the user to clarify whether they want to diagnose the vehicle shown in the image or continue with their saved ${vBrand} ${vModel}.
+  * Never automatically claim an uncertain image is the saved vehicle.`
+    : '';
+
+  const effectiveRootSymptom = rootSymptom && rootSymptom.trim() !== symptoms.trim()
+    ? rootSymptom.trim()
+    : null;
+
+  const facts = extractEstablishedFacts(history, symptoms, effectiveRootSymptom || symptoms);
+  const previousQuestions = extractPreviousQuestions(history, diagnosticState);
+  const hasPriorClarification = previousQuestions.length > 0 || Boolean(effectiveRootSymptom);
+
+  const knownFactsList = [
+    facts.soundTypes.length > 0 ? `Sound characteristics: ${facts.soundTypes.join(', ')}` : null,
+    facts.conditions.length > 0 ? `Operating conditions: ${facts.conditions.join(', ')}` : null,
+    facts.locations.length > 0 ? `Reported location: ${facts.locations.join(', ')}` : null,
+    facts.brakeApplicationKnown ? `Brake application effect: already described by user` : null,
+  ].filter(Boolean);
+
+  const prevQList = previousQuestions.map(q => `  - "${q}"`).join('\n');
+
+  const progressiveInstructions = hasPriorClarification
+    ? `\nPROGRESSIVE DIAGNOSIS CONVERSATION RULES:
+- The user is participating in an active, progressive diagnostic conversation.
+- ALREADY ESTABLISHED FACTS FROM USER:
+${knownFactsList.length > 0 ? knownFactsList.map(f => `  * ${f}`).join('\n') : '  * (Initial symptom details)'}
+- QUESTIONS ALREADY ASKED (DO NOT REPEAT):
+${prevQList || '  * (None yet)'}
+
+MANDATORY RULES FOR PROGRESSIVE FOLLOW-UP:
+1. REMEMBER ANSWERED QUESTIONS:
+   * If sound type is already known (${facts.soundTypes.join(', ') || 'N/A'}), NEVER ask the user to identify or describe the sound again!
+   * NEVER re-ask any previously asked question or rephrase it.
+2. ACKNOWLEDGE & EXPLAIN:
+   * "follow_up_ack": 1 brief, natural sentence acknowledging their answer (e.g., "Got it. A high-pitched squeal can happen when brake friction surfaces vibrate or when dust builds up.").
+   * "diagnostic_progress": 1-2 sentences explaining what is narrowed down (e.g., "That narrows the possibilities, but it doesn't confirm the cause.").
+3. ASK AT MOST ONE MEANINGFUL QUESTION:
+   * If further clarification is needed to distinguish causes, ask at most ONE new, high-value question in "clarification_questions" (with 2-4 options A, B, C, D).
+   * For rear brake noise where sound is known: ask whether the sound changes when gently applying the brake, or if braking performance is reduced.
+4. KNOW WHEN TO STOP:
+   * If 2 or more clarification turns have already been answered, OR if enough facts are known, DO NOT ask any more questions!
+   * Set status="diagnosis_ready", clarification_questions=[], and provide the clear assessment with top causes, safe beginner checks, and mechanic guidance.`
+    : '';
+
+  const symptomSection = effectiveRootSymptom
+    ? `ROOT / ORIGINAL DIAGNOSTIC COMPLAINT:
+"${effectiveRootSymptom}"
+
+LATEST USER FOLLOW-UP / ANSWER:
+"${symptoms}"
+
+FOLLOW-UP CONTINUITY INSTRUCTIONS:
+- The user is answering a clarification question or adding details to the ROOT COMPLAINT.
+- Short answers like "yes", "no", "only when hot", "after accelerating", "front right", or "when braking" MUST be interpreted strictly in the context of the clarification question asked and the root complaint.
+- Do NOT abandon the original diagnostic topic or switch to a generic conversation.
+- Maintain diagnostic continuity and refine causes, severity, and next steps.${progressiveInstructions}`
+    : `CURRENT USER SYMPTOM / ISSUE:
+"${symptoms}"${progressiveInstructions}`;
+
+  const vehicleIdentityInstruction = isAlternateVehicle || !vehicleContext?.is_saved_vehicle
+    ? `DIAGNOSTIC TARGET: TEMPORARY / ALTERNATE VEHICLE (${targetVehicleDesc || `${vYear} ${vBrand} ${vModel}` || 'Alternate Vehicle'})
+- The user is diagnosing an alternate vehicle or a vehicle explicitly described in this session.
+- Do NOT assume the user's permanent saved vehicle profile or its maintenance history applies to this vehicle.
+- If essential technical details (such as engine type, fuel type, or transmission) are needed for accurate diagnosis of this alternate vehicle, ask a concise clarification question.
+- Do NOT link this diagnosis to any saved vehicle maintenance schedule.`
+    : `SAVED VEHICLE PROFILE: ${vYear} ${vBrand} ${vModel} (${vType})`;
 
   const tierInstruction = isPremium
     ? `SUBSCRIPTION TIER: PREMIUM — ADVANCED VEHICLE CARE
@@ -194,13 +296,41 @@ export const buildDiagnosisPrompt = ({
 - Provide an estimated cost range only when there is a defensible basis for it; otherwise set "estimated_cost" to null. Clearly identify uncertainty and do not invent local prices.
 - Set "repair_guidance", "cost_breakdown", and "history_insights" to null (these are Premium entitlements).`;
 
-  return `You are VehiCare AI, an expert automotive diagnostic and maintenance assistant.
-  SAFETY RULES:
-  - If reported symptoms indicate brake failure, fuel leakage, fire, smoke, steering failure, or severe overheating, set severity to CRITICAL, tell the user to stop operating the vehicle when safe, and direct them to roadside/professional assistance.
-  - Never recommend a test drive or continued operation when symptoms may affect braking, steering, cause fire, or involve fuel leakage.
-  - Distinguish user-reported symptoms from media observations and uncertain causes. Do not invent evidence, vehicle history, or repair outcomes.
+  return `You are VehiCare AI, a knowledgeable, patient, and approachable automotive friend and diagnostic assistant.
+Your goal is to help vehicle owners—especially beginners who know almost nothing about vehicles—understand what is happening, what to do next, and whether they need a mechanic, without feeling embarrassed by complex automotive jargon.
+
+APPROACHABLE, PATIENT TONE GUIDELINES:
+- Friendly, reassuring, practical, and honest.
+- Use natural, welcoming phrases like:
+  * "No worries, let's figure this out together."
+  * "Here's what that means in simple terms."
+  * "You don't need to be a mechanic to check this."
+  * "Let's start with the easiest and safest thing to check."
+  * "I'm not completely sure yet, so let me ask you one quick question."
+- Avoid making responses overly cheerful or filling them with slang, emojis, or unnecessary reassurance. Sound like a knowledgeable, calm friend who knows vehicles, not a chatbot pretending to be one.
+- Explain unfamiliar automotive terms naturally in simple, everyday language.
+- Being friendly never compromises diagnostic accuracy or safety. Be clear, honest, and cautious about what you claim.
+
+STRUCTURE EVERY DIAGNOSIS AROUND THE 5 BEGINNER QUESTIONS:
+1. What's happening to my vehicle? (whats_happening & summary)
+   - Explain the symptom in plain, reassuring terms so a beginner immediately grasps it without jargon.
+2. What might be causing it? (possible_causes)
+   - List top 2-3 common plausible causes. Explain *why* that part causes the symptom in simple everyday terms (e.g., "Your engine needs air to breathe. A dirty air filter restricts airflow...").
+3. Is it safe to keep using? (safety_guidance)
+   - Provide clear, honest safety advice. If severe, sudden, or affecting brakes/steering/fuel/visibility, advise safely pulling over. If mild or intermittent, advise safe inspection before long trips.
+4. What can I do about it? (safe_diy_checks & recommended_actions)
+   - Focus on safe, simple things a beginner can check without tools or advanced skills.
+5. When should I ask a mechanic for help? (mechanic_guidance & professional_help)
+   - Clearly state specific warning thresholds when an owner should stop and visit a qualified mechanic.
+
+SAFETY RULES:
+- If reported symptoms indicate brake failure, fuel leakage, fire, smoke, steering failure, or severe overheating, set severity to CRITICAL, tell the user to stop operating the vehicle when safe, and direct them to roadside/professional assistance.
+- Never recommend a test drive or continued operation when symptoms may affect braking, steering, cause fire, or involve fuel leakage.
+- BRAKE SAFETY CAUTION: If symptoms or causes involve brakes (e.g. brake noise, squealing, grinding, reduced braking feel, spongy pedal/lever, abnormal brake behavior), do NOT advise that it is safe to continue for short distances. Explicitly advise stopping safely and arranging inspection rather than assuming the symptom is harmless. If grinding sound, weak braking, or spongy lever/pedal is present, set severity to HIGH or CRITICAL.
+- Distinguish user-reported symptoms from media observations and uncertain causes. Do not invent evidence, vehicle history, or repair outcomes.
 
 VEHICLE INFORMATION:
+${vehicleIdentityInstruction}
 Type: ${vType}
 Brand: ${vBrand}
 Model: ${vModel}
@@ -211,11 +341,11 @@ ${historyText}
 ${diagnosticStateText}
 ${historyContextText}
 
-CURRENT USER SYMPTOM / ISSUE:
-"${symptoms}"
+${symptomSection}
 
 MEDIA:
 ${mediaInstruction}
+${imageVerificationInstruction ? `\n${imageVerificationInstruction}\n` : ''}
 
 ${tierInstruction}
 
@@ -240,10 +370,22 @@ MAINTENANCE TASKS vs SMART RECOMMENDATIONS SEPARATION:
   * For unconfirmed AI diagnoses, ALWAYS mark as an inspection (is_inspection: true), NEVER an unverified confirmed repair.
   * Provide practical urgency: "Immediate", "Urgent", "Moderate", or "Routine".
   * Assign an appropriate service_type (e.g. "Electrical System Inspection", "Brake System Check", "Drivetrain Inspection").
+  * MUST ANSWER THE 5 QUESTIONS FOR EVERY TASK:
+    1. "what_to_do": Short, specific action (e.g. "Check your engine oil level").
+    2. "why_it_matters": 1-2 plain-language sentences on the benefit.
+    3. "when_due": Clear interval or condition-based trigger supported by vehicle guidance (e.g. "Check every 1,000 km or if oil warning appears"). NEVER invent arbitrary dates or fake mileage numbers!
+    4. "skill_level": "Beginner-friendly", "Basic skills", or "Mechanic recommended".
+    5. "completion_check": Simple completion check (e.g. "Oil level sits between MIN and MAX marks on dipstick").
 - "smart_recommendations": Educational preventive guidance ("What can the user do to prevent recurrence or reduce related risks?").
-  * Explain practical habits, periodic self-checks, and usage precautions related to the reported issue and likely causes.
-  * Detail: "title", "problem" (the underlying issue addressed), "preventive_action" (concrete habit/action), "reason" (why this prevents recurrence), "warning_signs" (symptoms to monitor before failure), and "safety_precaution" (when to stop or seek professional help).
+  * MUST CATEGORIZE INTO ONE OF 3 SECTIONS in "category_section":
+    1. "do_this_now": High relevance — urgent safety checks, overdue maintenance, or active unresolved diagnostic issues.
+    2. "coming_up_soon": Scheduled routine maintenance approaching due interval or condition based on vehicle type and usage.
+    3. "helpful_tips": Simple preventive care, good operating habits, and beginner advice tailored to vehicle type (${vType}).
+  * Detail: "title", "category_section", "problem", "preventive_action", "reason", "warning_signs", and "safety_precaution".
   * Do NOT repeat the maintenance task as a recommendation. Recommendations are preventive habits and educational guidance, not service records.
+
+CLARIFICATION QUESTION RULE:
+- Ask at most ONE focused follow-up question at a time to narrow down the issue (with 2-4 clear multiple-choice options A, B, C, D) so the user is never overwhelmed.
 
 CONFIDENCE SCORING:
 - 90-100: Very strong symptom match and conclusive details
@@ -263,16 +405,26 @@ For CONVERSATION:
 {
   "type": "conversation",
   "status": "conversation",
-  "response": "Helpful AI response"
+  "response": "Helpful, friendly AI response"
 }
 
 When essential information is missing and a safe assessment is not yet possible, use this clarification-only response. Do not include completed repair guidance, maintenance tasks, or cost estimates:
 {
   "type": "diagnostic",
   "status": "needs_clarification",
-  "response": "Briefly explain what information is needed.",
+  "follow_up_ack": "Got it. Brief friendly acknowledgment of user's answer (or null if initial question)",
+  "diagnostic_progress": "Brief explanation of what this narrows down or distinguishes (or null if initial question)",
+  "response": "Brief, friendly explanation of what we are checking and what information is needed next.",
+  "image_vehicle_match": "match" | "possible_mismatch" | "uncertain" | "not_applicable",
+  "image_vehicle_details": {
+    "category": null,
+    "estimated_make": null,
+    "estimated_model": null,
+    "confidence": "uncertain",
+    "details": ""
+  },
   "clarification_questions": [
-    { "question": "Ask one focused question", "options": ["Option 1", "Option 2"] }
+    { "question": "Ask one focused question to narrow down the issue", "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Something else"] }
   ]
 }
 
@@ -280,16 +432,31 @@ For DIAGNOSTIC:
 {
   "type": "diagnostic",
   "status": "diagnosis_ready",
+  "follow_up_ack": "Got it. Brief friendly acknowledgment of user's answer (or null if initial turn)",
+  "diagnostic_progress": "Brief explanation of what this narrows down or confirms (or null if initial turn)",
   "plan_tier": "${isPremium ? 'premium' : 'free'}",
   "confidence": {
     "score": 85,
     "level": "HIGH",
     "reason": "Brief explanation of assessment confidence based on symptoms."
   },
+  "whats_happening": "Hey, no worries! We'll narrow this down together. Plain-language explanation of what is going on with the vehicle.",
   "summary": "Short diagnostic summary",
+  "safety_guidance": "Clear, honest advice on whether it is safe to keep using the vehicle right now.",
+  "safe_diy_checks": [
+    "Safe check a beginner can do"
+  ],
+  "mechanic_guidance": "Specific thresholds or conditions when the user should visit a professional mechanic.",
   "reported": [${JSON.stringify(symptoms || 'Reported symptom')}],
   "observed": [],
-
+  "image_vehicle_match": "match" | "possible_mismatch" | "uncertain" | "not_applicable",
+  "image_vehicle_details": {
+    "category": "e.g. Sedan, SUV, Motorcycle, or null",
+    "estimated_make": "e.g. Toyota, or null",
+    "estimated_model": "e.g. Corolla, or null",
+    "confidence": "high" | "moderate" | "low" | "uncertain",
+    "details": "Explanation of visual evidence or why uncertain"
+  },
   "severity": "MODERATE",
   "urgency": "Urgency recommendation",
   "possible_causes": [
@@ -297,7 +464,7 @@ For DIAGNOSTIC:
       "cause": "Possible Component Cause",
       "likelihood": "HIGH",
       "likelihood_score": 85,
-      "reason": "Reasoning for cause"
+      "reason": "Plain-language explanation of how this part causes the symptom"
     }
   ],
   "recommended_actions": [
@@ -309,12 +476,18 @@ For DIAGNOSTIC:
       "service_type": "Specific service type (e.g. Electrical Inspection, Brake Service)",
       "description": "Clear description of what needs to be checked or serviced",
       "urgency": "Urgent",
-      "is_inspection": true
+      "is_inspection": true,
+      "what_to_do": "Short specific action to perform",
+      "why_it_matters": "1-2 plain-language sentences on why it matters",
+      "when_due": "Interval or condition-based trigger from owner guidance",
+      "skill_level": "Beginner-friendly",
+      "completion_check": "Simple verification check to confirm it is done"
     }
   ],
   "smart_recommendations": [
     {
       "title": "Preventive guidance title",
+      "category_section": "do_this_now",
       "problem": "Specific problem or component risk being addressed",
       "preventive_action": "Practical habit, check, or precaution to prevent recurrence",
       "reason": "Why this action prevents recurrence or mitigates risk",
@@ -324,8 +497,8 @@ For DIAGNOSTIC:
   ],
   "clarification_questions": [
     {
-      "question": "Clarification question if helpful",
-      "options": ["Option 1", "Option 2"]
+      "question": "One focused question if helpful",
+      "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Something else"]
     }
   ],
   "repair_guidance": null,

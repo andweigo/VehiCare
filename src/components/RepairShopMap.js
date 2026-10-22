@@ -228,14 +228,22 @@ const RepairShopMap = ({
     }),
   );
 
-  // Initialize camera mapCenter ONCE on initial load to prevent camera jumps when pin updates
+  // Synchronize camera mapCenter whenever selected location coordinates change
+  const prevCoordsRef = useRef({ lat: selLat, lng: selLng });
   useEffect(() => {
-    if (!initialCenterSetRef.current && selLat && selLng) {
-      setMapCenter({
-        latitude: selLat,
-        longitude: selLng,
-      });
-      initialCenterSetRef.current = true;
+    if (selLat && selLng) {
+      if (
+        !initialCenterSetRef.current ||
+        prevCoordsRef.current.lat !== selLat ||
+        prevCoordsRef.current.lng !== selLng
+      ) {
+        prevCoordsRef.current = { lat: selLat, lng: selLng };
+        initialCenterSetRef.current = true;
+        setMapCenter({
+          latitude: selLat,
+          longitude: selLng,
+        });
+      }
     }
   }, [selLat, selLng]);
 
@@ -565,14 +573,21 @@ const RepairShopMap = ({
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.useThisLocationBtn}
-          activeOpacity={0.88}
-          onPress={() => onSetLocationPin({ latitude: selLat, longitude: selLng })}
-        >
-          <Icon name="check-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.useThisLocationText}>Use This Location</Text>
-        </TouchableOpacity>
+        {isCameraPannedAwayFromPin ? (
+          <TouchableOpacity
+            style={styles.useThisLocationBtn}
+            activeOpacity={0.88}
+            onPress={handleRecenterCameraToPin}
+          >
+            <Icon name="center-focus-strong" size={16} color="#FFFFFF" />
+            <Text style={styles.useThisLocationText}>Center Pin</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.syncedBadge}>
+            <Icon name="check" size={14} color="#32D583" />
+            <Text style={styles.syncedBadgeText}>In View</Text>
+          </View>
+        )}
       </View>
 
       {/* SUBTLE CAPTION UNDER MAP */}
@@ -860,6 +875,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Outfit-Bold',
     fontSize: 11.5,
     color: '#FFFFFF',
+  },
+  syncedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(50, 213, 131, 0.12)',
+    gap: 4,
+  },
+  syncedBadgeText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    color: '#32D583',
   },
   mapHelpText: {
     fontFamily: 'Inter-Medium',

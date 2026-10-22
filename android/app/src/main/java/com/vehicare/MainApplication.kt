@@ -17,6 +17,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(LottiePackage())
           add(BadgePackage())
+          add(LocationPackage())
         },
     )
   }

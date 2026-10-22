@@ -40,6 +40,16 @@ export const hashMedia = (mediaBase64) => {
 export const isContextDependentFollowUp = (text) => {
   if (!text || typeof text !== 'string') return false;
   const normalized = normalizeText(text);
+
+  const shortAnswers = [
+    'yes', 'no', 'yep', 'nope', 'yeah', 'nah', 'oo', 'hindi',
+    'only when accelerating', 'only when cold', 'only when hot',
+    'when turning key', 'after driving', 'front right', 'front left',
+    'rear right', 'rear left', 'none', 'wala', 'meron', 'hindi ko alam',
+    'i don t know', 'dont know', 'not sure',
+  ];
+  if (shortAnswers.includes(normalized)) return true;
+
   const followUpPhrases = [
     'what next',
     'what should i do next',

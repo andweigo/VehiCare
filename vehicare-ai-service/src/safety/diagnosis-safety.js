@@ -30,6 +30,21 @@ const CRITICAL_KEYWORDS = [
 export const applySafetyRules = (diagnosisData, symptomsText) => {
   const lowerSymptoms = (symptomsText || '').toLowerCase();
   const isHighRiskSymptom = CRITICAL_KEYWORDS.some((kw) => lowerSymptoms.includes(kw));
+  const isBrakeRelated =
+    lowerSymptoms.includes('brake') ||
+    String(diagnosisData.summary || '').toLowerCase().includes('brake') ||
+    String(diagnosisData.whats_happening || '').toLowerCase().includes('brake') ||
+    (Array.isArray(diagnosisData.possible_causes) && diagnosisData.possible_causes.some(c => String(c?.cause || '').toLowerCase().includes('brake')));
+
+  const isBrakeGrindingOrWeak = isBrakeRelated && (
+    lowerSymptoms.includes('grind') ||
+    lowerSymptoms.includes('scraping') ||
+    lowerSymptoms.includes('weak') ||
+    lowerSymptoms.includes('spongy') ||
+    lowerSymptoms.includes('soft pedal') ||
+    lowerSymptoms.includes('soft lever') ||
+    lowerSymptoms.includes('pulling')
+  );
 
   const result = { ...diagnosisData };
   const professionalHelp = {
@@ -43,6 +58,9 @@ export const applySafetyRules = (diagnosisData, symptomsText) => {
   if (isHighRiskSymptom) {
     result.severity = 'CRITICAL';
     result.urgency = 'CRITICAL: Stop operating the vehicle safely and request immediate technical/towing assistance.';
+  } else if (isBrakeGrindingOrWeak && result.severity !== 'CRITICAL') {
+    result.severity = 'HIGH';
+    result.urgency = 'HIGH: Stop operating the vehicle safely and arrange an immediate brake inspection.';
   }
 
   if (result.severity === 'CRITICAL') {
@@ -91,6 +109,17 @@ export const applySafetyRules = (diagnosisData, symptomsText) => {
       : result.severity === 'HIGH'
         ? 'Professional inspection is advised because this issue may be unsafe or cause further damage.'
         : 'This repair may require specialist tools or training beyond routine owner maintenance.';
+  }
+
+  if (isBrakeRelated) {
+    if (isBrakeGrindingOrWeak || result.severity === 'HIGH' || result.severity === 'CRITICAL') {
+      result.safety_guidance = 'Because brakes are a critical safety system, grinding or abnormal braking feel indicates severe component wear or failure risk. Stop in a safe location and arrange professional inspection rather than continuing travel.';
+    } else {
+      const guidance = result.safety_guidance || '';
+      if (!guidance || guidance.toLowerCase().includes('safe to continue') || guidance.toLowerCase().includes('short distances')) {
+        result.safety_guidance = 'Brakes are a critical safety system. Avoid high speeds or hard driving and arrange a prompt inspection. If the sound turns to grinding, braking feels weaker, or the brake behaves abnormally, stop in a safe place and arrange an inspection rather than assuming continued travel is safe.';
+      }
+    }
   }
 
   result.professional_help = professionalHelp;
