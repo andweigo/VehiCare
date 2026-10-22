@@ -16,7 +16,8 @@ class AdminManagementController extends Controller
     {
         $admins = User::where('role', User::ROLE_ADMIN)
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return view('admin.admins.index', compact('admins'));
     }

@@ -867,14 +867,9 @@ const ManagePlanScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.compareTitleWrap}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.compareTitle, { color: theme.text }]}>
-                    Premium Monthly
-                  </Text>
-                  <View style={[styles.cycleBadge, { backgroundColor: theme.accentSoft }]}>
-                    <Text style={[styles.cycleBadgeText, { color: theme.accent }]}>MONTHLY</Text>
-                  </View>
-                </View>
+                <Text style={[styles.compareTitle, { color: theme.text }]}>
+                  Premium Monthly
+                </Text>
                 <Text
                   style={[
                     styles.comparePrice,
@@ -972,7 +967,7 @@ const ManagePlanScreen = ({ navigation }) => {
               <View
                 style={[
                   styles.currentBadge,
-                  { backgroundColor: theme.accentSoft },
+                  { backgroundColor: theme.accentSoft, top: 32 },
                 ]}
               >
                 <Text
@@ -994,14 +989,9 @@ const ManagePlanScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.compareTitleWrap}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.compareTitle, { color: theme.text }]}>
-                    Premium Yearly
-                  </Text>
-                  <View style={[styles.cycleBadge, { backgroundColor: theme.accentSoft }]}>
-                    <Text style={[styles.cycleBadgeText, { color: theme.accent }]}>YEARLY</Text>
-                  </View>
-                </View>
+                <Text style={[styles.compareTitle, { color: theme.text }]}>
+                  Premium Yearly
+                </Text>
                 <Text
                   style={[
                     styles.comparePrice,

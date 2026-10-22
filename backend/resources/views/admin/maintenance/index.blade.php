@@ -125,7 +125,7 @@
                                         @endif
                                     </td>
                                     <td class="p-3 text-[10px] text-[#666666]">
-                                        {{ $item->created_at ? $item->created_at->format('M d, Y g:i A') : 'N/A' }}
+                                        {{ $item->created_at ? $item->created_at->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') : 'N/A' }}
                                     </td>
                                 </tr>
                             @endforeach

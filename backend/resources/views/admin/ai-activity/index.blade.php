@@ -56,7 +56,7 @@
                                 <td class="px-4 py-3">{{ ucfirst($failure->input_type) }}</td>
                                 <td class="px-4 py-3 font-mono">{{ $failure->error_code ?: '—' }}</td>
                                 <td class="px-4 py-3">{{ $failure->duration_ms !== null ? number_format($failure->duration_ms) . ' ms' : '—' }}</td>
-                                <td class="px-4 py-3">{{ $failure->created_at?->format('M d, Y h:i A') ?? '—' }}</td>
+                                <td class="px-4 py-3">{{ $failure->created_at?->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') ?? '—' }}</td>
                             </tr>
                         @empty
                             <tr>
@@ -66,6 +66,12 @@
                     </tbody>
                 </table>
             </div>
+
+            @if(method_exists($recentFailures, 'hasPages') && $recentFailures->hasPages())
+                <div class="p-4 border-t border-[#222222]">
+                    {{ $recentFailures->links() }}
+                </div>
+            @endif
         </div>
 
         <!-- AI Usage By Day Chart Card -->

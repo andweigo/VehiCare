@@ -18,8 +18,8 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
     companion object {
         const val MODULE_NAME = "VehiCareBadge"
-        const val CHANNEL_ID = "vehicare_notifications_channel"
-        const val CHANNEL_NAME = "VehiCare Notifications"
+        const val CHANNEL_ID = "vehicare_badge_channel_silent"
+        const val CHANNEL_NAME = "VehiCare App Badge"
         const val NOTIFICATION_ID = 1001
     }
 
@@ -33,8 +33,10 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "VehiCare vehicle updates and diagnostic alerts"
+                description = "VehiCare silent notification badge count"
                 setShowBadge(true)
+                setSound(null, null)
+                enableVibration(false)
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -78,6 +80,10 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .setDefaults(0)
+                .setVibrate(longArrayOf(0))
+                .setSound(null)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
@@ -91,7 +97,7 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
     @ReactMethod
     fun clearBadge(promise: Promise) {
-        lastReportedCount = -1
+        lastReportedCount = 0
         setBadgeCount(0, promise)
     }
 }

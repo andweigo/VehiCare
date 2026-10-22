@@ -29,7 +29,7 @@
                                 {{ ucfirst($item->category) }} · {{ $item->rating ? "{$item->rating}/5" : 'No rating' }}
                                 · {{ $item->user?->name ?? 'Guest' }}
                                 @if($item->contact_email) · {{ $item->contact_email }} @endif
-                                · {{ $item->created_at?->format('M d, Y h:i A') }}
+                                · {{ $item->created_at?->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') }}
                             </p>
                         </div>
                         <span class="text-xs font-semibold text-[#F63B05]">{{ ucfirst($item->status) }}</span>

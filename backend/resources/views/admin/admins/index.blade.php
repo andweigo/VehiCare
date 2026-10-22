@@ -51,7 +51,7 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-3 text-[#666666]">{{ optional($admin->created_at)->format('M d, Y') ?? '—' }}</td>
+                                <td class="px-4 py-3 text-[#666666]">{{ optional($admin->created_at)->timezone(config('app.admin_timezone'))->format('M d, Y') ?? '—' }}</td>
                                 <td class="px-4 py-3 text-right space-x-2">
                                     <form action="{{ route('admin.admins.toggle', $admin->id) }}" method="POST" class="inline" onsubmit="{{ $admin->is_active ? "return confirm('Disable this administrator account?');" : '' }}">
                                         @csrf
@@ -72,6 +72,12 @@
                     </tbody>
                 </table>
             </div>
+
+            @if(method_exists($admins, 'hasPages') && $admins->hasPages())
+                <div class="p-4 border-t border-[#222222]">
+                    {{ $admins->links() }}
+                </div>
+            @endif
         </div>
 
     </div>

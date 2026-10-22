@@ -10,7 +10,7 @@
                     <div>
                         <h2 class="font-heading font-bold text-white">{{ $data['title'] ?? 'Admin activity' }}</h2>
                         <p class="mt-1 text-sm text-[#A1A1AA]">{{ $data['message'] ?? '' }}</p>
-                        <p class="mt-2 text-[11px] text-[#666666]">{{ $notification->created_at?->format('M d, Y h:i A') }}</p>
+                        <p class="mt-2 text-[11px] text-[#666666]">{{ $notification->created_at?->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') }}</p>
                     </div>
                     @unless($notification->read_at)
                         <form method="POST" action="{{ route('admin.notifications.read', $notification->id) }}">
@@ -23,6 +23,10 @@
         @empty
             <div class="rounded-xl border border-[#222222] bg-[#111111] p-8 text-center text-sm text-[#A1A1AA]">No admin activity notifications.</div>
         @endforelse
-        {{ $notifications->links() }}
+        @if($notifications->hasPages())
+            <div class="pt-2">
+                {{ $notifications->links() }}
+            </div>
+        @endif
     </div>
 </x-admin-layout>

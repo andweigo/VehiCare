@@ -39,8 +39,8 @@ class AiActivityAdminController extends Controller
         $recentFailures = AiUsageLog::where('status', 'failed')
             ->where('created_at', '>=', $startDate)
             ->latest()
-            ->limit(10)
-            ->get(['id', 'plan', 'input_type', 'error_code', 'duration_ms', 'created_at']);
+            ->paginate(10, ['id', 'plan', 'input_type', 'error_code', 'duration_ms', 'created_at'], 'failures_page')
+            ->withQueryString();
 
         $rawDailyUsage = AiUsageLog::select(
                 DB::raw('DATE(created_at) as date'),

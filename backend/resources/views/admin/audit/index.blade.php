@@ -26,7 +26,7 @@
                 <tbody class="divide-y divide-[#222222]">
                     @forelse($audits as $audit)
                         <tr>
-                            <td class="px-4 py-3">{{ $audit->created_at?->format('M d, Y h:i:s A') }}</td>
+                            <td class="px-4 py-3">{{ $audit->created_at?->timezone(config('app.admin_timezone'))->format('M d, Y h:i:s A') }}</td>
                             <td class="px-4 py-3 text-white">{{ $audit->admin_name }}</td>
                             <td class="px-4 py-3">{{ str_replace('_', ' ', ucfirst($audit->action)) }}</td>
                             <td class="px-4 py-3">{{ ucfirst(str_replace('_', ' ', $audit->subject_type)) }} #{{ $audit->subject_id }}</td>

@@ -38,7 +38,7 @@ class SubscriptionController extends Controller
             $paymentsQuery->where('status', Payment::STATUS_REJECTED);
         }
 
-        $payments = $paymentsQuery->get();
+        $payments = $paymentsQuery->paginate(20)->withQueryString();
 
         $stats = [
             'total_payments' => Payment::count(),
@@ -59,7 +59,7 @@ class SubscriptionController extends Controller
                 'status' => 'success',
                 'tab' => $tab,
                 'stats' => $stats,
-                'payments' => $payments,
+                'payments' => method_exists($payments, 'items') ? $payments->items() : $payments,
             ]);
         }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 const TOTAL_DOTS = 64;
 
@@ -9,13 +10,26 @@ const AIUsageDonut = ({
   size = 104,
   strokeWidth = 10,
   activeColor = '#F5501C',
-  trackColor = 'rgba(255, 255, 255, 0.12)',
+  trackColor,
+  textColor,
   exhaustedColor = '#F5501C',
   isExhausted = false,
   showLabel = true,
   style,
   testID = 'ai-usage-donut',
 }) => {
+  let theme = null;
+  try {
+    theme = useTheme()?.theme;
+  } catch (e) {
+    // Fallback if rendered outside ThemeContext
+  }
+
+  const resolvedTrackColor =
+    trackColor || (theme?.dark === false ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)');
+  const resolvedTextColor =
+    textColor || theme?.text || (theme?.dark === false ? '#111827' : '#FFFFFF');
+
   const safeLimit = Math.max(1, typeof limit === 'number' && !isNaN(limit) ? limit : 20);
   const safeUsed = Math.max(0, typeof used === 'number' && !isNaN(used) ? used : 0);
   const percentage = Math.min(100, Math.max(0, Math.round((safeUsed / safeLimit) * 100)));
@@ -84,7 +98,7 @@ const AIUsageDonut = ({
             height: size,
             borderRadius: halfSize,
             borderWidth: strokeWidth,
-            borderColor: trackColor,
+            borderColor: resolvedTrackColor,
           },
         ]}
       />
@@ -145,7 +159,7 @@ const AIUsageDonut = ({
             testID="donut-ratio-text"
             style={[
               styles.ratioText,
-              { color: exhausted ? currentColor : '#FFFFFF' },
+              { color: exhausted ? currentColor : resolvedTextColor },
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit

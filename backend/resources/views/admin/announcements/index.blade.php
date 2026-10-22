@@ -57,7 +57,11 @@
             @empty
                 <div class="rounded-xl border border-[#222222] bg-[#111111] p-6 text-sm text-[#A1A1AA]">No announcements scheduled.</div>
             @endforelse
-            {{ $announcements->links() }}
+            @if($announcements->hasPages())
+                <div class="pt-2">
+                    {{ $announcements->links() }}
+                </div>
+            @endif
         </div>
     </div>
 </x-admin-layout>

@@ -74,11 +74,49 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #333333;
         }
+        /* Dark Theme Tailwind Pagination Override */
+        nav[role="navigation"] {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        nav[role="navigation"] .text-gray-700,
+        nav[role="navigation"] .text-gray-500 {
+            color: #A1A1AA !important;
+            font-size: 0.75rem !important;
+        }
+        nav[role="navigation"] a,
+        nav[role="navigation"] span[aria-disabled="true"] span,
+        nav[role="navigation"] span[aria-current="page"] span {
+            background-color: #181818 !important;
+            border-color: #262626 !important;
+            color: #FFFFFF !important;
+            border-radius: 0.5rem !important;
+            font-size: 0.75rem !important;
+        }
+        nav[role="navigation"] span[aria-current="page"] span {
+            background-color: #F63B05 !important;
+            border-color: #F63B05 !important;
+            color: #FFFFFF !important;
+            font-weight: 700 !important;
+        }
+        nav[role="navigation"] a:hover {
+            background-color: #222222 !important;
+            color: #F63B05 !important;
+        }
+        nav[role="navigation"] svg {
+            width: 1rem !important;
+            height: 1rem !important;
+            fill: currentColor;
+        }
     </style>
     <!-- AlpineJS for Interactive Drawers and Dropdowns -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="h-full bg-[#000000] text-[#FFFFFF] antialiased selection:bg-[#F63B05] selection:text-white">
+    @php
+        $pendingSubscriptionsCount = \App\Models\Payment::where('status', \App\Models\Payment::STATUS_PENDING)->count();
+    @endphp
 
     <div class="min-h-full flex flex-col lg:flex-row" x-data="{ mobileMenuOpen: false }">
 
@@ -159,15 +197,10 @@
                             <span>Repair Assistance</span>
                         </a>
 
-                        <!-- Service Referrals -->
-                        <a href="{{ route('admin.service-referrals.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.service-referrals.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
-                            <svg class="h-4 w-4 {{ request()->routeIs('admin.service-referrals.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0v-4m0 4h4m-4-4l-3-3m3 3l3-3"/>
-                            </svg>
-                            <span>Service Referrals</span>
-                        </a>
-
                         <a href="{{ route('admin.feedback.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.feedback.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <svg class="h-4 w-4 {{ request()->routeIs('admin.feedback.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                            </svg>
                             <span>Feedback</span>
                         </a>
 
@@ -239,11 +272,18 @@
                         </a>
 
                         <!-- Subscriptions -->
-                        <a href="{{ route('admin.subscriptions.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.subscriptions.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
-                            <svg class="h-4 w-4 {{ request()->routeIs('admin.subscriptions.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                            </svg>
-                            <span>Subscriptions</span>
+                        <a href="{{ route('admin.subscriptions.index') }}" class="group flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.subscriptions.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                            <div class="flex items-center gap-3">
+                                <svg class="h-4 w-4 {{ request()->routeIs('admin.subscriptions.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                </svg>
+                                <span>Subscriptions</span>
+                            </div>
+                            @if($pendingSubscriptionsCount > 0)
+                                <span class="min-w-5 rounded-full bg-[#F63B05] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white">
+                                    {{ $pendingSubscriptionsCount > 99 ? '99+' : $pendingSubscriptionsCount }}
+                                </span>
+                            @endif
                         </a>
 
                         <!-- Admins -->
@@ -399,12 +439,6 @@
                         </svg>
                         <span>Repair Assistance</span>
                     </a>
-                    <a href="{{ route('admin.service-referrals.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.service-referrals.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
-                        <svg class="h-4 w-4 {{ request()->routeIs('admin.service-referrals.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0v-4m0 4h4m-4-4l-3-3m3 3l3-3"/>
-                        </svg>
-                        <span>Service Referrals</span>
-                    </a>
                     <a href="{{ route('admin.feedback.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.feedback.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
                         <svg class="h-4 w-4 {{ request()->routeIs('admin.feedback.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
@@ -464,11 +498,18 @@
                         </svg>
                         <span>Correction Requests</span>
                     </a>
-                    <a href="{{ route('admin.subscriptions.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.subscriptions.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
-                        <svg class="h-4 w-4 {{ request()->routeIs('admin.subscriptions.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                        </svg>
-                        <span>Subscriptions</span>
+                    <a href="{{ route('admin.subscriptions.index') }}" class="group flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.subscriptions.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
+                        <div class="flex items-center gap-3">
+                            <svg class="h-4 w-4 {{ request()->routeIs('admin.subscriptions.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                            <span>Subscriptions</span>
+                        </div>
+                        @if($pendingSubscriptionsCount > 0)
+                            <span class="min-w-5 rounded-full bg-[#F63B05] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white">
+                                {{ $pendingSubscriptionsCount > 99 ? '99+' : $pendingSubscriptionsCount }}
+                            </span>
+                        @endif
                     </a>
                     <a href="{{ route('admin.admins.index') }}" class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-heading font-semibold transition-all duration-150 {{ request()->routeIs('admin.admins.*') ? 'bg-[#F63B05]/15 text-[#F63B05] border border-[#F63B05]/20' : 'text-[#A1A1AA] hover:bg-[#181818] hover:text-white' }}">
                         <svg class="h-4 w-4 {{ request()->routeIs('admin.admins.*') ? 'text-[#F63B05]' : 'text-[#A1A1AA] group-hover:text-white' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor">

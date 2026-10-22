@@ -161,7 +161,8 @@ const AIUsageDetailsModal = ({
                   strokeWidth={9}
                   isExhausted={exhausted}
                   activeColor="#F5501C"
-                  trackColor="rgba(255, 255, 255, 0.12)"
+                  trackColor={theme?.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)"}
+                  textColor={theme?.text}
                   testID="modal-donut-chart"
                 />
               </View>

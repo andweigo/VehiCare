@@ -166,7 +166,8 @@ const AIUsageCard = ({
             strokeWidth={7}
             isExhausted={exhausted}
             activeColor={theme.accent || '#F5501C'}
-            trackColor="rgba(255, 255, 255, 0.12)"
+            trackColor={theme.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)"}
+            textColor={theme.text}
             exhaustedColor="#F5501C"
             testID="dashboard-donut-ring"
           />

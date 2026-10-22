@@ -170,7 +170,7 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-[11px] text-[#A1A1AA]">
-                                    {{ $payment->submitted_at ? $payment->submitted_at->format('M d, Y H:i') : $payment->created_at->format('M d, Y') }}
+                                    {{ $payment->submitted_at ? $payment->submitted_at->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') : $payment->created_at->timezone(config('app.admin_timezone'))->format('M d, Y h:i A') }}
                                 </td>
                                 <td class="px-4 py-3 text-right">
                                     <div class="flex items-center justify-end gap-2">
@@ -214,6 +214,12 @@
                     </tbody>
                 </table>
             </div>
+
+            @if(method_exists($payments, 'hasPages') && $payments->hasPages())
+                <div class="p-4 border-t border-[#222222]">
+                    {{ $payments->links() }}
+                </div>
+            @endif
         </div>
 
     </div>

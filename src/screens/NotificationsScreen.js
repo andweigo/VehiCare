@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   SectionList,
@@ -349,6 +350,105 @@ const SectionChips = ({ category, setCategory, notifications = [], theme }) => {
 };
 
 /* ============================================================
+   ANNOUNCEMENT MODAL COMPONENT
+============================================================ */
+
+const AnnouncementModal = ({ visible, title, message, date, onClose, theme }) => {
+  if (!visible) return null;
+  const isDark = theme?.name === 'dark';
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.announcementModalOverlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View
+          style={[
+            styles.announcementModalCard,
+            {
+              backgroundColor: isDark ? '#141416' : '#FFFFFF',
+              borderColor: isDark ? '#262629' : '#E2E8F0',
+            },
+          ]}
+        >
+          {/* Header Row: Category Badge + Circular Close Button */}
+          <View style={styles.announcementHeaderRow}>
+            <View
+              style={[
+                styles.announcementBadge,
+                { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE' },
+              ]}
+            >
+              <Icon name="campaign" size={14} color="#F63B05" />
+              <Text style={styles.announcementBadgeText}>ANNOUNCEMENT</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+              style={[
+                styles.announcementCloseBtn,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+              ]}
+              accessibilityLabel="Close announcement"
+            >
+              <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Title & Metadata */}
+          <Text
+            style={[styles.announcementTitle, { color: theme.text }]}
+            numberOfLines={2}
+          >
+            {title || 'Announcement'}
+          </Text>
+
+          {date ? (
+            <Text style={[styles.announcementDate, { color: theme.textSecondary }]}>
+              {date}
+            </Text>
+          ) : null}
+
+          <View
+            style={[
+              styles.announcementDivider,
+              { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+            ]}
+          />
+
+          {/* Scrollable Body Text */}
+          <ScrollView
+            style={styles.announcementScroll}
+            contentContainerStyle={styles.announcementScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text
+              style={[
+                styles.announcementBody,
+                { color: isDark ? '#D4D4D8' : '#334155' },
+              ]}
+            >
+              {message}
+            </Text>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+/* ============================================================
    MAIN NOTIFICATIONS SCREEN
 ============================================================ */
 
@@ -370,6 +470,15 @@ const NotificationsScreen = ({ navigation }) => {
     message: '',
     icon: null,
   });
+  const [announcementModal, setAnnouncementModal] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    date: null,
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const listRef = useRef(null);
+  const ITEMS_PER_PAGE = 10;
   const mountedRef = useRef(false);
   const loadInFlightRef = useRef(false);
   const refreshPendingRef = useRef(false);
@@ -479,13 +588,22 @@ const NotificationsScreen = ({ navigation }) => {
           return;
         }
 
-        // 2. Announcement Notification -> Display in CustomModal
+        // 2. Announcement Notification -> Display in sleek AnnouncementModal
         if (normType === 'announcement' || normCat === 'announcements') {
-          setModalState({
+          const dateStr = item.timestamp
+            ? new Date(item.timestamp).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : null;
+          setAnnouncementModal({
             visible: true,
             title: item.title || 'Announcement',
             message: item.message || '',
-            icon: 'campaign',
+            date: dateStr,
           });
           return;
         }
@@ -547,6 +665,10 @@ const NotificationsScreen = ({ navigation }) => {
     [navigation, refreshActiveVehicle, load],
   );
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [category]);
+
   const filteredNotifications = useMemo(() => {
     if (category === 'All') return notifications;
     return notifications.filter(
@@ -554,15 +676,135 @@ const NotificationsScreen = ({ navigation }) => {
     );
   }, [notifications, category]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / ITEMS_PER_PAGE));
+
+  const currentPageItems = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredNotifications.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredNotifications, currentPage]);
+
   const sections = useMemo(
-    () => groupByDate(filteredNotifications),
-    [filteredNotifications],
+    () => groupByDate(currentPageItems),
+    [currentPageItems],
   );
 
   const unreadCount = useMemo(
     () => notifications.filter(n => !n.isRead).length,
     [notifications],
   );
+
+  /* ==========================================================
+     FOOTER PAGINATION RENDERER
+  ========================================================== */
+
+  const renderFooter = () => {
+    if (filteredNotifications.length <= ITEMS_PER_PAGE) return null;
+
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(filteredNotifications.length, currentPage * ITEMS_PER_PAGE);
+
+    return (
+      <View style={[styles.paginationCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.paginationInfoRow}>
+          <Text style={[styles.paginationInfoText, { color: theme.textSecondary }]}>
+            Showing <Text style={{ color: theme.text, fontFamily: 'Outfit-Bold' }}>{startItem}–{endItem}</Text> of <Text style={{ color: theme.text, fontFamily: 'Outfit-Bold' }}>{filteredNotifications.length}</Text>
+          </Text>
+          <View style={[styles.pageIndicatorPill, { backgroundColor: isDark ? '#27160F' : '#FFF4F0' }]}>
+            <Text style={[styles.pageIndicatorText, { color: isDark ? '#F63B05' : '#C2410C' }]}>
+              Page {currentPage} of {totalPages}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.paginationControlsRow}>
+          <TouchableOpacity
+            disabled={currentPage === 1}
+            onPress={() => {
+              if (currentPage > 1) {
+                setCurrentPage(p => p - 1);
+                listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+              }
+            }}
+            activeOpacity={0.75}
+            style={[
+              styles.paginationNavButton,
+              {
+                backgroundColor: theme.surfaceAlt,
+                borderColor: theme.border,
+                opacity: currentPage === 1 ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Icon name="chevron-left" size={18} color={theme.text} />
+            <Text style={[styles.paginationNavText, { color: theme.text }]}>Prev</Text>
+          </TouchableOpacity>
+
+          <View style={styles.pagePillsRow}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+              .map((p, idx, arr) => {
+                const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                const isActive = p === currentPage;
+                return (
+                  <React.Fragment key={p}>
+                    {showEllipsis && (
+                      <Text style={[styles.paginationDots, { color: theme.textSecondary }]}>•••</Text>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCurrentPage(p);
+                        listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+                      }}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.pagePill,
+                        isActive
+                          ? { backgroundColor: '#F63B05', borderColor: '#F63B05' }
+                          : { backgroundColor: theme.surfaceAlt, borderColor: theme.border },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.pagePillText,
+                          {
+                            color: isActive ? '#FFFFFF' : theme.textSecondary,
+                            fontFamily: isActive ? 'Outfit-Bold' : 'Inter-Medium',
+                          },
+                        ]}
+                      >
+                        {p}
+                      </Text>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+          </View>
+
+          <TouchableOpacity
+            disabled={currentPage === totalPages}
+            onPress={() => {
+              if (currentPage < totalPages) {
+                setCurrentPage(p => p + 1);
+                listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+              }
+            }}
+            activeOpacity={0.75}
+            style={[
+              styles.paginationNavButton,
+              {
+                backgroundColor: theme.surfaceAlt,
+                borderColor: theme.border,
+                opacity: currentPage === totalPages ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.paginationNavText, { color: theme.text }]}>Next</Text>
+            <Icon name="chevron-right" size={18} color={theme.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   /* ==========================================================
      HEADER RENDERER
@@ -759,9 +1001,11 @@ const NotificationsScreen = ({ navigation }) => {
         />
       ) : (
         <SectionList
+          ref={listRef}
           sections={sections}
           keyExtractor={item => String(item.id)}
           ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderFooter}
           renderItem={({ item }) => (
             <NotificationRow
               item={item}
@@ -784,6 +1028,15 @@ const NotificationsScreen = ({ navigation }) => {
           }
         />
       )}
+
+      <AnnouncementModal
+        visible={announcementModal.visible}
+        title={announcementModal.title}
+        message={announcementModal.message}
+        date={announcementModal.date}
+        onClose={() => setAnnouncementModal({ visible: false, title: '', message: '', date: null })}
+        theme={theme}
+      />
 
       <CustomModal
         visible={modalState.visible}
@@ -1126,6 +1379,150 @@ const styles = StyleSheet.create({
   clearFilterText: {
     fontFamily: 'Outfit-Bold',
     fontSize: 12,
+  },
+
+  /* ANNOUNCEMENT MODAL */
+  announcementModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  announcementModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    maxHeight: '72%',
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  announcementHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  announcementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 16,
+    gap: 5,
+  },
+  announcementBadgeText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    color: '#F63B05',
+    letterSpacing: 0.6,
+  },
+  announcementCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  announcementDate: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+    marginBottom: 10,
+  },
+  announcementDivider: {
+    height: 1,
+    marginBottom: 12,
+  },
+  announcementScroll: {
+    maxHeight: 260,
+  },
+  announcementScrollContent: {
+    paddingBottom: 8,
+  },
+  announcementBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13.5,
+    lineHeight: 21,
+  },
+
+  /* PAGINATION */
+  paginationCard: {
+    marginTop: 14,
+    marginBottom: 28,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    marginHorizontal: 16,
+  },
+  paginationInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  paginationInfoText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+  },
+  pageIndicatorPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  pageIndicatorText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  paginationControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paginationNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 2,
+  },
+  paginationNavText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+  },
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pagePill: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pagePillText: {
+    fontSize: 12,
+  },
+  paginationDots: {
+    fontSize: 10,
+    letterSpacing: 1,
+    paddingHorizontal: 2,
   },
 });
 

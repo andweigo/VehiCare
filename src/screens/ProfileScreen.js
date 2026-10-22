@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import AppearanceSettingCard from '../components/AppearanceSettingCard';
 import LanguageSelectorModal from '../components/LanguageSelectorModal';
+import ConfirmSignOutModal from '../components/ConfirmSignOutModal';
 import PasswordSecurityCard from '../components/PasswordSecurityCard';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -34,6 +35,7 @@ const ProfileScreen = ({ navigation }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [signOutModalVisible, setSignOutModalVisible] = useState(false);
 
   const refreshUserRef = useRef(refreshUser);
   const userRef = useRef(user);
@@ -160,7 +162,12 @@ const ProfileScreen = ({ navigation }) => {
     navigation.navigate('ManagePlan');
   };
 
-  const handleSignOut = async () => {
+  const handleSignOutPress = () => {
+    setSignOutModalVisible(true);
+  };
+
+  const handleSignOutConfirm = async () => {
+    setSignOutModalVisible(false);
     try {
       await logout();
     } catch (error) {
@@ -1075,7 +1082,7 @@ const ProfileScreen = ({ navigation }) => {
         {!isGuest && (
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={handleSignOut}
+            onPress={handleSignOutPress}
             style={[
               styles.signOutButton,
               {
@@ -1114,6 +1121,12 @@ const ProfileScreen = ({ navigation }) => {
         <LanguageSelectorModal
           visible={languageModalVisible}
           onClose={() => setLanguageModalVisible(false)}
+        />
+
+        <ConfirmSignOutModal
+          visible={signOutModalVisible}
+          onConfirm={handleSignOutConfirm}
+          onCancel={() => setSignOutModalVisible(false)}
         />
       </ScrollView>
     </SafeAreaView>

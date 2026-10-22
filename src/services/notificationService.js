@@ -106,7 +106,6 @@ export const getUnreadCount = async () => {
     const response = await apiClient.get('/notifications/unread-count');
     const count = response?.data?.data?.unread_count;
     if (Number.isInteger(count) && count >= 0) {
-      setDeviceBadgeCount(count);
       return count;
     }
     return null;
@@ -122,8 +121,10 @@ export const markAsRead = async id => {
   try {
     await apiClient.patch(`/notifications/${id}/read`);
     DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
-    // Refresh unread count to sync device badge
-    getUnreadCount();
+    const unreadCount = await getUnreadCount();
+    if (typeof unreadCount === 'number') {
+      await setDeviceBadgeCount(unreadCount);
+    }
     return true;
   } catch (err) {
     console.warn('[notificationService] Failed to mark notification as read:', err?.message);
