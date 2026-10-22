@@ -469,6 +469,7 @@ export default function AskVehiCareScreen({
   const [pendingVehicleToSwitch, setPendingVehicleToSwitch] = useState(null);
   const [showVehicleConfirmModal, setShowVehicleConfirmModal] = useState(false);
   const [showNewChatConfirmModal, setShowNewChatConfirmModal] = useState(false);
+  const [freshChatNotice, setFreshChatNotice] = useState(null);
   const activeConversationUiState = conversationUiState[currentSessionId] || {};
 
   /*
@@ -609,6 +610,17 @@ export default function AskVehiCareScreen({
         }),
       },
     ]);
+
+    setFreshChatNotice(t('freshChatStarted', '✨ Fresh consultation started'));
+    setTimeout(() => {
+      if (screenMountedRef.current) {
+        setFreshChatNotice(null);
+      }
+    }, 3500);
+
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    }, 80);
   }, [
     vehicleProfile,
     createNewSession,
@@ -617,6 +629,7 @@ export default function AskVehiCareScreen({
     setAttachedImage,
     setAttachedVideo,
     setAttachedAudio,
+    t,
   ]);
 
   const handleNewChatPress = useCallback(() => {
@@ -1893,37 +1906,49 @@ export default function AskVehiCareScreen({
           </Text>
         </View>
 
-        {/* TOP RIGHT ACTION ROW: QUOTA INDICATOR + NEW CHAT + SIDEBAR TOGGLE */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-
+        {/* TOP RIGHT ACTION ROW: NEW CHAT PILL + SIDEBAR TOGGLE */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
-            style={[
-              styles.newChatHeaderButton,
+            style={({ pressed }) => [
+              styles.newChatPillButton,
               {
-                backgroundColor: theme.surfaceAlt,
-                borderColor: theme.border,
+                backgroundColor: isDark ? 'rgba(246, 59, 5, 0.14)' : '#FFF2EE',
+                borderColor: isDark ? 'rgba(246, 59, 5, 0.35)' : '#FDD8D0',
               },
+              pressed && styles.headerButtonPressed,
             ]}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             onPress={handleNewChatPress}
+            accessibilityRole="button"
             accessibilityLabel="Start New Chat"
           >
-            <Ionicons
-              name="create-outline"
-              size={19}
-              color={theme.accent}
+            <Feather
+              name="plus"
+              size={15}
+              color={theme.accent || '#F63B05'}
             />
+            <Text
+              style={[
+                styles.newChatPillText,
+                { color: theme.accent || '#F63B05' },
+              ]}
+            >
+              New Chat
+            </Text>
           </Pressable>
 
           <Pressable
-            style={[
-              styles.newChatHeaderButton,
+            style={({ pressed }) => [
+              styles.headerMenuButton,
               {
                 backgroundColor: theme.surfaceAlt,
                 borderColor: theme.border,
               },
+              pressed && styles.headerButtonPressed,
             ]}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             onPress={() => openSidebar()}
+            accessibilityRole="button"
             accessibilityLabel="Open Sidebar Menu"
           >
             <MaterialIcons
@@ -1936,20 +1961,20 @@ export default function AskVehiCareScreen({
       </View>
 
       {/* AI CONSULTATION FEEDBACK BANNER */}
-      {feedbackNotice && (
+      {(feedbackNotice || freshChatNotice) && (
         <View
           testID="ai-consultation-feedback-banner"
           style={[
             styles.feedbackBanner,
             {
-              backgroundColor: theme.surfaceAlt,
-              borderColor: theme.accent,
+              backgroundColor: isDark ? 'rgba(246, 59, 5, 0.12)' : '#FFF2EE',
+              borderColor: isDark ? 'rgba(246, 59, 5, 0.35)' : '#FDD8D0',
             },
           ]}
         >
-          <Feather name="check-circle" size={14} color={theme.accent} />
-          <Text style={[styles.feedbackBannerText, { color: theme.text }]}>
-            {feedbackNotice}
+          <Feather name="check-circle" size={14} color={theme.accent || '#F63B05'} />
+          <Text style={[styles.feedbackBannerText, { color: theme.accent || '#F63B05' }]}>
+            {freshChatNotice || feedbackNotice}
           </Text>
         </View>
       )}
@@ -2420,30 +2445,53 @@ export default function AskVehiCareScreen({
                       })()}
 
                       {item.diagnosisData && (
-                        <TouchableOpacity
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6,
-                            marginTop: 10,
-                            backgroundColor: 'rgba(246, 59, 5, 0.12)',
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: '#F63B05',
-                          }}
-                          onPress={() => {
-                            setSelectedDiagnosis(item.diagnosisData);
-                            setResultModalVisible(true);
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Feather name="bar-chart-2" size={14} color="#F63B05" />
-                          <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: '#F63B05' }}>
-                            View Detailed Assessment →
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE',
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: theme.accent || '#F63B05',
+                            }}
+                            onPress={() => {
+                              setSelectedDiagnosis(item.diagnosisData);
+                              setResultModalVisible(true);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="bar-chart-2" size={14} color={theme.accent || '#F63B05'} />
+                            <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: theme.accent || '#F63B05' }}>
+                              View Detailed Assessment →
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: theme.border,
+                              backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.05)',
+                            }}
+                            disabled={isSendingLocally}
+                            onPress={handleNewChatPress}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="plus-circle" size={13} color={theme.textSecondary} />
+                            <Text style={{ fontFamily: 'Outfit-Medium', fontSize: 11, color: theme.text }}>
+                              Start New Chat
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                       {item.requestErrorFor && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -2513,6 +2561,27 @@ export default function AskVehiCareScreen({
                             <Feather name="edit-3" size={13} color={theme.textSecondary} />
                             <Text style={{ fontFamily: 'Outfit-Medium', fontSize: 11, color: theme.text }}>
                               Describe in Words
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: isDark ? 'rgba(246, 59, 5, 0.35)' : '#FDD8D0',
+                              backgroundColor: isDark ? 'rgba(246, 59, 5, 0.12)' : '#FFF2EE',
+                            }}
+                            disabled={isSendingLocally}
+                            onPress={handleNewChatPress}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="plus-circle" size={13} color={theme.accent || '#F63B05'} />
+                            <Text style={{ fontFamily: 'Outfit-Bold', fontSize: 11, color: theme.accent || '#F63B05' }}>
+                              Start New Chat
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -3355,6 +3424,8 @@ export default function AskVehiCareScreen({
       {/* NEW CHAT CONFIRMATION MODAL */}
       <ConfirmActionModal
         visible={showNewChatConfirmModal}
+        badgeLabel="NEW CONVERSATION"
+        icon="chat"
         title="Start New Chat?"
         message="Your current conversation will remain saved in your history, and a fresh chat session will start."
         primaryLabel="Start New Chat"
@@ -3436,6 +3507,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
+  },
+  newChatPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  newChatPillText: {
+    fontSize: 13,
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 0.2,
+  },
+  headerMenuButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerButtonPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
   },
 
   backButton: {
