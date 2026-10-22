@@ -1339,6 +1339,9 @@ export default function AskVehiCareScreen({
       });
 
       if (outcome.busy) {
+        if (trimmed && !isCustomOverride) {
+          setMessage(trimmed);
+        }
         removeMessageFromSession(requestSessionId, requestOwnerUserId, userMessage.id);
         return;
       }

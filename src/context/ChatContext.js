@@ -544,63 +544,64 @@ export const ChatProvider = ({ children }) => {
 
     if (inFlightRequestsRef.current.has(sessionId)) return { busy: true };
     inFlightRequestsRef.current.add(sessionId);
-    const requestPayload = withRequestId(payload);
-    requestPayloadsRef.current.set(key, { payload: requestPayload, ownerUserId, sessionId });
-    setRequestStates(previous => ({
-      ...previous,
-      [key]: { status: 'pending', sessionId, userMessageId },
-    }));
-    removeMessageFromSession(sessionId, ownerUserId, `assistant-err-${userMessageId}`);
 
-    let data;
     try {
-      data = await vehicleApi.submitDiagnostic(requestPayload, token);
-    } catch (error) {
-      if (
-        identityEpochRef.current.epoch !== ownerEpoch ||
-        String(identityEpochRef.current.userId ?? '') !== String(ownerUserId ?? '')
-      ) {
-        setRequestStates(previous => {
-          const next = { ...previous };
-          delete next[key];
-          return next;
-        });
-        requestPayloadsRef.current.delete(key);
-        return { stale: true };
-      }
-
-      const inputType = requestPayload?.input_type
-        || requestPayload?.diagnosis?.input_type
-        || (requestPayload?.video ? 'video' : requestPayload?.image ? 'image' : requestPayload?.audio ? 'voice' : 'text');
-      const plan = isAuthenticated ? 'free' : 'guest';
-      const errorDetails = getAiErrorMessage({ error, inputType, plan });
-      const errorText = errorDetails.message;
-      const isRetryable = errorDetails.retryable;
-
-      const savedError = addMessageToSession(sessionId, ownerUserId, {
-        id: `assistant-err-${userMessageId}`,
-        role: 'assistant',
-        sender: 'assistant',
-        text: errorText,
-        message: errorText,
-        requestErrorFor: userMessageId,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
+      const requestPayload = withRequestId(payload);
+      requestPayloadsRef.current.set(key, { payload: requestPayload, ownerUserId, sessionId });
       setRequestStates(previous => ({
         ...previous,
-        [key]: {
-          status: savedError ? 'failed' : 'stale',
-          sessionId,
-          userMessageId,
-          error: savedError ? errorText : undefined,
-          retryable: savedError && isRetryable,
-        },
+        [key]: { status: 'pending', sessionId, userMessageId },
       }));
-      if (!savedError) requestPayloadsRef.current.delete(key);
-      return { error };
-    }
+      removeMessageFromSession(sessionId, ownerUserId, `assistant-err-${userMessageId}`);
 
-    try {
+      let data;
+      try {
+        data = await vehicleApi.submitDiagnostic(requestPayload, token);
+      } catch (error) {
+        if (
+          identityEpochRef.current.epoch !== ownerEpoch ||
+          String(identityEpochRef.current.userId ?? '') !== String(ownerUserId ?? '')
+        ) {
+          setRequestStates(previous => {
+            const next = { ...previous };
+            delete next[key];
+            return next;
+          });
+          requestPayloadsRef.current.delete(key);
+          return { stale: true };
+        }
+
+        const inputType = requestPayload?.input_type
+          || requestPayload?.diagnosis?.input_type
+          || (requestPayload?.video ? 'video' : requestPayload?.image ? 'image' : requestPayload?.audio ? 'voice' : 'text');
+        const plan = isAuthenticated ? 'free' : 'guest';
+        const errorDetails = getAiErrorMessage({ error, inputType, plan });
+        const errorText = errorDetails.message;
+        const isRetryable = errorDetails.retryable;
+
+        const savedError = addMessageToSession(sessionId, ownerUserId, {
+          id: `assistant-err-${userMessageId}`,
+          role: 'assistant',
+          sender: 'assistant',
+          text: errorText,
+          message: errorText,
+          requestErrorFor: userMessageId,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        });
+        setRequestStates(previous => ({
+          ...previous,
+          [key]: {
+            status: savedError ? 'failed' : 'stale',
+            sessionId,
+            userMessageId,
+            error: savedError ? errorText : undefined,
+            retryable: savedError && isRetryable,
+          },
+        }));
+        if (!savedError) requestPayloadsRef.current.delete(key);
+        return { error };
+      }
+
       if (
         identityEpochRef.current.epoch !== ownerEpoch ||
         String(identityEpochRef.current.userId ?? '') !== String(ownerUserId ?? '')

@@ -133,15 +133,21 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
     }
   }
 
-  // 6. Temporary Provider Outage / High Demand (503, 504, 429)
+  // 6. Temporary Provider Outage / High Demand (500, 502, 503, 504, 429, ERR_BAD_RESPONSE)
   const isTemporaryIssue =
     status === 503 ||
     status === 504 ||
+    status === 502 ||
+    status === 500 ||
     status === 429 ||
+    error?.code === 'ERR_BAD_RESPONSE' ||
+    error?.code === 'ERR_BAD_REQUEST' ||
     reason === 'AI_SERVICE_BUSY' ||
     reason === 'AI_SERVICE_UNAVAILABLE' ||
     reason === 'GEMINI_OVERLOADED' ||
     reason === 'GEMINI_UNAVAILABLE' ||
+    reason === 'GEMINI_TIMEOUT' ||
+    reason === 'GEMINI_REQUEST_FAILED' ||
     reason === 'QUEUE_TIMEOUT' ||
     reason === 'QUEUE_FULL';
 
@@ -155,8 +161,25 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
   }
 
   // 7. General Fallback
-  const fallbackMessage = message && message.length > 10 && !message.includes('SQL') && !message.includes('Internal')
-    ? message
+  let cleanMessage = typeof message === 'string' ? message.trim() : '';
+
+  if (
+    cleanMessage.includes('SQL') ||
+    cleanMessage.includes('Internal') ||
+    cleanMessage.includes('Exception') ||
+    cleanMessage.includes('Stack') ||
+    cleanMessage.includes('ERR_') ||
+    cleanMessage.includes('Undefined')
+  ) {
+    cleanMessage = '';
+  }
+
+  if (/gemini/i.test(cleanMessage)) {
+    cleanMessage = cleanMessage.replace(/gemini/gi, 'VehiCare AI');
+  }
+
+  const fallbackMessage = cleanMessage && cleanMessage.length > 10
+    ? cleanMessage
     : "VehiCare couldn't complete your request at this time due to a temporary processing issue. Please try again shortly.";
 
   return {

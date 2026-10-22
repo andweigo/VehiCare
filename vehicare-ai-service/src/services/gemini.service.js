@@ -424,7 +424,7 @@ export const normalizeGeminiError = (error) => {
   if (info.isAuthOrClient) {
     return makeError(
       'GEMINI_AUTH_ERROR',
-      'Gemini API authentication failed. Please verify your API key.',
+      'AI service authentication failed. Please verify configuration.',
       401,
       false,
       error
@@ -434,7 +434,7 @@ export const normalizeGeminiError = (error) => {
   if (info.isInvalidArgument) {
     return makeError(
       'GEMINI_INVALID_ARGUMENT',
-      info.message || 'Invalid request parameters sent to Gemini.',
+      'Invalid request parameters. Please verify your input and try again.',
       400,
       false,
       error
@@ -442,26 +442,26 @@ export const normalizeGeminiError = (error) => {
   }
 
   if (info.isModelNotFound) {
-    return makeError('GEMINI_MODEL_UNAVAILABLE', 'The requested Gemini model is unavailable or deprecated.', 503, false, error);
+    return makeError('GEMINI_MODEL_UNAVAILABLE', 'The requested AI diagnostic model is currently unavailable.', 503, false, error);
   }
 
   if (info.isRateLimit) {
-    return makeError('GEMINI_RATE_LIMIT', 'Gemini is rate-limiting requests. Please try again shortly.', 429, true, error);
+    return makeError('GEMINI_RATE_LIMIT', 'AI diagnostic service is currently at capacity. Please try again shortly.', 429, true, error);
   }
 
   if (info.isOverloaded) {
-    return makeError('GEMINI_OVERLOADED', 'Gemini is temporarily overloaded. Please try again shortly.', 503, true, error);
+    return makeError('GEMINI_OVERLOADED', 'Our diagnostic service is experiencing high demand. Please try again in a few moments.', 503, true, error);
   }
 
   if (info.isTimeout) {
-    return makeError('GEMINI_TIMEOUT', 'Gemini analysis timed out. Please try again.', 504, true, error);
+    return makeError('GEMINI_TIMEOUT', 'Diagnostic analysis took longer than expected. Please try again.', 504, true, error);
   }
 
   if (info.isTransient) {
-    return makeError('GEMINI_UNAVAILABLE', 'Gemini is temporarily unavailable. Please try again shortly.', 503, true, error);
+    return makeError('GEMINI_UNAVAILABLE', 'Diagnostic service is temporarily unavailable. Please try again shortly.', 503, true, error);
   }
 
-  return makeError('GEMINI_REQUEST_FAILED', 'Gemini could not complete the request.', 502, false, error);
+  return makeError('GEMINI_REQUEST_FAILED', 'Could not complete the diagnostic assessment at this time. Please try again.', 502, false, error);
 };
 
 let mockGeminiHandler = null;
@@ -662,12 +662,12 @@ export const callGemini = async (params, client = null) => {
             }),
             timeoutMs,
             'GEMINI_TIMEOUT',
-            `Gemini ${media?.mediaType || 'text'} analysis timed out. Please try again.`,
+            `Vehicle ${media?.mediaType || 'diagnostic'} analysis took longer than expected. Please try again.`,
           );
           const textOutput = response?.text;
 
           if (!textOutput || !textOutput.trim()) {
-            throw makeError('INVALID_AI_RESPONSE', 'Gemini returned an empty response.', 502, false);
+            throw makeError('INVALID_AI_RESPONSE', 'Could not generate a response for this vehicle issue. Please try again.', 502, false);
           }
 
           clearModelCooldown(modelName);
@@ -774,10 +774,10 @@ export const callGemini = async (params, client = null) => {
       hasMedia: Boolean(media),
       errorCode: lastError?.code || 'GEMINI_UNAVAILABLE',
     });
-    throw lastError || makeError('GEMINI_UNAVAILABLE', 'Gemini could not complete the request.', 503, true);
+    throw lastError || makeError('GEMINI_UNAVAILABLE', 'Diagnostic service could not complete the request. Please try again.', 503, true);
   } catch (error) {
     if (error?.code && error?.statusCode) throw error;
-    throw makeError('GEMINI_REQUEST_FAILED', 'Gemini could not complete the request.', 502, false, error);
+    throw makeError('GEMINI_REQUEST_FAILED', 'Diagnostic service could not complete the request. Please try again.', 502, false, error);
   } finally {
     await cleanupUploadedFile(ai, uploadedFile, requestId);
   }

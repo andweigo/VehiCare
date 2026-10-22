@@ -1341,7 +1341,7 @@ PROMPT;
                     'cause' => 'Component inspection required',
                     'likelihood' => 'MODERATE',
                     'reason' =>
-                        'Gemini AI was temporarily unavailable, so a definitive diagnosis cannot be made safely.',
+                        'Our diagnostic service was temporarily unavailable, so a definitive diagnosis cannot be made safely at this time.',
                 ],
             ],
 

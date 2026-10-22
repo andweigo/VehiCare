@@ -54,7 +54,8 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
   message = String(message)
     .replace(/AIza[0-9A-Za-z_-]{25,45}/g, '[REDACTED]')
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
-    .replace(/key=[^&\s]+/gi, 'key=[REDACTED]');
+    .replace(/key=[^&\s]+/gi, 'key=[REDACTED]')
+    .replace(/Gemini/gi, 'VehiCare AI');
 
   logger.error('UNHANDLED_EXCEPTION', requestId, {
     errorCode,
