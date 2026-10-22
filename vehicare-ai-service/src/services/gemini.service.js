@@ -102,7 +102,9 @@ export const extractGeminiErrorInfo = (error) => {
   const isOverloaded = status === 503 || lowerCode.includes('unavailable') || lowerMsg.includes('high demand') || lowerMsg.includes('temporarily unavailable') || lowerMsg.includes('overloaded');
   const isTimeout = status === 504 || status === 408 || lowerCode.includes('deadline_exceeded') || lowerCode.includes('gemini_timeout') || lowerCode.includes('etimedout') || lowerMsg.includes('timed out');
   const isModelNotFound = status === 404 || lowerCode.includes('not_found') || lowerMsg.includes('not found') || lowerMsg.includes('no longer available');
-  const isAuthOrClient = !isModelNotFound && (status === 400 || status === 401 || status === 403 || lowerCode.includes('permission_denied') || lowerCode.includes('unauthenticated') || lowerCode.includes('invalid_argument') || lowerMsg.includes('api key not valid'));
+  const isKeyError = lowerMsg.includes('api key not valid') || lowerMsg.includes('api_key_invalid') || lowerCode.includes('api_key_invalid');
+  const isAuthOrClient = !isModelNotFound && (status === 401 || status === 403 || isKeyError || lowerCode.includes('permission_denied') || lowerCode.includes('unauthenticated'));
+  const isInvalidArgument = !isAuthOrClient && !isModelNotFound && (status === 400 || lowerCode.includes('invalid_argument'));
 
   const isTransient = isRateLimit || isOverloaded || isTimeout || status === 500 || status === 502 || ['econnreset', 'eai_again', 'enotfound'].includes(lowerCode);
 
@@ -116,6 +118,7 @@ export const extractGeminiErrorInfo = (error) => {
     isTimeout,
     isModelNotFound,
     isAuthOrClient,
+    isInvalidArgument,
     isTransient,
   };
 };
@@ -419,11 +422,20 @@ export const normalizeGeminiError = (error) => {
   const info = extractGeminiErrorInfo(error);
 
   if (info.isAuthOrClient) {
-    const isKey = info.message.toLowerCase().includes('api key');
     return makeError(
       'GEMINI_AUTH_ERROR',
-      isKey ? 'Gemini API authentication failed. Please verify your API key.' : 'Invalid request to Gemini API.',
-      isKey ? 401 : 400,
+      'Gemini API authentication failed. Please verify your API key.',
+      401,
+      false,
+      error
+    );
+  }
+
+  if (info.isInvalidArgument) {
+    return makeError(
+      'GEMINI_INVALID_ARGUMENT',
+      info.message || 'Invalid request parameters sent to Gemini.',
+      400,
       false,
       error
     );
@@ -567,15 +579,15 @@ export const callGemini = async (params, client = null) => {
       }
 
       const defaultTimeout = fallbackUsed
-        ? (config.gemini.timeouts.fallbackText || 9000)
+        ? (config.gemini.timeouts.fallbackText || 10500)
         : (config.gemini.timeouts[media?.mediaType || 'text'] || config.gemini.timeouts.text);
 
       let timeoutMs;
       if (hasNextModel) {
-        const reserveForNextMs = 8000;
-        timeoutMs = Math.max(3000, Math.min(defaultTimeout, remainingOverallMs - reserveForNextMs));
+        const reserveForNextMs = 10500;
+        timeoutMs = Math.max(10000, Math.min(defaultTimeout, remainingOverallMs - reserveForNextMs));
       } else {
-        timeoutMs = Math.max(2000, Math.min(defaultTimeout, remainingOverallMs - 1200));
+        timeoutMs = Math.max(10000, Math.min(defaultTimeout, remainingOverallMs - 1000));
       }
 
       const maxAttempts = fallbackUsed || media?.mediaType === 'audio' || media?.mediaType === 'video'
@@ -600,6 +612,7 @@ export const callGemini = async (params, client = null) => {
         });
 
         try {
+          const googleDeadlineMs = Math.max(10000, timeoutMs);
           const response = await withTimeout(
             (abortSignal) => ai.models.generateContent({
               model: modelName,
@@ -608,7 +621,7 @@ export const callGemini = async (params, client = null) => {
                 responseMimeType: 'application/json',
                 maxOutputTokens,
                 abortSignal,
-                httpOptions: { timeout: timeoutMs },
+                httpOptions: { timeout: googleDeadlineMs },
               },
             }),
             timeoutMs,

@@ -97,5 +97,10 @@ certs/
 # Generated project structure listing
 /vehicare-structure.txt
 
+# Promotional Media & Build Artifacts (Large Files)
+/VehiCare_Apple_Style_Promo.mp4
+/promo_assets/
+/promo_builder/
+
 !backend/certs/
 !backend/certs/ca.pem
