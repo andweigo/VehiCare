@@ -373,6 +373,7 @@ export default function AskVehiCareScreen({
 }) {
   const { user, isAuthenticated } = useAuth();
   const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
   const { openSidebar } = useSidebar();
   const { t, language } = useLanguage();
   const insets = useSafeAreaInsets();
@@ -2654,55 +2655,138 @@ export default function AskVehiCareScreen({
 
         {/* DRAFT ATTACHED IMAGE OR VIDEO PREVIEW */}
         {attachedImage && (
-          <View style={[styles.draftImageBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={styles.draftImageContainer}>
-              <Image source={{ uri: attachedImage.uri }} style={styles.draftImageThumbnail} />
-              <TouchableOpacity
-                style={styles.removeDraftImageBtn}
-                onPress={() => setAttachedImage(null)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="close" size={14} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.draftImageTextInfo}>
-              <Text style={[styles.draftImageTitle, { color: theme.text }]} numberOfLines={1}>
-                Photo Attached
+          <View
+            style={[
+              styles.draftMediaCard,
+              {
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E2E8F0',
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.draftMediaContainer}
+              activeOpacity={0.85}
+              onPress={() => setFullScreenImage(attachedImage.uri)}
+            >
+              <Image source={{ uri: attachedImage.uri }} style={styles.draftMediaThumbnail} />
+              <View style={styles.draftMediaOverlayBadge}>
+                <Ionicons name="expand" size={11} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.draftMediaTextInfo}>
+              <View style={styles.draftMediaTagRow}>
+                <View
+                  style={[
+                    styles.draftMediaTag,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : '#DCFCE7',
+                    },
+                  ]}
+                >
+                  <Ionicons name="image" size={11} color="#10B981" />
+                  <Text style={[styles.draftMediaTagText, { color: '#10B981' }]}>
+                    PHOTO READY
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.draftMediaTitle, { color: theme.text }]} numberOfLines={1}>
+                {attachedImage.fileName || 'Attached Photo'}
               </Text>
-              <Text style={[styles.draftImageSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                {attachedImage.fileName || 'Image ready to analyze'}
+              <Text style={[styles.draftMediaSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+                Tap thumbnail to view • Ready for diagnosis
               </Text>
             </View>
+
+            <TouchableOpacity
+              style={[
+                styles.removeDraftMediaBtn,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+              ]}
+              onPress={() => setAttachedImage(null)}
+              activeOpacity={0.75}
+              accessibilityLabel="Remove photo"
+            >
+              <Ionicons name="trash-outline" size={15} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         )}
 
         {attachedVideo && (
-          <View style={[styles.draftImageBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.draftMediaCard,
+              {
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E2E8F0',
+              },
+            ]}
+          >
             <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
-              activeOpacity={0.8}
+              style={styles.draftMediaContainer}
+              activeOpacity={0.85}
               onPress={() => setActivePlaybackVideo(attachedVideo.uri)}
             >
-              <View style={styles.draftImageContainer}>
-                <View style={[styles.draftImageThumbnail, { backgroundColor: theme.accent + '22', alignItems: 'center', justifyContent: 'center' }]}>
-                  <Ionicons name="play-circle" size={28} color={theme.accent} />
+              <View
+                style={[
+                  styles.draftMediaThumbnail,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                ]}
+              >
+                <Ionicons name="videocam" size={24} color={theme.accent} />
+                <View style={styles.videoPlayCircle}>
+                  <Ionicons name="play" size={12} color="#FFFFFF" />
                 </View>
-                <TouchableOpacity
-                  style={styles.removeDraftImageBtn}
-                  onPress={() => setAttachedVideo(null)}
-                  activeOpacity={0.8}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.draftMediaTextInfo}
+              activeOpacity={0.85}
+              onPress={() => setActivePlaybackVideo(attachedVideo.uri)}
+            >
+              <View style={styles.draftMediaTagRow}>
+                <View
+                  style={[
+                    styles.draftMediaTag,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(246, 59, 5, 0.15)'
+                        : '#FFF2EE',
+                    },
+                  ]}
                 >
-                  <Ionicons name="close" size={14} color="#FFFFFF" />
-                </TouchableOpacity>
+                  <Ionicons name="videocam" size={11} color={theme.accent} />
+                  <Text style={[styles.draftMediaTagText, { color: theme.accent }]}>
+                    VIDEO ({attachedVideo.fileSizeMb} MB)
+                  </Text>
+                </View>
               </View>
-              <View style={styles.draftImageTextInfo}>
-                <Text style={[styles.draftImageTitle, { color: theme.text }]} numberOfLines={1}>
-                  Video Attached ({attachedVideo.fileSizeMb} MB) — Tap to Preview
-                </Text>
-                <Text style={[styles.draftImageSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                  Duration: {attachedVideo.durationSec}s • {attachedVideo.fileName}
-                </Text>
-              </View>
+              <Text style={[styles.draftMediaTitle, { color: theme.text }]} numberOfLines={1}>
+                {attachedVideo.fileName || 'Attached Video'}
+              </Text>
+              <Text style={[styles.draftMediaSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+                Duration: {attachedVideo.durationSec}s • Tap to play preview
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.removeDraftMediaBtn,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+              ]}
+              onPress={() => setAttachedVideo(null)}
+              activeOpacity={0.75}
+              accessibilityLabel="Remove video"
+            >
+              <Ionicons name="trash-outline" size={15} color="#EF4444" />
             </TouchableOpacity>
           </View>
         )}
@@ -2996,124 +3080,230 @@ export default function AskVehiCareScreen({
 
       {/* MEDIA ATTACHMENT MODAL */}
       {/* ATTACH MEDIA BOTTOM SHEET MODAL */}
+      {/* ATTACH MEDIA MODAL */}
       <Modal
         visible={showMediaPickerModal}
         transparent
-        animationType="slide"
+        animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setShowMediaPickerModal(false)}
       >
-        <View style={styles.sheetOverlay}>
-          <TouchableOpacity
-            style={styles.sheetBackdrop}
-            activeOpacity={1}
+        <View style={styles.mediaModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
             onPress={() => setShowMediaPickerModal(false)}
           />
-
-          <SafeAreaView
-            style={[
-              styles.mediaBottomSheet,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-            ]}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.keyboardWrap}
           >
-            {/* Handle Bar */}
-            <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
-
-            {/* Header Row */}
-            <View style={styles.sheetHeaderRow}>
-              <View style={styles.sheetHeaderLeft}>
-                <View style={[styles.sheetIconWrapper, { backgroundColor: theme.accentSoft }]}>
-                  <Ionicons name="attach" size={22} color={theme.accent} />
+            <View
+              style={[
+                styles.mediaModalCard,
+                {
+                  backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                  borderColor: isDark ? '#262629' : '#E2E8F0',
+                },
+              ]}
+            >
+              {/* Header Row: Badge Pill + Circular X Close Button */}
+              <View style={styles.mediaModalHeaderRow}>
+                <View
+                  style={[
+                    styles.mediaModalBadgePill,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(246, 59, 5, 0.15)'
+                        : '#FFF2EE',
+                    },
+                  ]}
+                >
+                  <Ionicons name="attach" size={13} color={theme.accent} />
+                  <Text style={[styles.mediaModalBadgeText, { color: theme.accent }]}>
+                    ATTACH MEDIA
+                  </Text>
                 </View>
-                <Text style={[styles.sheetTitle, { color: theme.text }]}>Attach Media</Text>
+
+                <Pressable
+                  onPress={() => setShowMediaPickerModal(false)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={[
+                    styles.closeCircleBtn,
+                    { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                  ]}
+                  accessibilityLabel="Close dialog"
+                >
+                  <Ionicons name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+                </Pressable>
               </View>
 
-              <TouchableOpacity
-                style={[styles.sheetCloseBtn, { backgroundColor: theme.surfaceAlt }]}
-                onPress={() => setShowMediaPickerModal(false)}
-              >
-                <Ionicons name="close" size={20} color={theme.text} />
-              </TouchableOpacity>
-            </View>
+              {/* Title & Subtitle */}
+              <Text style={[styles.mediaModalTitle, { color: theme.text }]}>
+                Upload Diagnostic Media
+              </Text>
+              <Text style={[styles.mediaModalSubtitle, { color: theme.textSecondary }]}>
+                Attach photos or video of symptoms, dash indicators, or parts.
+              </Text>
 
-            <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>
-              Upload a photo or short video of the symptom, sound, or component.
-            </Text>
+              <View
+                style={[
+                  styles.mediaModalDivider,
+                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                ]}
+              />
 
-            {/* PHOTO SECTION */}
-            <Text style={[styles.mediaSectionLabel, { color: theme.accent }]}>PHOTO</Text>
-            <View style={styles.mediaGroupContainer}>
-              <TouchableOpacity
-                style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                activeOpacity={0.75}
-                onPress={() => handleMediaOption(capturePhoto)}
-              >
-                <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
-                  <Ionicons name="camera" size={20} color={theme.accent} />
-                </View>
-                <View style={styles.mediaOptionTextContainer}>
-                  <Text style={[styles.mediaOptionTitle, { color: theme.text }]}>Take Photo</Text>
-                  <Text style={[styles.mediaOptionSub, { color: theme.textSecondary }]}>Capture a picture using camera</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                activeOpacity={0.75}
-                onPress={() => handleMediaOption(selectPhoto)}
-              >
-                <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
-                  <Ionicons name="images" size={20} color={theme.accent} />
-                </View>
-                <View style={styles.mediaOptionTextContainer}>
-                  <Text style={[styles.mediaOptionTitle, { color: theme.text }]}>Choose Photo</Text>
-                  <Text style={[styles.mediaOptionSub, { color: theme.textSecondary }]}>Select an image from gallery</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* VIDEO SECTION */}
-            <Text style={[styles.mediaSectionLabel, { color: theme.accent, marginTop: 14 }]}>VIDEO</Text>
-            <View style={styles.mediaGroupContainer}>
-              <TouchableOpacity
-                style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                activeOpacity={0.75}
-                onPress={() => handleMediaOption(captureVideo)}
-              >
-                <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
-                  <Ionicons name="videocam" size={20} color={theme.accent} />
-                </View>
-                <View style={styles.mediaOptionTextContainer}>
-                  <Text style={[styles.mediaOptionTitle, { color: theme.text }]}>Record Video</Text>
-                  <Text style={[styles.mediaOptionSub, { color: theme.textSecondary }]}>
-                    Record up to {usageStats?.video?.max_duration_seconds || 30}s video using camera
+              {/* 2x2 Option Grid */}
+              <View style={styles.mediaOptionGrid}>
+                {/* 1. Take Photo */}
+                <TouchableOpacity
+                  style={[
+                    styles.mediaGridCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#262629' : '#E2E8F0',
+                    },
+                  ]}
+                  activeOpacity={0.75}
+                  onPress={() => handleMediaOption(capturePhoto)}
+                >
+                  <View
+                    style={[
+                      styles.mediaGridIconBox,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(246, 59, 5, 0.15)'
+                          : '#FFF2EE',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="camera" size={20} color={theme.accent} />
+                  </View>
+                  <Text style={[styles.mediaGridTitle, { color: theme.text }]}>
+                    Take Photo
                   </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.mediaOptionCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                activeOpacity={0.75}
-                onPress={() => handleMediaOption(selectVideo)}
-              >
-                <View style={[styles.optionIconBox, { backgroundColor: theme.accentSoft }]}>
-                  <Ionicons name="film" size={20} color={theme.accent} />
-                </View>
-                <View style={styles.mediaOptionTextContainer}>
-                  <Text style={[styles.mediaOptionTitle, { color: theme.text }]}>Choose Video</Text>
-                  <Text style={[styles.mediaOptionSub, { color: theme.textSecondary }]}>
-                    Up to {usageStats?.video?.max_size_mb || 15} MB • {usageStats?.video?.max_duration_seconds || 30} seconds
+                  <Text style={[styles.mediaGridSubtitle, { color: theme.textSecondary }]}>
+                    Camera snap
                   </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
+                </TouchableOpacity>
+
+                {/* 2. Choose Photo */}
+                <TouchableOpacity
+                  style={[
+                    styles.mediaGridCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#262629' : '#E2E8F0',
+                    },
+                  ]}
+                  activeOpacity={0.75}
+                  onPress={() => handleMediaOption(selectPhoto)}
+                >
+                  <View
+                    style={[
+                      styles.mediaGridIconBox,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(245, 158, 11, 0.15)'
+                          : '#FEF3C7',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="images" size={20} color="#F59E0B" />
+                  </View>
+                  <Text style={[styles.mediaGridTitle, { color: theme.text }]}>
+                    Photo Gallery
+                  </Text>
+                  <Text style={[styles.mediaGridSubtitle, { color: theme.textSecondary }]}>
+                    Select from library
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 3. Record Video */}
+                <TouchableOpacity
+                  style={[
+                    styles.mediaGridCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#262629' : '#E2E8F0',
+                    },
+                  ]}
+                  activeOpacity={0.75}
+                  onPress={() => handleMediaOption(captureVideo)}
+                >
+                  <View
+                    style={[
+                      styles.mediaGridIconBox,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(140, 123, 255, 0.15)'
+                          : '#F3E8FF',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="videocam" size={20} color="#8C7BFF" />
+                  </View>
+                  <Text style={[styles.mediaGridTitle, { color: theme.text }]}>
+                    Record Video
+                  </Text>
+                  <Text style={[styles.mediaGridSubtitle, { color: theme.textSecondary }]}>
+                    Max {usageStats?.video?.max_duration_seconds || 30}s
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 4. Choose Video */}
+                <TouchableOpacity
+                  style={[
+                    styles.mediaGridCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#262629' : '#E2E8F0',
+                    },
+                  ]}
+                  activeOpacity={0.75}
+                  onPress={() => handleMediaOption(selectVideo)}
+                >
+                  <View
+                    style={[
+                      styles.mediaGridIconBox,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(16, 185, 129, 0.15)'
+                          : '#DCFCE7',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="film" size={20} color="#10B981" />
+                  </View>
+                  <Text style={[styles.mediaGridTitle, { color: theme.text }]}>
+                    Video Gallery
+                  </Text>
+                  <Text style={[styles.mediaGridSubtitle, { color: theme.textSecondary }]}>
+                    Max {usageStats?.video?.max_size_mb || 15} MB
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Footer Note */}
+              <View
+                style={[
+                  styles.mediaModalTipRow,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                  },
+                ]}
+              >
+                <Ionicons name="shield-checkmark" size={13} color={theme.accent} />
+                <Text
+                  style={[
+                    styles.mediaModalTipText,
+                    { color: theme.textSecondary },
+                  ]}
+                >
+                  Media is securely inspected by VehiCare AI diagnostic models.
+                </Text>
+              </View>
             </View>
-          </SafeAreaView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -3697,7 +3887,7 @@ const styles = StyleSheet.create({
     paddingBottom: 7,
   },
 
-  /* DRAFT IMAGE ATTACHMENT */
+  /* DRAFT MEDIA ATTACHMENT */
   draftImageBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3705,6 +3895,88 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     gap: 12,
+  },
+  draftMediaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 14,
+    marginBottom: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  draftMediaContainer: {
+    position: 'relative',
+  },
+  draftMediaThumbnail: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+  },
+  draftMediaOverlayBadge: {
+    position: 'absolute',
+    bottom: 3,
+    right: 3,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayCircle: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftMediaTextInfo: {
+    flex: 1,
+  },
+  draftMediaTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  draftMediaTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    gap: 4,
+  },
+  draftMediaTagText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9,
+    letterSpacing: 0.6,
+  },
+  draftMediaTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  draftMediaSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10.5,
+    marginTop: 1.5,
+  },
+  removeDraftMediaBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   draftImageContainer: {
     position: 'relative',
@@ -3776,103 +4048,108 @@ const styles = StyleSheet.create({
     height: '80%',
   },
 
-  /* MEDIA PICKER BOTTOM SHEET MODAL */
-  sheetOverlay: {
+  /* MEDIA PICKER MODAL */
+  mediaModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mediaBottomSheet: {
+  mediaModalCard: {
     width: '100%',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 24,
-    borderTopWidth: 1,
+    maxWidth: 390,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
-  sheetHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
-    opacity: 0.6,
-  },
-  sheetHeaderRow: {
+  mediaModalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 10,
   },
-  sheetHeaderLeft: {
+  mediaModalBadgePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 999,
+    gap: 6,
   },
-  sheetIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 20,
-  },
-  sheetCloseBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 16,
-  },
-  mediaSectionLabel: {
+  mediaModalBadgeText: {
     fontFamily: 'Inter-Bold',
     fontSize: 10,
     letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 8,
   },
-  mediaGroupContainer: {
-    gap: 8,
+  mediaModalTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    lineHeight: 23,
+    marginBottom: 3,
   },
-  mediaOptionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 13,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-  },
-  optionIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mediaOptionTextContainer: {
-    flex: 1,
-  },
-  mediaOptionTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 14.5,
-  },
-  mediaOptionSub: {
+  mediaModalSubtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  mediaModalDivider: {
+    height: 1,
+    marginBottom: 14,
+  },
+  mediaOptionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  mediaGridCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    alignItems: 'center',
+    gap: 4,
+  },
+  mediaGridIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  mediaGridTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  mediaGridSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+    textAlign: 'center',
+  },
+  mediaModalTipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    gap: 6,
     marginTop: 2,
+  },
+  mediaModalTipText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10.5,
+    flex: 1,
+    lineHeight: 14,
   },
 
   /* QUICK REPLY PILLS ABOVE INPUT */

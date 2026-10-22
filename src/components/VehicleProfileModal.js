@@ -1,16 +1,17 @@
+import React from 'react';
 import {
-    Modal,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { getDisplayValue, getVehicleDisplayName } from '../utils/vehicleDisplay';
-
-const ORANGE = '#F63B05';
 
 const getVehicleIconName = vehicleTypeValue => {
   let typeValue = vehicleTypeValue;
@@ -49,7 +50,14 @@ const getVehicleIconName = vehicleTypeValue => {
     return 'local-shipping';
   }
 
-  if (text.includes('car') || text.includes('sedan') || text.includes('suv') || text.includes('hatch') || text.includes('coupe') || text.includes('mpv')) {
+  if (
+    text.includes('car') ||
+    text.includes('sedan') ||
+    text.includes('suv') ||
+    text.includes('hatch') ||
+    text.includes('coupe') ||
+    text.includes('mpv')
+  ) {
     return 'directions-car';
   }
 
@@ -68,6 +76,8 @@ const VehicleProfileModal = ({
   onSetActive,
 }) => {
   const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
+
   const vehicleName = getVehicleDisplayName(vehicleProfile, 'Your Vehicle');
   const vehicleYear = getDisplayValue(
     vehicleProfile?.vehicle_year ?? vehicleProfile?.vehicleYear ?? vehicleProfile?.custom_year,
@@ -85,113 +95,272 @@ const VehicleProfileModal = ({
     'Unknown',
   );
 
+  const isActive = Boolean(vehicleProfile?.isActive);
+  const isArchived = Boolean(vehicleProfile?.isArchived);
+
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="overFullScreen"
+      animationType="fade"
       statusBarTranslucent
       transparent
       onRequestClose={onClose}
     >
-      <View style={[styles.overlay, { backgroundColor: theme.modalOverlay }]}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-
-        <SafeAreaView style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <View style={[styles.iconWrapper, { backgroundColor: theme.accentSoft }]}>
-                <Icon name={vehicleIcon} size={26} color={theme.accent} />
+      <View style={styles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardWrap}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E2E8F0',
+              },
+            ]}
+          >
+            {/* Header Row: Badge Pill + Circular X Close Button */}
+            <View style={styles.headerRow}>
+              <View
+                style={[
+                  styles.badgePill,
+                  {
+                    backgroundColor: isDark
+                      ? 'rgba(246, 59, 5, 0.15)'
+                      : '#FFF2EE',
+                  },
+                ]}
+              >
+                <Icon name={vehicleIcon} size={14} color={theme.accent} />
+                <Text style={[styles.badgeText, { color: theme.accent }]}>
+                  {isArchived ? 'ARCHIVED' : isActive ? 'ACTIVE VEHICLE' : 'SAVED PROFILE'}
+                </Text>
               </View>
 
-              {isPremium && !vehicleProfile?.isArchived && !vehicleProfile?.isActive && mode !== 'dashboard' && (
-                <TouchableOpacity
-                  style={[styles.setActiveHeaderButton, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                  onPress={onSetActive}
-                >
-                  <Icon name="verified" size={18} color={theme.accent} />
-                  <Text style={[styles.setActiveHeaderText, { color: theme.accent }]}>Set Active</Text>
-                </TouchableOpacity>
-              )}
+              <Pressable
+                onPress={onClose}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={[
+                  styles.closeCircleBtn,
+                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                ]}
+                accessibilityLabel="Close dialog"
+              >
+                <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+              </Pressable>
             </View>
 
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Icon name="close" size={24} color={theme.text} />
-            </TouchableOpacity>
-          </View>
+            {/* Title & Subtitle */}
+            <Text style={[styles.title, { color: theme.text }]}>Your Vehicle Setup</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Review the vehicle specifications used for diagnostics and maintenance.
+            </Text>
 
-          <Text style={[styles.title, { color: theme.text }]}>Your Vehicle Setup</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Review the full profile used to personalize VehiCare recommendations.
-          </Text>
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+              ]}
+            />
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Vehicle</Text>
-            <Text style={[styles.fieldValue, { color: theme.text }]}>{vehicleName}</Text>
-          </View>
+            {/* Vehicle Hero Display */}
+            <View
+              style={[
+                styles.vehicleHeroBox,
+                {
+                  backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                  borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.iconWrapper,
+                  {
+                    backgroundColor: isDark
+                      ? 'rgba(246, 59, 5, 0.16)'
+                      : '#FFF2EE',
+                  },
+                ]}
+              >
+                <Icon name={vehicleIcon} size={24} color={theme.accent} />
+              </View>
+              <View style={styles.vehicleHeroInfo}>
+                <View style={styles.activeTagRow}>
+                  <View
+                    style={[
+                      styles.activeDot,
+                      { backgroundColor: isArchived ? '#F59E0B' : isActive ? '#10B981' : theme.textSecondary },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.activeTagText,
+                      { color: isArchived ? '#F59E0B' : isActive ? '#10B981' : theme.textSecondary },
+                    ]}
+                  >
+                    {isArchived ? 'ARCHIVED VEHICLE' : isActive ? 'CURRENTLY ACTIVE' : 'INACTIVE VEHICLE'}
+                  </Text>
+                </View>
+                <Text style={[styles.vehicleHeroName, { color: theme.text }]} numberOfLines={1}>
+                  {vehicleName}
+                </Text>
+              </View>
+            </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Type</Text>
-            <Text style={[styles.fieldValue, { color: theme.text }]}>{vehicleTypeLabel}</Text>
-          </View>
+            {/* Specs 2x2 Grid */}
+            <View style={styles.specsGrid}>
+              <View
+                style={[
+                  styles.specTile,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#262629' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>TYPE</Text>
+                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
+                  {vehicleTypeLabel}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Brand</Text>
-            <Text style={[styles.fieldValue, { color: theme.text }]}>{vehicleBrand}</Text>
-          </View>
+              <View
+                style={[
+                  styles.specTile,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#262629' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>YEAR</Text>
+                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
+                  {vehicleYear}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Model</Text>
-            <Text style={[styles.fieldValue, { color: theme.text }]}>{vehicleModel}</Text>
-          </View>
+              <View
+                style={[
+                  styles.specTile,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#262629' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>BRAND</Text>
+                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
+                  {vehicleBrand}
+                </Text>
+              </View>
 
-          <View style={[styles.fieldRow, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Year</Text>
-            <Text style={[styles.fieldValue, { color: theme.text }]}>{vehicleYear}</Text>
-          </View>
+              <View
+                style={[
+                  styles.specTile,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#262629' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>MODEL</Text>
+                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
+                  {vehicleModel}
+                </Text>
+              </View>
+            </View>
 
-          <View style={styles.actionsRow}>
+            {/* Action Buttons */}
             {mode === 'dashboard' ? (
               <TouchableOpacity
-                style={[styles.actionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                onPress={onManageVehicles || onCorrectVehicle}
+                style={[styles.primaryActionBtn, { backgroundColor: theme.accent }]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  onClose?.();
+                  if (typeof onManageVehicles === 'function') {
+                    onManageVehicles();
+                  } else if (typeof onCorrectVehicle === 'function') {
+                    onCorrectVehicle();
+                  }
+                }}
               >
-                <Icon name="settings" size={20} color={theme.accent} />
-                <Text style={[styles.actionCardText, { color: theme.text }]}>Manage My Vehicles</Text>
+                <Icon name="directions-car" size={17} color="#FFFFFF" />
+                <Text style={styles.primaryActionBtnText}>Manage My Vehicles</Text>
               </TouchableOpacity>
             ) : (
-              <>
-                <View style={styles.actionGrid}>
-                  {!vehicleProfile?.isArchived && (
-                    <TouchableOpacity
-                      style={[styles.actionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                      onPress={onCorrectVehicle}
-                    >
-                      <Icon name="edit" size={20} color={theme.accent} />
-                      <Text style={[styles.actionCardText, { color: theme.text }]}>Correct Info</Text>
-                    </TouchableOpacity>
-                  )}
+              <View style={styles.actionsContainer}>
+                {isPremium && !isArchived && !isActive && (
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, { backgroundColor: theme.accent, marginBottom: 8 }]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      onClose?.();
+                      onSetActive?.();
+                    }}
+                  >
+                    <Icon name="check-circle" size={17} color="#FFFFFF" />
+                    <Text style={styles.primaryActionBtnText}>Set as Active Vehicle</Text>
+                  </TouchableOpacity>
+                )}
 
-                  {isPremium && !vehicleProfile?.isArchived && (
+                {!isArchived && (
+                  <View style={styles.multiActionRow}>
                     <TouchableOpacity
-                      style={[styles.actionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                      onPress={onArchiveVehicle}
+                      style={[
+                        styles.secondaryActionBtn,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                        },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        onClose?.();
+                        onCorrectVehicle?.();
+                      }}
                     >
-                      <Icon name="archive" size={20} color={theme.accent} />
-                      <Text style={[styles.actionCardText, { color: theme.text }]}>Archive</Text>
+                      <Icon name="edit" size={16} color={theme.accent} />
+                      <Text style={[styles.secondaryActionBtnText, { color: theme.text }]}>
+                        Correct Info
+                      </Text>
                     </TouchableOpacity>
-                  )}
-                </View>
 
-                {vehicleProfile?.isArchived && (
+                    {isPremium && (
+                      <TouchableOpacity
+                        style={[
+                          styles.secondaryActionBtn,
+                          {
+                            backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                            borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          },
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          onClose?.();
+                          onArchiveVehicle?.();
+                        }}
+                      >
+                        <Icon name="archive" size={16} color={theme.textSecondary} />
+                        <Text style={[styles.secondaryActionBtnText, { color: theme.textSecondary }]}>
+                          Archive
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {isArchived && (
                   <Text style={[styles.archivedActionText, { color: theme.textSecondary }]}>
-                    Restore this vehicle to submit a correction request.
+                    Restore this vehicle to submit a correction request or set active.
                   </Text>
                 )}
-              </>
+              </View>
             )}
           </View>
-        </SafeAreaView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -201,125 +370,177 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
+  keyboardWrap: {
+    width: '100%',
+    maxWidth: 390,
+    alignItems: 'center',
   },
   modalCard: {
     width: '100%',
-    backgroundColor: '#0A0A0A',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 28,
-    borderColor: '#292929',
-    borderTopWidth: 1,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
   headerRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 10,
   },
-  headerLeft: {
+  badgePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  iconWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(246, 59, 5, 0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  setActiveHeaderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 4.5,
+    borderRadius: 999,
+    gap: 6,
+  },
+  badgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  setActiveHeaderText: {
-    color: ORANGE,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    lineHeight: 23,
+    marginBottom: 3,
   },
   subtitle: {
-    color: '#D3B8AE',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 22,
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 12,
   },
-  fieldRow: {
-    width: '100%',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#292929',
+  divider: {
+    height: 1,
+    marginBottom: 14,
   },
-  fieldLabel: {
-    color: '#777777',
-    fontSize: 12,
-    marginBottom: 6,
-    letterSpacing: 0.4,
-  },
-  fieldValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  actionsRow: {
-    marginTop: 26,
-    width: '100%',
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  actionCard: {
+
+  vehicleHeroBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flexBasis: '48%',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 14,
+    padding: 13,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    gap: 12,
+    marginBottom: 12,
   },
-  actionCardText: {
-    color: '#FFFFFF',
+  iconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleHeroInfo: {
+    flex: 1,
+  },
+  activeTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 3,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  activeTagText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9,
+    letterSpacing: 0.6,
+  },
+  vehicleHeroName: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    lineHeight: 19,
+  },
+
+  specsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  specTile: {
+    flexBasis: '48.5%',
+    flexGrow: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+    borderWidth: 1,
+  },
+  specLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 8.5,
+    letterSpacing: 0.7,
+    marginBottom: 2,
+  },
+  specValue: {
+    fontFamily: 'Outfit-Bold',
     fontSize: 13,
-    fontWeight: '600',
-    flexShrink: 1,
+    lineHeight: 17,
+  },
+
+  actionsContainer: {
+    width: '100%',
+  },
+  primaryActionBtn: {
+    width: '100%',
+    minHeight: 44,
+    borderRadius: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryActionBtnText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
+    color: '#FFFFFF',
+  },
+  multiActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  secondaryActionBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12.5,
   },
   archivedActionText: {
-    color: '#CCCCCC',
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 14,
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    textAlign: 'center',
+    lineHeight: 16,
+    paddingVertical: 6,
   },
 });
 
