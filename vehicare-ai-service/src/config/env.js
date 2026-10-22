@@ -40,7 +40,7 @@ export const config = {
       video: readInteger('AI_VIDEO_TIMEOUT', 45000),
     },
     maxOutputTokens: {
-      diagnostic: readInteger('AI_MAX_OUTPUT_TOKENS_DIAGNOSTIC', 2048),
+      diagnostic: readInteger('AI_MAX_OUTPUT_TOKENS_DIAGNOSTIC', 4096),
       conversation: readInteger('AI_MAX_OUTPUT_TOKENS_CONVERSATION', 1024),
     },
     mediaProcessingTimeoutMs: readInteger('AI_MEDIA_PROCESSING_TIMEOUT', 90000),

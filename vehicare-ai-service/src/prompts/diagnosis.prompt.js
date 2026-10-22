@@ -291,7 +291,7 @@ FOLLOW-UP CONTINUITY INSTRUCTIONS:
     ? `SUBSCRIPTION TIER: PREMIUM — ADVANCED VEHICLE CARE
 - Provide deeper diagnostic reasoning with specific supporting evidence for each plausible cause.
 - Provide 2-3 adaptive clarification questions with multiple-choice options to help narrow down the cause before jumping to repairs.
-- Provide comprehensive step-by-step repair guidance in "repair_guidance":
+- Provide comprehensive step-by-step repair guidance in "repair_guidance" (concise, maximum 4-6 clear actionable steps):
   {
     "difficulty": "Beginner" | "Intermediate" | "Advanced" | "Professional Only",
     "diy_friendly": true | false,
@@ -392,17 +392,18 @@ VEHICLE TYPE AWARENESS & DOMAIN ACCURACY:
 
 MAINTENANCE TASKS vs SMART RECOMMENDATIONS SEPARATION:
 - "maintenance_tasks": Action-oriented records and scheduling ("What needs to be inspected, serviced, repaired, or monitored, and when?").
-  * Issue-related inspections and service tasks.
+  * Issue-related inspections and service tasks. Provide at most 2-3 essential tasks directly relevant to the reported issue.
   * For unconfirmed AI diagnoses, ALWAYS mark as an inspection (is_inspection: true), NEVER an unverified confirmed repair.
   * Provide practical urgency: "Immediate", "Urgent", "Moderate", or "Routine".
   * Assign an appropriate service_type (e.g. "Electrical System Inspection", "Brake System Check", "Drivetrain Inspection").
-  * MUST ANSWER THE 5 QUESTIONS FOR EVERY TASK:
+  * MUST ANSWER THE 5 QUESTIONS FOR EVERY TASK (keep each text field to 1-2 concise sentences):
     1. "what_to_do": Short, specific action (e.g. "Check your engine oil level").
     2. "why_it_matters": 1-2 plain-language sentences on the benefit.
     3. "when_due": Clear interval or condition-based trigger supported by vehicle guidance (e.g. "Check every 1,000 km or if oil warning appears"). NEVER invent arbitrary dates or fake mileage numbers!
     4. "skill_level": "Beginner-friendly", "Basic skills", or "Mechanic recommended".
     5. "completion_check": Simple completion check (e.g. "Oil level sits between MIN and MAX marks on dipstick").
 - "smart_recommendations": Educational preventive guidance ("What can the user do to prevent recurrence or reduce related risks?").
+  * Provide at most 2-3 recommendations total (at most 1 per category section). Keep text concise (1-2 sentences).
   * MUST CATEGORIZE INTO ONE OF 3 SECTIONS in "category_section":
     1. "do_this_now": High relevance — urgent safety checks, overdue maintenance, or active unresolved diagnostic issues.
     2. "coming_up_soon": Scheduled routine maintenance approaching due interval or condition based on vehicle type and usage.
@@ -421,7 +422,8 @@ CONFIDENCE SCORING:
 - 0-29: Insufficient information
 
 POSSIBLE CAUSES:
-- Maximum 5 causes ordered by diagnostic likelihood.
+- Maximum 3 plausible causes ordered by diagnostic likelihood.
+- Keep each cause's reason concise (1-2 clear, plain-language sentences).
 - Each cause MUST have likelihood (HIGH, MEDIUM, LOW) and likelihood_score (0-100).
 
 RESPONSE FORMAT:

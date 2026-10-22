@@ -278,7 +278,33 @@ export const processDiagnosisRequest = async (payload) => {
       const geminiDurationMs = geminiResponse.durationMs;
 
       // 8. Parse JSON Output
-      const jsonObject = parseAndCleanJson(rawResponseText);
+      let jsonObject = parseAndCleanJson(rawResponseText);
+
+      if (!jsonObject) {
+        // Last-resort salvage: If raw text has meaningful automotive feedback, return it as conversation
+        if (typeof rawResponseText === 'string' && rawResponseText.trim().length > 30) {
+          logger.warn('AI_JSON_PARSE_SALVAGING_RAW_TEXT', requestId, {
+            inputType,
+            hasMedia: Boolean(mediaBase64),
+            model: modelUsed,
+            rawLength: rawResponseText.length,
+          });
+          const cleanText = rawResponseText
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/, '')
+            .replace(/[{}"[\]]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (cleanText.length > 20) {
+            jsonObject = {
+              type: 'conversation',
+              status: 'conversation',
+              response: cleanText.slice(0, 3000),
+            };
+          }
+        }
+      }
 
       if (!jsonObject) {
         logger.warn('AI_JSON_PARSE_FAILED', requestId, {
