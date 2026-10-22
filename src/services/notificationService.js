@@ -95,18 +95,30 @@ export const fetchNotifications = async () => {
   }
 };
 
+let lastSynchronizedCount = null;
+
+export const resetNotificationSyncState = () => {
+  lastSynchronizedCount = null;
+};
+
 export const getUnreadCount = async () => {
   try {
     const token = await getToken();
     if (!token || String(token).startsWith('guest')) {
-      setDeviceBadgeCount(0);
+      if (lastSynchronizedCount !== 0) {
+        lastSynchronizedCount = 0;
+        setDeviceBadgeCount(0).catch(() => {});
+      }
       return 0;
     }
 
     const response = await apiClient.get('/notifications/unread-count');
     const count = response?.data?.data?.unread_count;
     if (Number.isInteger(count) && count >= 0) {
-      setDeviceBadgeCount(count).catch(() => {});
+      if (count !== lastSynchronizedCount) {
+        lastSynchronizedCount = count;
+        setDeviceBadgeCount(count).catch(() => {});
+      }
       return count;
     }
     return null;
@@ -122,6 +134,7 @@ export const markAsRead = async id => {
   try {
     await apiClient.patch(`/notifications/${id}/read`);
     DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
+    lastSynchronizedCount = null;
     const unreadCount = await getUnreadCount();
     if (typeof unreadCount === 'number') {
       await setDeviceBadgeCount(unreadCount);
@@ -136,7 +149,8 @@ export const markAsRead = async id => {
 export const markAllAsRead = async () => {
   try {
     await apiClient.patch('/notifications/read-all');
-    setDeviceBadgeCount(0);
+    lastSynchronizedCount = 0;
+    setDeviceBadgeCount(0).catch(() => {});
     DeviceEventEmitter.emit(NOTIFICATION_READ_STATE_CHANGED);
     return true;
   } catch (err) {
@@ -180,6 +194,7 @@ export default {
   fetchNotifications,
   getUnreadCount,
   setDeviceBadgeCount,
+  resetNotificationSyncState,
   markAsRead,
   markAllAsRead,
   getNotificationPreferences,

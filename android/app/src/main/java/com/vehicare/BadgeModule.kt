@@ -14,16 +14,37 @@ import com.facebook.react.bridge.ReactMethod
 
 class BadgeModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
-    private var lastReportedCount: Int = -1
-
     companion object {
         const val MODULE_NAME = "VehiCareBadge"
         const val CHANNEL_ID = "vehicare_notifications_channel_v3"
         const val CHANNEL_NAME = "VehiCare Push Notifications"
         const val NOTIFICATION_ID = 1001
+
+        private const val PREFS_NAME = "VehiCareNotificationPrefs"
+        private const val KEY_LAST_ALERTED_COUNT = "last_alerted_count"
+
+        @Volatile
+        private var staticLastAlertedCount: Int = -1
     }
 
     override fun getName(): String = MODULE_NAME
+
+    private fun getPersistedAlertedCount(): Int {
+        if (staticLastAlertedCount >= 0) {
+            return staticLastAlertedCount
+        }
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val count = prefs.getInt(KEY_LAST_ALERTED_COUNT, 0)
+        staticLastAlertedCount = count
+        return count
+    }
+
+    private fun setPersistedAlertedCount(count: Int) {
+        val safe = if (count < 0) 0 else count
+        staticLastAlertedCount = safe
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(KEY_LAST_ALERTED_COUNT, safe).apply()
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -47,17 +68,33 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val notificationManager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             if (count <= 0) {
-                lastReportedCount = 0
+                setPersistedAlertedCount(0)
                 notificationManager.cancel(NOTIFICATION_ID)
                 promise.resolve(true)
                 return
             }
 
-            if (count == lastReportedCount) {
+            val persisted = getPersistedAlertedCount()
+
+            // If the count has not increased, DO NOT re-alert.
+            // This prevents repeating push vibrations/sounds on 10s polling or app resume.
+            if (count <= persisted) {
                 promise.resolve(true)
                 return
             }
-            lastReportedCount = count
+
+            // On Android M+, check if notification is already actively visible in the drawer
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val activeNotifications = notificationManager.activeNotifications
+                val isAlreadyActive = activeNotifications.any { it.id == NOTIFICATION_ID }
+                if (isAlreadyActive && count <= persisted) {
+                    promise.resolve(true)
+                    return
+                }
+            }
+
+            // Genuine new notification arrived (count > persisted). Alert once!
+            setPersistedAlertedCount(count)
 
             createNotificationChannel()
 
@@ -93,7 +130,7 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
     @ReactMethod
     fun clearBadge(promise: Promise) {
-        lastReportedCount = 0
+        setPersistedAlertedCount(0)
         setBadgeCount(0, promise)
     }
 }
