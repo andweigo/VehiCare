@@ -83,6 +83,7 @@ class DiagnosticController extends Controller
         Vehicle $vehicle,
         Diagnostic $diagnostic
     ): void {
+        $createdTasks = [];
         foreach ($diagnostic->maintenance_tasks ?? [] as $task) {
             $taskTitle = is_string($task) ? $task : ($task['title'] ?? '');
             if (! is_string($taskTitle) || trim($taskTitle) === '') {
@@ -164,6 +165,17 @@ class DiagnosticController extends Controller
                 'cost' => 0,
                 'notes' => $notes,
             ]);
+
+            $createdTasks[] = $cleanTitle;
+        }
+
+        if (!empty($createdTasks)) {
+            try {
+                $primaryTask = $createdTasks[0];
+                $user->notify(new \App\Notifications\MaintenanceRecommendationNotification($vehicle, $primaryTask, $diagnostic));
+            } catch (\Throwable $e) {
+                Log::warning('[DiagnosticController] Maintenance notification delivery failed: ' . $e->getMessage());
+            }
         }
     }
 

@@ -342,7 +342,7 @@ const normalizeHistoryItem = item => {
   };
 };
 
-const HistoryScreen = ({ navigation }) => {
+const HistoryScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const { openSidebar } = useSidebar();
@@ -364,6 +364,41 @@ const HistoryScreen = ({ navigation }) => {
 
   const [sortVisible, setSortVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+
+  const targetDiagnosticId = route?.params?.selectedDiagnosticId || route?.params?.diagnosticId;
+  const initialFilter = route?.params?.filter;
+
+  useEffect(() => {
+    if (initialFilter) {
+      setFilter(initialFilter);
+    }
+  }, [initialFilter]);
+
+  useEffect(() => {
+    if (!targetDiagnosticId) return;
+
+    const targetIdStr = String(targetDiagnosticId);
+    const match = history.find(item => {
+      const id = String(item.id || '');
+      const diagId = String(item.diagnosticId || item.diagnostic_id || item.data?.diagnostic_id || item.data?.id || '');
+      return id === targetIdStr || diagId === targetIdStr;
+    });
+
+    if (match) {
+      setSelectedItem(match);
+    } else {
+      vehicleApi.getDiagnosticsHistory()
+        .then(items => {
+          const found = items.find(d => String(d.id) === targetIdStr);
+          if (found) {
+            setSelectedItem(normalizeHistoryItem(found));
+          }
+        })
+        .catch(err => {
+          console.warn('Failed to load targeted diagnostic history item:', err?.message);
+        });
+    }
+  }, [targetDiagnosticId, history]);
 
   const activeVehicle = useMemo(
     () =>

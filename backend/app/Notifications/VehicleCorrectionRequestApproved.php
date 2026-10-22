@@ -16,6 +16,13 @@ class VehicleCorrectionRequestApproved extends Notification
 
     public function via($notifiable)
     {
+        try {
+            $prefs = \App\Models\UserNotificationPreference::where('user_id', $notifiable->id)->first();
+            if ($prefs && (!$prefs->in_app_notifications || !$prefs->vehicle_updates || !$prefs->vehicle_edit_requests)) {
+                return [];
+            }
+        } catch (\Throwable $e) {}
+
         return ['database'];
     }
 

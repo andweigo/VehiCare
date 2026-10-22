@@ -5,6 +5,7 @@ namespace App\Notifications;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use App\Models\Diagnostic;
+use App\Models\UserNotificationPreference;
 
 class HighSeverityDiagnosticAlert extends Notification
 {
@@ -19,6 +20,23 @@ class HighSeverityDiagnosticAlert extends Notification
 
     public function via($notifiable): array
     {
+        try {
+            $prefs = UserNotificationPreference::where('user_id', $notifiable->id)->first();
+            if ($prefs) {
+                if (!$prefs->in_app_notifications) {
+                    return [];
+                }
+                if ($this->diagnostic->severity === 'CRITICAL' && !$prefs->critical_alerts) {
+                    return [];
+                }
+                if ($this->diagnostic->severity === 'HIGH' && !$prefs->high_severity_alerts) {
+                    return [];
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fail open to database channel if preference lookup fails
+        }
+
         return ['database'];
     }
 

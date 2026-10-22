@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  DeviceEventEmitter,
   FlatList,
   Modal,
   ScrollView,
@@ -237,6 +238,15 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   useEffect(() => {
     fetchVehicleDiagnostics();
+  }, [fetchVehicleDiagnostics]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('vehicleHealthChanged', () => {
+      fetchVehicleDiagnostics();
+    });
+    return () => {
+      sub.remove();
+    };
   }, [fetchVehicleDiagnostics]);
 
   /*

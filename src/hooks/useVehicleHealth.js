@@ -77,6 +77,16 @@ const useVehicleHealth = () => {
       : undefined,
   };
 
+  const maintenanceCount = Array.isArray(maintenance.serviceHistory) && maintenance.serviceHistory.length > 0
+    ? maintenance.serviceHistory.length
+    : (Array.isArray(historyItems) ? historyItems.filter(h => h.source === 'preventive' || h.type === 'maintenance' || h.serviceType).length : 0);
+
+  const diagnosticsCount = Array.isArray(maintenance.resolvedTasks) && maintenance.resolvedTasks.length > 0
+    ? maintenance.resolvedTasks.length
+    : (Array.isArray(historyItems) ? historyItems.filter(h => h.source === 'diagnostic').length : 0);
+
+  const recommendationsCount = Array.isArray(historyItems) ? historyItems.length : 0;
+
   return {
     activeVehicle,
     pendingVehicle,
@@ -97,6 +107,11 @@ const useVehicleHealth = () => {
       diagnosticItems,
       urgentDiagnosticItems,
       preventiveItems,
+      factors: {
+        maintenance: maintenanceCount,
+        diagnostics: diagnosticsCount,
+        recommendations: recommendationsCount,
+      },
     },
     loading: Boolean(loading),
     hasVehicle: !!activeVehicle,

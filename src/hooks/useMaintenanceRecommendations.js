@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
@@ -264,6 +265,15 @@ export const useMaintenanceRecommendationsInternal = () => {
     fetchVehicleDiagnostics();
   }, [fetchVehicleDiagnostics]);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('vehicleHealthChanged', () => {
+      fetchVehicleDiagnostics();
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [fetchVehicleDiagnostics]);
+
   // Distinct Maintenance Tasks (Action-oriented Inspections & Tasks)
   const maintenanceTasks = useMemo(
     () => extractMaintenanceTasks(diagnostics, repairRecords, vehicleProfile),
@@ -368,6 +378,7 @@ export const useMaintenanceRecommendationsInternal = () => {
       setLocalCompletedIds(prev => {
         const next = Array.from(new Set([...prev, ...keysToAdd]));
         saveCompletedState(next);
+        DeviceEventEmitter.emit('vehicleHealthChanged');
         return next;
       });
 
@@ -427,6 +438,7 @@ export const useMaintenanceRecommendationsInternal = () => {
       setLocalCompletedIds(prev => {
         const next = prev.filter(key => key !== String(id) && key !== normKey);
         saveCompletedState(next);
+        DeviceEventEmitter.emit('vehicleHealthChanged');
         return next;
       });
 
@@ -660,6 +672,7 @@ export const useMaintenanceRecommendationsInternal = () => {
     preventiveItems: Array.isArray(preventiveItems) ? preventiveItems : [],
     urgentDiagnosticItems: Array.isArray(urgentDiagnosticItems) ? urgentDiagnosticItems : [],
     historyItems: Array.isArray(historyItems) ? historyItems : [],
+    serviceHistory: Array.isArray(serviceHistory) ? serviceHistory : [],
     groupedCategories: Array.isArray(groupedCategories) ? groupedCategories : [],
     diagnostics: Array.isArray(diagnostics) ? diagnostics : [],
     dueSoonCount: Number.isInteger(dueSoonCount) ? dueSoonCount : 0,

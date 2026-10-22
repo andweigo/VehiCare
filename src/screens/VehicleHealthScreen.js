@@ -1,6 +1,8 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useVehicle } from '../context/VehicleContext';
 import useVehicleHealth from '../hooks/useVehicleHealth';
@@ -13,6 +15,7 @@ import {
 const VehicleHealthScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { activeVehicle, pendingVehicle } = useVehicle();
+  const [refreshing, setRefreshing] = useState(false);
 
   const {
     healthPercentage,
@@ -20,7 +23,23 @@ const VehicleHealthScreen = ({ navigation }) => {
     healthData,
     completedRecommendations,
     loading,
+    refreshVehicleHealth,
   } = useVehicleHealth();
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshVehicleHealth?.();
+    }, [refreshVehicleHealth]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshVehicleHealth?.();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshVehicleHealth]);
 
   const vehicleProfile = activeVehicle || pendingVehicle;
 
@@ -188,6 +207,13 @@ const VehicleHealthScreen = ({ navigation }) => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.accent}
+          />
+        }
       >
         {/* HEALTH OVERVIEW */}
 
@@ -419,6 +445,7 @@ const VehicleHealthScreen = ({ navigation }) => {
               title="Maintenance"
               value={factors.maintenance || 0}
               theme={theme}
+              onPress={() => navigation.navigate('Maintenance')}
             />
 
             <View
@@ -435,6 +462,7 @@ const VehicleHealthScreen = ({ navigation }) => {
               title="Diagnostics"
               value={factors.diagnostics || 0}
               theme={theme}
+              onPress={() => navigation.navigate('History', { filter: 'diagnosis' })}
             />
 
             <View
@@ -451,6 +479,7 @@ const VehicleHealthScreen = ({ navigation }) => {
               title="Recommendations"
               value={factors.recommendations || 0}
               theme={theme}
+              onPress={() => navigation.navigate('SmartRecommendations')}
             />
           </View>
         </View>
@@ -715,9 +744,15 @@ const HealthFactor = ({
   title,
   value,
   theme,
+  onPress,
 }) => {
   return (
-    <View style={styles.factor}>
+    <TouchableOpacity
+      style={styles.factor}
+      activeOpacity={0.7}
+      onPress={onPress}
+      disabled={!onPress}
+    >
       <View
         style={[
           styles.factorIcon,
@@ -758,7 +793,15 @@ const HealthFactor = ({
           {value} completed
         </Text>
       </View>
-    </View>
+
+      {onPress && (
+        <Icon
+          name="chevron-right"
+          size={20}
+          color={theme.textTertiary || theme.textSecondary}
+        />
+      )}
+    </TouchableOpacity>
   );
 };
 

@@ -21,6 +21,7 @@ import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import notificationService from '../services/notificationService';
 import vehicleApi from '../api/vehicleApi';
 import { useTheme } from '../theme/ThemeContext';
+import CustomModal from '../components/CustomModal';
 
 const CATEGORY_KEYS = [
   'All',
@@ -363,6 +364,12 @@ const NotificationsScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState('All');
   const [fetchError, setFetchError] = useState(null);
+  const [modalState, setModalState] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    icon: null,
+  });
   const mountedRef = useRef(false);
   const loadInFlightRef = useRef(false);
   const refreshPendingRef = useRef(false);
@@ -459,6 +466,41 @@ const NotificationsScreen = ({ navigation }) => {
         await load();
 
         const targetVehicleId = item.vehicleId || item.data?.vehicle_id;
+        const normType = String(item.type || '').toLowerCase();
+        const normCat = String(item.category || '').toLowerCase();
+
+        // 1. Diagnostic Alert Notification -> Navigate to History and open diagnostic details
+        if (normType === 'diagnostic' || normCat === 'diagnostics') {
+          const diagId = item.data?.diagnostic_id || item.data?.id || item.requestId;
+          navigation.navigate('History', {
+            selectedDiagnosticId: diagId,
+            filter: 'diagnosis',
+          });
+          return;
+        }
+
+        // 2. Announcement Notification -> Display in CustomModal
+        if (normType === 'announcement' || normCat === 'announcements') {
+          setModalState({
+            visible: true,
+            title: item.title || 'Announcement',
+            message: item.message || '',
+            icon: 'campaign',
+          });
+          return;
+        }
+
+        // 3. Maintenance Notification -> Navigate to Maintenance screen
+        if (normType === 'maintenance' || normCat === 'maintenance') {
+          navigation.navigate('Maintenance');
+          return;
+        }
+
+        // 4. Payment / Subscription Notification -> Navigate to Manage Plan
+        if (normType.includes('payment') || normType.includes('premium') || normType.includes('refund')) {
+          navigation.navigate('ManagePlan');
+          return;
+        }
 
         switch (item.type) {
           case 'vehicle_edit_approved':
@@ -480,28 +522,13 @@ const NotificationsScreen = ({ navigation }) => {
           case 'vehicle_edit_rejected':
             {
               const adminNote = item.data?.admin_note || item.message || '';
-              Alert.alert(
-                'Vehicle Update Rejected',
-                `Your request to update your vehicle was rejected by the administrator.\n\nReason:\n${adminNote || 'No specific reason provided.'}`,
-                [{ text: 'OK', role: 'cancel' }]
-              );
+              setModalState({
+                visible: true,
+                title: 'Vehicle Update Rejected',
+                message: `Your request to update your vehicle was rejected by the administrator.\n\nReason:\n${adminNote || 'No specific reason provided.'}`,
+                icon: 'error-outline',
+              });
             }
-            break;
-
-          case 'maintenance':
-            navigation.navigate('Maintenance');
-            break;
-
-          case 'diagnostic':
-            navigation.navigate('Diagnostics');
-            break;
-
-          case 'announcement':
-            Alert.alert(
-              item.title || 'Announcement',
-              item.message || '',
-              [{ text: 'Close', style: 'cancel' }]
-            );
             break;
 
           case 'vehicle_update':
@@ -757,6 +784,17 @@ const NotificationsScreen = ({ navigation }) => {
           }
         />
       )}
+
+      <CustomModal
+        visible={modalState.visible}
+        title={modalState.title}
+        message={modalState.message}
+        type="info"
+        icon={modalState.icon || 'campaign'}
+        primaryLabel="Close"
+        onConfirm={() => setModalState({ visible: false, title: '', message: '', icon: null })}
+        onCancel={() => setModalState({ visible: false, title: '', message: '', icon: null })}
+      />
     </SafeAreaView>
   );
 };

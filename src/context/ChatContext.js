@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 
 import { useAuth } from './AuthContext';
 import { useVehicle } from './VehicleContext';
@@ -636,6 +637,8 @@ export const ChatProvider = ({ children }) => {
         [key]: { status: 'succeeded', sessionId, userMessageId },
       }));
       requestPayloadsRef.current.delete(key);
+      DeviceEventEmitter.emit('vehicleHealthChanged');
+      DeviceEventEmitter.emit('notificationReadStateChanged');
       return { data };
     } catch (error) {
       if (

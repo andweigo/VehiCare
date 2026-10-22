@@ -14,6 +14,8 @@ import com.facebook.react.bridge.ReactMethod
 
 class BadgeModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
+    private var lastReportedCount: Int = -1
+
     companion object {
         const val MODULE_NAME = "VehiCareBadge"
         const val CHANNEL_ID = "vehicare_notifications_channel"
@@ -29,7 +31,7 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "VehiCare vehicle updates and diagnostic alerts"
                 setShowBadge(true)
@@ -44,10 +46,17 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val notificationManager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             if (count <= 0) {
+                lastReportedCount = 0
                 notificationManager.cancel(NOTIFICATION_ID)
                 promise.resolve(true)
                 return
             }
+
+            if (count == lastReportedCount) {
+                promise.resolve(true)
+                return
+            }
+            lastReportedCount = count
 
             createNotificationChannel()
 
@@ -68,8 +77,9 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 .setNumber(count)
                 .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
                 .setContentIntent(pendingIntent)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
 
             notificationManager.notify(NOTIFICATION_ID, notification)
@@ -81,6 +91,7 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
     @ReactMethod
     fun clearBadge(promise: Promise) {
+        lastReportedCount = -1
         setBadgeCount(0, promise)
     }
 }
