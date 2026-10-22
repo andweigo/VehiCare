@@ -228,18 +228,25 @@ ${knownFactsList.length > 0 ? knownFactsList.map(f => `  * ${f}`).join('\n') : '
 ${prevQList || '  * (None yet)'}
 
 MANDATORY RULES FOR PROGRESSIVE FOLLOW-UP:
-1. REMEMBER ANSWERED QUESTIONS:
+1. THE RESULT MUST NOT VARY AWAY FROM THE USER'S ANSWER:
+   * Directly evaluate what the user's latest answer ("${symptoms}") physically proves or disproves.
+   * Example: If the user answered "Lights are very dim or flicker" when pressing the starter/horn:
+     - This PROVES electrical current is flowing through the main harness, which immediately RULES OUT a completely blown main fuse! Do NOT keep listing a blown fuse as a likely cause!
+     - It proves severe voltage drop under load, directly confirming either an undercharged/dead battery or high resistance at loose/corroded battery terminals.
+     - Cite the user's observation ("dimming/flickering lights") in the reasoning for the top plausible causes.
+     - Never contradict the user's answer or drift to unrelated systems.
+2. NEVER REPEAT THE SAME ANSWER OR CANNED GREETING:
+   * DO NOT output "Hey, no worries! We'll figure this out together. Here's what's happening: ..." on follow-up turns!
+   * Start directly with the progressive deduction in "whats_happening" and "follow_up_ack":
+     "Got it. Because [specific observation], [what it indicates]..."
+   * Explicitly state what is ruled out (e.g. "Rules out: Blown main fuse") and what is narrowed down (e.g. "Points directly to: Weak battery or high terminal resistance").
+   * Do NOT repeat the exact same cause descriptions or previous safe checks. Tailor checks specifically to verify the narrowed causes (e.g. checking terminal bolt tightness and testing battery resting/cranking voltage).
+3. REMEMBER ANSWERED QUESTIONS:
    * If sound type is already known (${facts.soundTypes.join(', ') || 'N/A'}), NEVER ask the user to identify or describe the sound again!
    * NEVER re-ask any previously asked question or rephrase it.
-2. ACKNOWLEDGE & EXPLAIN:
-   * "follow_up_ack": 1 brief, natural sentence acknowledging their answer (e.g., "Got it. A high-pitched squeal can happen when brake friction surfaces vibrate or when dust builds up.").
-   * "diagnostic_progress": 1-2 sentences explaining what is narrowed down (e.g., "That narrows the possibilities, but it doesn't confirm the cause.").
-3. ASK AT MOST ONE MEANINGFUL QUESTION:
+4. ASK AT MOST ONE MEANINGFUL QUESTION (OR CONCLUDE):
    * If further clarification is needed to distinguish causes, ask at most ONE new, high-value question in "clarification_questions" (with 2-4 options A, B, C, D).
-   * For rear brake noise where sound is known: ask whether the sound changes when gently applying the brake, or if braking performance is reduced.
-4. KNOW WHEN TO STOP:
-   * If 2 or more clarification turns have already been answered, OR if enough facts are known, DO NOT ask any more questions!
-   * Set status="diagnosis_ready", clarification_questions=[], and provide the clear assessment with top causes, safe beginner checks, and mechanic guidance.`
+   * If 2 or more clarification turns have already been answered, OR if enough facts are known, DO NOT ask any more questions! Set status="diagnosis_ready", clarification_questions=[], and provide the final narrowed assessment.`
     : '';
 
   const symptomSection = effectiveRootSymptom
@@ -440,7 +447,7 @@ For DIAGNOSTIC:
     "level": "HIGH",
     "reason": "Brief explanation of assessment confidence based on symptoms."
   },
-  "whats_happening": "Hey, no worries! We'll narrow this down together. Plain-language explanation of what is going on with the vehicle.",
+  "whats_happening": "Clear explanation of what is happening. If initial turn: friendly reassuring explanation. If follow-up turn: direct deduction from the user's latest answer, what it rules out, and what it narrows down to (NEVER repeat canned greetings).",
   "summary": "Short diagnostic summary",
   "safety_guidance": "Clear, honest advice on whether it is safe to keep using the vehicle right now.",
   "safe_diy_checks": [

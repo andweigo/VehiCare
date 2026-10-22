@@ -124,6 +124,46 @@ const isPivotRejection = (str) => {
   );
 };
 
+export const findRootComplaint = (messages = [], fallbackText = '') => {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return fallbackText || '';
+  }
+
+  const nonComplaintPatterns = [
+    /^(hello|hi|hey|good morning|good afternoon|good evening|kumusta|kamusta|sup|yo|help|test)\b/i,
+    /^(how can i fix|how to fix|what can i do|how do i fix|can you fix|fix it|guide me)\b/i,
+    /^[a-d][.)]\s/i,
+    /^(yes|no|none|not sure|i don't know|dont know|i'm not sure)$/i,
+  ];
+
+  const userMessages = messages.filter(m => (m.role === 'user' || m.sender === 'user') && (m.text || m.message));
+
+  for (const m of userMessages) {
+    const text = (m.text || m.message || '').trim();
+    if (!text || text.length < 5) continue;
+    const isNonComplaint = nonComplaintPatterns.some(pat => pat.test(text));
+    if (!isNonComplaint) {
+      return text;
+    }
+  }
+
+  for (const m of messages) {
+    if (m.diagnosisData && Array.isArray(m.diagnosisData.reported) && m.diagnosisData.reported.length > 0) {
+      const rep = m.diagnosisData.reported[0];
+      if (typeof rep === 'string' && rep.length >= 5 && !nonComplaintPatterns.some(pat => pat.test(rep))) {
+        return rep;
+      }
+    }
+  }
+
+  for (const m of userMessages) {
+    const text = (m.text || m.message || '').trim();
+    if (text.length >= 5) return text;
+  }
+
+  return fallbackText || '';
+};
+
 export const formatAiResponseText = (data) => {
   if (!data) {
     return 'How can I assist you with your vehicle today?';
@@ -208,8 +248,13 @@ export const formatAiResponseText = (data) => {
 
   // 1. What's happening to my vehicle? (Friendly, plain-language summary)
   const ackHeader = [data.follow_up_ack, data.diagnostic_progress].filter(Boolean).join('\n\n');
+  let cleanWhatsHappening = (data.whats_happening || data.summary || data.response || '')
+    .replace(/^Hey,?\s*no\s+worries!?[^\n]*\n*/i, '')
+    .replace(/^Here's what('s)? happening:?\s*/i, '')
+    .trim();
+
   const whatsHappening = ackHeader
-    ? `${ackHeader}\n\nHere is what is most likely happening: ${data.summary || data.whats_happening || ''}`.trim()
+    ? `${ackHeader}\n\nHere is what is most likely happening: ${cleanWhatsHappening}`.trim()
     : (data.whats_happening || (
         data.summary
           ? `Hey, no worries! We'll figure this out together. Here's what's happening: ${data.summary}`
@@ -1219,8 +1264,7 @@ export default function AskVehiCareScreen({
           })),
       };
 
-      const firstUserMsg = chatMessages.find(m => (m.role === 'user' || m.sender === 'user') && (m.text || m.message));
-      const rootComplaint = firstUserMsg ? (firstUserMsg.text || firstUserMsg.message) : trimmed;
+      const rootComplaint = findRootComplaint(chatMessages, trimmed);
 
       const activeSymptoms = trimmed || (currentAudio ? 'Voice consultation or audio recording of vehicle symptoms' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
       const payload = {

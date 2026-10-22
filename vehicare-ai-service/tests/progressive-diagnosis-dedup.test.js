@@ -136,6 +136,23 @@ console.log('================================================================');
   assert.strictEqual(squealResult.selectedQuestion.question, 'Does the sound change when you gently apply the rear brake?');
   assert.strictEqual(grindingSafety.severity, 'HIGH', 'Grinding noise must elevate severity to HIGH');
   assert(grindingSafety.safety_guidance.includes('Because brakes are a critical safety system'), 'Must include brake safety guidance');
+
+  // Case C: User answers "B. Lights are very dim or flicker" for starter/horn failure
+  const promptElectrical = buildDiagnosisPrompt({
+    vehicleContext: { brand: 'Yamaha', model: 'Mio i125', year: '2021', type: 'Motorcycle' },
+    symptoms: 'B. Lights are very dim or flicker',
+    rootSymptom: 'why is my horn not working and my starter is failing',
+    userLanguage: 'en',
+    history: [
+      { role: 'user', content: 'why is my horn not working and my starter is failing' },
+      { role: 'assistant', content: 'When you press the starter button, do the lights dim?' },
+    ],
+  });
+
+  assert(promptElectrical.includes('why is my horn not working and my starter is failing'), 'Preserves electrical root complaint');
+  assert(promptElectrical.includes('B. Lights are very dim or flicker'), 'Includes dimming lights answer');
+  assert(promptElectrical.includes("THE RESULT MUST NOT VARY AWAY FROM THE USER'S ANSWER"), 'Enforces not varying away from answer');
+  assert(promptElectrical.includes("NEVER REPEAT THE SAME ANSWER OR CANNED GREETING"), 'Enforces never repeating canned intro');
   console.log('[PASS] Criterion 3: New answer changes assessment and next question when relevant');
 }
 

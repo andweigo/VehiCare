@@ -591,11 +591,18 @@ class DiagnosticController extends Controller
         }
 
         $rootSymptom = $validated['root_symptom'] ?? null;
+        if (!empty($rootSymptom) && preg_match('/^(hello|hi|hey|good morning|good afternoon|good evening|kumusta|how can i fix|how to fix|what can i do)/i', trim($rootSymptom))) {
+            $rootSymptom = null;
+        }
+
         if (empty($rootSymptom) && !empty($validated['history'])) {
             foreach ($validated['history'] as $turn) {
                 if (($turn['role'] ?? null) === 'user' && !empty($turn['content'])) {
-                    $rootSymptom = $turn['content'];
-                    break;
+                    $content = trim($turn['content']);
+                    if (!preg_match('/^(hello|hi|hey|good morning|good afternoon|good evening|kumusta|how can i fix|how to fix|what can i do|^[a-d][.)]\s)/i', $content) && strlen($content) >= 5) {
+                        $rootSymptom = $content;
+                        break;
+                    }
                 }
             }
         }

@@ -329,12 +329,37 @@ export const processDiagnosisRequest = async (payload) => {
           (Array.isArray(history) && history.length > 0);
 
         if (isFollowUpTurn) {
+          if (typeof jsonObject.whats_happening === 'string') {
+            jsonObject.whats_happening = jsonObject.whats_happening
+              .replace(/^Hey,?\s*no\s+worries!?[^\n]*\n*/i, '')
+              .replace(/^Here's what('s)? happening:?\s*/i, '')
+              .trim();
+          }
+          if (typeof jsonObject.summary === 'string') {
+            jsonObject.summary = jsonObject.summary
+              .replace(/^Hey,?\s*no\s+worries!?[^\n]*\n*/i, '')
+              .replace(/^Here's what('s)? happening:?\s*/i, '')
+              .trim();
+          }
+
           if (!jsonObject.follow_up_ack || typeof jsonObject.follow_up_ack !== 'string') {
             const shortAns = symptoms.length > 80 ? symptoms.slice(0, 80) + '...' : symptoms;
-            jsonObject.follow_up_ack = `Got it. "${shortAns}" helps narrow down the possibilities.`;
+            jsonObject.follow_up_ack = `Got it. "${shortAns}" directly narrows down the issue.`;
           }
           if (!jsonObject.diagnostic_progress || typeof jsonObject.diagnostic_progress !== 'string') {
-            jsonObject.diagnostic_progress = 'That narrows down the possible causes and helps rule out unrelated issues.';
+            jsonObject.diagnostic_progress = 'This observation helps pinpoint the exact fault and rules out contradictory causes.';
+          }
+
+          // Filter out causes that physically contradict the user's latest observation
+          if (Array.isArray(jsonObject.possible_causes)) {
+            const symLower = symptoms.toLowerCase();
+            // If lights dim or flicker under load, electricity flows -> rules out a blown main fuse
+            if (symLower.includes('dim') || symLower.includes('flicker')) {
+              jsonObject.possible_causes = jsonObject.possible_causes.filter(c => {
+                const causeText = String(c?.cause || '').toLowerCase();
+                return !(causeText.includes('blown') && causeText.includes('fuse'));
+              });
+            }
           }
         }
 
