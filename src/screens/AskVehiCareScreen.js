@@ -164,6 +164,22 @@ export const findRootComplaint = (messages = [], fallbackText = '') => {
   return fallbackText || '';
 };
 
+export const FRIENDLY_OPENERS = [
+  "Let's look into what might be going on here.",
+  "Here is a breakdown of what these symptoms usually point to:",
+  "Let's break down what could be happening step by step.",
+  "Based on what you've described, here's what seems to be happening:",
+  "Let's get this sorted out together.",
+  "Here is what typically causes this kind of issue:",
+  "No problem, let's track down what's behind this.",
+  "Let's inspect what might be behind these symptoms:",
+];
+
+export const getRandomOpener = () => {
+  const idx = Math.floor(Math.random() * FRIENDLY_OPENERS.length);
+  return FRIENDLY_OPENERS[idx];
+};
+
 export const formatAiResponseText = (data) => {
   if (!data) {
     return 'How can I assist you with your vehicle today?';
@@ -249,18 +265,27 @@ export const formatAiResponseText = (data) => {
   // 1. What's happening to my vehicle? (Friendly, plain-language summary)
   const ackHeader = [data.follow_up_ack, data.diagnostic_progress].filter(Boolean).join('\n\n');
   let cleanWhatsHappening = (data.whats_happening || data.summary || data.response || '')
-    .replace(/^Hey,?\s*no\s+worries!?[^\n]*\n*/i, '')
-    .replace(/^Here's what('s)? happening:?\s*/i, '')
+    .replace(/^Hey,?\s*no\s+worries!?\s*(We'll\s+(figure|narrow)\s+this\s+out\s+together\.?)?\s*/i, '')
+    .replace(/^Here's\s+what('s)?\s+happening:?\s*/i, '')
     .trim();
 
-  const whatsHappening = ackHeader
-    ? `${ackHeader}\n\nHere is what is most likely happening: ${cleanWhatsHappening}`.trim()
-    : (data.whats_happening || (
-        data.summary
-          ? `Hey, no worries! We'll figure this out together. Here's what's happening: ${data.summary}`
-          : (data.response || 'We are evaluating your vehicle symptoms.')
-      ));
-  sections.push(whatsHappening.trim());
+  if (!cleanWhatsHappening) {
+    cleanWhatsHappening = (data.summary || data.response || '').trim();
+  }
+
+  let whatsHappening;
+  if (ackHeader) {
+    whatsHappening = `${ackHeader}\n\nHere is what is most likely happening: ${cleanWhatsHappening}`.trim();
+  } else {
+    const hasCannedGreeting = /^Hey,?\s*no\s+worries/i.test(data.whats_happening || '');
+    if (hasCannedGreeting || !data.whats_happening) {
+      const opener = getRandomOpener();
+      whatsHappening = `${opener}\n${cleanWhatsHappening}`.trim();
+    } else {
+      whatsHappening = data.whats_happening.trim();
+    }
+  }
+  sections.push(whatsHappening);
 
   // 2. What might be causing it? (Top 2-3 plausible causes in plain everyday language)
   const causes = Array.isArray(data.possible_causes)

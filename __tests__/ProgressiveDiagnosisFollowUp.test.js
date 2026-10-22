@@ -100,6 +100,23 @@ describe('Progressive AI Diagnostic Follow-Up & Cautious Brake Safety', () => {
       // Must NOT contain contradicted causes like Blown Main Fuse
       expect(formatted).not.toContain('Blown Main Fuse');
     });
+
+    it('replaces the robotic "Hey, no worries! We\'ll figure this out together" with varied natural openings', () => {
+      const initialDiagnosisWithCannedIntro = {
+        type: 'diagnostic',
+        status: 'diagnosis_ready',
+        whats_happening: "Hey, no worries! We'll figure this out together. Here's what's happening: Loss of electrical power to starter and horn.",
+        summary: 'Loss of electrical power to starter and horn.',
+        severity: 'MODERATE',
+        urgency: 'Moderate',
+        possible_causes: [{ cause: 'Weak or Depleted Battery' }],
+        recommended_actions: ['Inspect battery terminals'],
+      };
+
+      const formatted = formatAiResponseText(initialDiagnosisWithCannedIntro);
+      expect(formatted).not.toContain("Hey, no worries! We'll figure this out together.");
+      expect(formatted).toContain('Loss of electrical power to starter and horn.');
+    });
   });
 
   describe('Cautious Brake Safety Rules', () => {

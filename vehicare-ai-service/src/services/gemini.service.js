@@ -17,42 +17,122 @@ const makeError = (code, message, statusCode, retryable = false, cause = null) =
   return error;
 };
 
+export const sanitizeErrorMessage = (msg) => {
+  if (!msg) return 'Unknown error';
+  let cleaned = String(msg)
+    .replace(/AIza[0-9A-Za-z_-]{25,45}/g, '[REDACTED_API_KEY]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/key=[^&\s]+/gi, 'key=[REDACTED]');
+
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed?.error?.message) {
+        cleaned = parsed.error.message;
+      }
+    } catch {}
+  }
+
+  const lower = cleaned.toLowerCase();
+  if (lower.includes('api key not valid') || lower.includes('api_key_invalid')) {
+    return 'Invalid Gemini API key configuration.';
+  }
+  if (lower.includes('quota exceeded') || lower.includes('resource_exhausted')) {
+    return 'Gemini API quota exceeded for this model.';
+  }
+  if (lower.includes('high demand') || lower.includes('spikes in demand')) {
+    return 'Gemini model is currently experiencing high demand.';
+  }
+  if (lower.includes('timed out') || lower.includes('deadline_exceeded')) {
+    return 'Gemini request timed out.';
+  }
+
+  return cleaned.length > 200 ? `${cleaned.slice(0, 197)}...` : cleaned;
+};
+
+export const extractGeminiErrorInfo = (error) => {
+  let status = Number(error?.status || error?.statusCode || 0);
+  let code = error?.code || null;
+  let rawMessage = typeof error?.message === 'string' ? error.message : String(error || '');
+  let retryDelayMs = null;
+  let details = null;
+
+  if (rawMessage.startsWith('{') && rawMessage.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(rawMessage);
+      if (parsed?.error) {
+        status = Number(parsed.error.code || status || 0);
+        code = parsed.error.status || code;
+        if (parsed.error.message) rawMessage = parsed.error.message;
+        details = parsed.error.details || null;
+      }
+    } catch {}
+  }
+
+  if (Array.isArray(details)) {
+    const retryInfo = details.find(
+      (d) => d?.['@type']?.includes('RetryInfo') || d?.retryDelay !== undefined
+    );
+    if (retryInfo?.retryDelay) {
+      if (typeof retryInfo.retryDelay === 'string') {
+        const match = retryInfo.retryDelay.match(/^([\d.]+)\s*s$/i);
+        if (match) {
+          retryDelayMs = Math.round(parseFloat(match[1]) * 1000);
+        }
+      } else if (typeof retryInfo.retryDelay === 'number') {
+        retryDelayMs = Math.round(retryInfo.retryDelay * 1000);
+      } else if (typeof retryInfo.retryDelay === 'object' && retryInfo.retryDelay.seconds) {
+        retryDelayMs = (Number(retryInfo.retryDelay.seconds) || 0) * 1000;
+      }
+    }
+  }
+
+  const retryHeader = error?.response?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
+  if (retryHeader && retryDelayMs === null) {
+    const parsedHeader = Number(retryHeader);
+    if (!isNaN(parsedHeader)) {
+      retryDelayMs = parsedHeader * 1000;
+    }
+  }
+
+  const lowerMsg = rawMessage.toLowerCase();
+  const lowerCode = String(code || '').toLowerCase();
+
+  const isRateLimit = status === 429 || lowerCode.includes('resource_exhausted') || lowerMsg.includes('resource_exhausted') || lowerMsg.includes('quota exceeded') || lowerMsg.includes('rate limit');
+  const isOverloaded = status === 503 || lowerCode.includes('unavailable') || lowerMsg.includes('high demand') || lowerMsg.includes('temporarily unavailable') || lowerMsg.includes('overloaded');
+  const isTimeout = status === 504 || status === 408 || lowerCode.includes('deadline_exceeded') || lowerCode.includes('gemini_timeout') || lowerCode.includes('etimedout') || lowerMsg.includes('timed out');
+  const isModelNotFound = status === 404 || lowerCode.includes('not_found') || lowerMsg.includes('not found') || lowerMsg.includes('no longer available');
+  const isAuthOrClient = !isModelNotFound && (status === 400 || status === 401 || status === 403 || lowerCode.includes('permission_denied') || lowerCode.includes('unauthenticated') || lowerCode.includes('invalid_argument') || lowerMsg.includes('api key not valid'));
+
+  const isTransient = isRateLimit || isOverloaded || isTimeout || status === 500 || status === 502 || ['econnreset', 'eai_again', 'enotfound'].includes(lowerCode);
+
+  return {
+    status: status || (isRateLimit ? 429 : isOverloaded ? 503 : isTimeout ? 504 : 500),
+    code: code || (isRateLimit ? 'RESOURCE_EXHAUSTED' : isOverloaded ? 'UNAVAILABLE' : isTimeout ? 'DEADLINE_EXCEEDED' : 'UNKNOWN'),
+    message: sanitizeErrorMessage(rawMessage),
+    retryDelayMs,
+    isRateLimit,
+    isOverloaded,
+    isTimeout,
+    isModelNotFound,
+    isAuthOrClient,
+    isTransient,
+  };
+};
+
 const getStatusCode = (error) => {
-  const status = Number(error?.status || error?.statusCode || 0);
-  return status || (/^\d+$/.test(String(error?.code || '')) ? Number(error.code) : 0);
+  return extractGeminiErrorInfo(error).status;
 };
 
 const isTransientError = (error) => {
-  const message = String(error?.message || error || '').toLowerCase();
-  const code = String(error?.code || '').toLowerCase();
-  const status = getStatusCode(error);
-
-  return (
-    [408, 429, 500, 502, 503, 504].includes(status) ||
-    ['econnreset', 'etimedout', 'eai_again', 'enotfound', 'gemini_timeout'].includes(code) ||
-    code.includes('resource_exhausted') ||
-    code.includes('unavailable') ||
-    /\b(429|500|502|503|504)\b/.test(message) ||
-    message.includes('high demand') ||
-    message.includes('resource_exhausted') ||
-    message.includes('temporarily unavailable') ||
-    message.includes('overloaded') ||
-    message.includes('rate limit') ||
-    message.includes('timed out')
-  );
+  return extractGeminiErrorInfo(error).isTransient;
 };
 
 const isModelUnavailableError = (error) => {
-  const message = String(error?.message || error || '').toLowerCase();
-  const code = String(error?.code || '').toLowerCase();
-  return getStatusCode(error) === 404 ||
-    code.includes('model_not_found') ||
-    message.includes('model not found') ||
-    message.includes('no longer available') ||
-    message.includes('model is not found');
+  return extractGeminiErrorInfo(error).isModelNotFound;
 };
 
-const isModelInCooldown = (modelName) => {
+export const isModelInCooldown = (modelName) => {
   const expiry = modelCooldowns.get(modelName);
   if (!expiry) return false;
   if (Date.now() > expiry) {
@@ -62,13 +142,17 @@ const isModelInCooldown = (modelName) => {
   return true;
 };
 
-const triggerModelCooldown = (modelName, requestId) => {
-  const cooldownMs = config.cooldownMs || 30000;
-  modelCooldowns.set(modelName, Date.now() + cooldownMs);
-  logger.warn('AI_MODEL_COOLDOWN', requestId, { model: modelName, cooldownMs });
+export const triggerModelCooldown = (modelName, requestId, reason = 'TRANSIENT', customDurationMs = null) => {
+  const durationMs = customDurationMs
+    ? Math.min(customDurationMs, 300000)
+    : (config.cooldownMs || 15000);
+  modelCooldowns.set(modelName, Date.now() + durationMs);
+  logger.warn('AI_MODEL_COOLDOWN', requestId, { model: modelName, reason, cooldownMs: durationMs });
 };
 
-const clearModelCooldown = (modelName) => modelCooldowns.delete(modelName);
+export const clearModelCooldown = (modelName) => modelCooldowns.delete(modelName);
+
+export const clearAllModelCooldowns = () => modelCooldowns.clear();
 
 const inferMediaType = (inputType, mimeType) => {
   const expectedType = inputType === 'voice' || inputType === 'audio'
@@ -266,7 +350,6 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId }) => {
             name: uploadedFile.name,
             config: {
               abortSignal,
-
             },
           }),
           Math.max(1000, processDeadline - Date.now()),
@@ -330,24 +413,40 @@ const cleanupUploadedFile = async (ai, uploadedFile, requestId) => {
   }
 };
 
-const normalizeGeminiError = (error) => {
-  if (error?.statusCode && error?.code) return error;
+export const normalizeGeminiError = (error) => {
+  if (error?.statusCode && error?.code && !error.message?.startsWith('{')) return error;
 
-  if (isModelUnavailableError(error)) {
-    return makeError('GEMINI_UNAVAILABLE', 'The requested Gemini model is unavailable.', 503, true, error);
+  const info = extractGeminiErrorInfo(error);
+
+  if (info.isAuthOrClient) {
+    const isKey = info.message.toLowerCase().includes('api key');
+    return makeError(
+      'GEMINI_AUTH_ERROR',
+      isKey ? 'Gemini API authentication failed. Please verify your API key.' : 'Invalid request to Gemini API.',
+      isKey ? 401 : 400,
+      false,
+      error
+    );
   }
-  if (isTransientError(error)) {
-    const status = getStatusCode(error);
-    const errorText = String(error?.message || error || '').toLowerCase();
-    const isRateLimit = status === 429 || errorText.includes('429') || errorText.includes('rate limit') || errorText.includes('resource_exhausted');
-    const isOverloaded = status === 503 || errorText.includes('503') || errorText.includes('overloaded') || errorText.includes('high demand');
-    const code = isRateLimit ? 'GEMINI_RATE_LIMIT' : isOverloaded ? 'GEMINI_OVERLOADED' : 'GEMINI_UNAVAILABLE';
-    const message = code === 'GEMINI_RATE_LIMIT'
-      ? 'Gemini is rate-limiting requests. Please try again shortly.'
-      : code === 'GEMINI_OVERLOADED'
-        ? 'Gemini is temporarily overloaded. Please try again shortly.'
-        : 'Gemini is temporarily unavailable. Please try again shortly.';
-    return makeError(code, message, isRateLimit ? 429 : 503, true, error);
+
+  if (info.isModelNotFound) {
+    return makeError('GEMINI_MODEL_UNAVAILABLE', 'The requested Gemini model is unavailable or deprecated.', 503, false, error);
+  }
+
+  if (info.isRateLimit) {
+    return makeError('GEMINI_RATE_LIMIT', 'Gemini is rate-limiting requests. Please try again shortly.', 429, true, error);
+  }
+
+  if (info.isOverloaded) {
+    return makeError('GEMINI_OVERLOADED', 'Gemini is temporarily overloaded. Please try again shortly.', 503, true, error);
+  }
+
+  if (info.isTimeout) {
+    return makeError('GEMINI_TIMEOUT', 'Gemini analysis timed out. Please try again.', 504, true, error);
+  }
+
+  if (info.isTransient) {
+    return makeError('GEMINI_UNAVAILABLE', 'Gemini is temporarily unavailable. Please try again shortly.', 503, true, error);
   }
 
   return makeError('GEMINI_REQUEST_FAILED', 'Gemini could not complete the request.', 502, false, error);
@@ -375,6 +474,8 @@ export const callGemini = async (params, client = null) => {
     requestId,
     requestType = 'diagnostic',
     inputType = 'text',
+    startTime = Date.now(),
+    totalBudgetMs = config.gemini.totalTimeoutMs || 24000,
   } = params || {};
   const ai = client || getGeminiClient();
   const isConversation = requestType === 'conversation' || requestType === 'general';
@@ -384,6 +485,12 @@ export const callGemini = async (params, client = null) => {
   const fallbackModel = isConversation
     ? config.gemini.model
     : config.gemini.fallbackModel;
+
+  const requestDeadline = startTime + totalBudgetMs;
+  const maxOutputTokens = isConversation
+    ? (config.gemini.maxOutputTokens?.conversation || 1024)
+    : (config.gemini.maxOutputTokens?.diagnostic || 2048);
+
   const media = mediaBase64
     ? validateAndDecodeMedia(
       mediaBase64,
@@ -439,19 +546,43 @@ export const callGemini = async (params, client = null) => {
         logger.info('AI_SKIPPING_COOLDOWN_MODEL', requestId, { model: modelName });
       }
     }
-    if (candidateModels.length === 0) candidateModels.push(primaryModel || fallbackModel);
+    if (candidateModels.length === 0) {
+      candidateModels.push(fallbackModel || primaryModel);
+    }
 
     let lastError = null;
 
     for (let modelIndex = 0; modelIndex < candidateModels.length; modelIndex++) {
       const modelName = candidateModels[modelIndex];
       const fallbackUsed = modelName !== primaryModel;
+      const hasNextModel = modelIndex < candidateModels.length - 1;
+
+      const remainingOverallMs = requestDeadline - Date.now();
+      if (remainingOverallMs < 2000) {
+        logger.warn('AI_REQUEST_DEADLINE_APPROACHING', requestId, {
+          remainingMs: remainingOverallMs,
+          model: modelName,
+        });
+        break;
+      }
+
+      const defaultTimeout = fallbackUsed
+        ? (config.gemini.timeouts.fallbackText || 9000)
+        : (config.gemini.timeouts[media?.mediaType || 'text'] || config.gemini.timeouts.text);
+
+      let timeoutMs;
+      if (hasNextModel) {
+        const reserveForNextMs = 8000;
+        timeoutMs = Math.max(3000, Math.min(defaultTimeout, remainingOverallMs - reserveForNextMs));
+      } else {
+        timeoutMs = Math.max(2000, Math.min(defaultTimeout, remainingOverallMs - 1200));
+      }
+
       const maxAttempts = fallbackUsed || media?.mediaType === 'audio' || media?.mediaType === 'video'
         ? 1
         : MAX_RETRIES + 1;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const timeoutMs = getGenerationTimeout(media?.mediaType || 'text');
         const generationStartedAt = Date.now();
 
         logger.info('AI_GEMINI_REQUEST_STARTED', requestId, {
@@ -462,8 +593,9 @@ export const callGemini = async (params, client = null) => {
           inputType,
           hasMedia: Boolean(media),
           mediaMime: media?.mimeType || null,
-          mediaSizeBytes: media?.bytes.length || 0,
+          mediaSizeBytes: media?.bytes?.length || 0,
           generationTimeoutMs: timeoutMs,
+          remainingBudgetMs: requestDeadline - Date.now(),
           fallbackUsed,
         });
 
@@ -474,11 +606,10 @@ export const callGemini = async (params, client = null) => {
               contents: [{ role: 'user', parts }],
               config: {
                 responseMimeType: 'application/json',
-                maxOutputTokens: 4096,
+                maxOutputTokens,
                 abortSignal,
                 httpOptions: { timeout: timeoutMs },
               },
-
             }),
             timeoutMs,
             'GEMINI_TIMEOUT',
@@ -506,8 +637,10 @@ export const callGemini = async (params, client = null) => {
             durationMs: Date.now() - generationStartedAt,
           };
         } catch (error) {
+          const errInfo = extractGeminiErrorInfo(error);
           const normalizedError = normalizeGeminiError(error);
           lastError = normalizedError;
+
           logger.warn('AI_GEMINI_REQUEST_FAILED', requestId, {
             model: modelName,
             attempt,
@@ -515,25 +648,62 @@ export const callGemini = async (params, client = null) => {
             inputType,
             hasMedia: Boolean(media),
             errorCode: normalizedError.code,
-            status: getStatusCode(error) || null,
+            upstreamStatus: errInfo.status,
+            geminiCode: errInfo.code,
+            retryDelayMs: errInfo.retryDelayMs,
+            errorMessage: errInfo.message,
           });
 
-          const canRetry = error?.retryable === true || isTransientError(error);
-          if (attempt < maxAttempts && canRetry) {
-            const backoffMs = Math.min(1200 * (2 ** (attempt - 1)), 5000);
-            logger.info('AI_GEMINI_RETRY_BACKOFF', requestId, {
-              model: modelName,
-              attempt,
-              nextAttempt: attempt + 1,
-              backoffMs,
-              errorCode: normalizedError.code,
-            });
-            await delay(backoffMs);
-            continue;
+          if (errInfo.isAuthOrClient) {
+            if (errInfo.code === 'API_KEY_INVALID' || errInfo.message.toLowerCase().includes('api key')) {
+              throw normalizedError;
+            }
+            break;
           }
 
-          if (isTransientError(error) || isModelUnavailableError(error)) {
-            triggerModelCooldown(modelName, requestId);
+          if (errInfo.isModelNotFound) {
+            triggerModelCooldown(modelName, requestId, 'MODEL_NOT_FOUND', 300000);
+            break;
+          }
+
+          if (errInfo.isRateLimit && errInfo.retryDelayMs && errInfo.retryDelayMs > 4000) {
+            triggerModelCooldown(modelName, requestId, 'QUOTA_EXHAUSTED', errInfo.retryDelayMs);
+            break;
+          }
+
+          const canRetry = (attempt < maxAttempts) && (errInfo.isTransient || error?.retryable === true);
+          if (canRetry) {
+            let backoffMs;
+            if (errInfo.retryDelayMs && errInfo.retryDelayMs <= 4000) {
+              backoffMs = errInfo.retryDelayMs + Math.floor(Math.random() * 200);
+            } else {
+              const exp = Math.min(800 * (2 ** (attempt - 1)), 2500);
+              const jitter = Math.floor(Math.random() * 300);
+              backoffMs = exp + jitter;
+            }
+
+            if (Date.now() + backoffMs + 3000 < requestDeadline) {
+              logger.info('AI_GEMINI_RETRY_BACKOFF', requestId, {
+                model: modelName,
+                attempt,
+                nextAttempt: attempt + 1,
+                backoffMs,
+                errorCode: normalizedError.code,
+              });
+              await delay(backoffMs);
+              continue;
+            } else {
+              logger.info('AI_GEMINI_RETRY_SKIPPED_TIME_BUDGET', requestId, {
+                model: modelName,
+                attempt,
+                backoffMs,
+                remainingBudgetMs: requestDeadline - Date.now(),
+              });
+            }
+          }
+
+          if (errInfo.isTransient) {
+            triggerModelCooldown(modelName, requestId, 'TRANSIENT_FAILURE');
           }
           break;
         }

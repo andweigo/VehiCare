@@ -1,0 +1,428 @@
+import assert from 'assert';
+import config from '../src/config/env.js';
+import {
+  callGemini,
+  extractGeminiErrorInfo,
+  sanitizeErrorMessage,
+  isModelInCooldown,
+  triggerModelCooldown,
+  clearModelCooldown,
+  clearAllModelCooldowns,
+  normalizeGeminiError,
+} from '../src/services/gemini.service.js';
+import { errorHandlerMiddleware } from '../src/middleware/error.middleware.js';
+
+console.log('================================================================');
+console.log('VehiCare AI Service - Gemini Resilience & Fallback Audit Suite');
+console.log('================================================================');
+
+let passedTests = 0;
+let totalTests = 0;
+
+const test = async (name, fn) => {
+  totalTests++;
+  clearAllModelCooldowns();
+  try {
+    await fn();
+    console.log(`[PASS] Test ${totalTests}: ${name}`);
+    passedTests++;
+  } catch (err) {
+    console.error(`[FAIL] Test ${totalTests}: ${name}`);
+    console.error(err);
+    process.exit(1);
+  }
+};
+
+const createMockClient = (handlersByModel) => {
+  const callCounts = {};
+  return {
+    callCounts,
+    models: {
+      generateContent: async ({ model, config: genConfig }) => {
+        callCounts[model] = (callCounts[model] || 0) + 1;
+        const handler = handlersByModel[model];
+        if (typeof handler === 'function') {
+          return await handler(callCounts[model], genConfig);
+        }
+        return { text: JSON.stringify({ type: 'conversation', response: 'Default mock response' }) };
+      },
+    },
+  };
+};
+
+// 1. Error extraction and sanitization
+await test('extractGeminiErrorInfo properly parses status, code, retryDelay, and sanitizes API keys', async () => {
+  const rawKey = 'AIzaSyDxAbc1234567890SecretKeyPayload';
+  const rawJsonError = new Error(JSON.stringify({
+    error: {
+      code: 429,
+      status: 'RESOURCE_EXHAUSTED',
+      message: `Quota exceeded for key=${rawKey}. Please retry in 58436s.`,
+      details: [
+        {
+          '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+          retryDelay: '58436s',
+        },
+      ],
+    },
+  }));
+  rawJsonError.status = 429;
+
+  const info = extractGeminiErrorInfo(rawJsonError);
+  assert.strictEqual(info.status, 429);
+  assert.strictEqual(info.code, 'RESOURCE_EXHAUSTED');
+  assert.strictEqual(info.isRateLimit, true);
+  assert.strictEqual(info.isTransient, true);
+  assert.strictEqual(info.retryDelayMs, 58436000);
+  assert.strictEqual(info.message.includes(rawKey), false, 'API key must not be present in sanitized message');
+
+  const cleanMsg = sanitizeErrorMessage(`Unauthorized call with key ${rawKey} and Bearer abc.xyz123`);
+  assert.strictEqual(cleanMsg.includes(rawKey), false);
+  assert.strictEqual(cleanMsg.includes('abc.xyz123'), false);
+});
+
+// 2. Upstream 429 with long retryDelay immediately falls back without wasted retries
+await test('Upstream 429 with long retry delay skips retrying primary model and succeeds on fallback', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error(JSON.stringify({
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded for free tier. Please retry in 16 hours.',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '57600s' }],
+        },
+      }));
+      err.status = 429;
+      throw err;
+    },
+    [fallback]: () => {
+      return { text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Fallback succeeded' }) };
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check brake noise',
+    requestId: 'req_test_429_fallback',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 1, 'Primary model must not be retried when retryDelay is 16h');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must be attempted');
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+  assert.strictEqual(isModelInCooldown(primary), true, 'Primary model should be placed in cooldown');
+  assert.strictEqual(isModelInCooldown(fallback), false, 'Healthy fallback model must NOT be in cooldown');
+});
+
+// 3. Upstream 429 with short retry delay retries primary model with backoff
+await test('Upstream 429 with short retry delay retries primary model and succeeds', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: (attempt) => {
+      if (attempt === 1) {
+        const err = new Error(JSON.stringify({
+          error: {
+            code: 429,
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'Rate limit exceeded. Please wait a brief moment.',
+            details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '0.1s' }],
+          },
+        }));
+        err.status = 429;
+        throw err;
+      }
+      return { text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Primary retry succeeded' }) };
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check battery voltage',
+    requestId: 'req_test_429_short_retry',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 2, 'Primary model should retry after transient 429 with short delay');
+  assert.strictEqual(client.callCounts[fallback] || 0, 0, 'Fallback model should not be called if primary retry succeeds');
+  assert.strictEqual(result.fallbackUsed, false);
+  assert.strictEqual(result.modelUsed, primary);
+  assert.strictEqual(isModelInCooldown(primary), false, 'Successful retry should clear cooldown');
+});
+
+// 4. Upstream 503 High Demand triggers fallback
+await test('Upstream 503 high demand triggers fallback and succeeds on secondary model', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error(JSON.stringify({
+        error: {
+          code: 503,
+          status: 'UNAVAILABLE',
+          message: 'This model is currently experiencing high demand. Spikes in demand are usually temporary.',
+        },
+      }));
+      err.status = 503;
+      throw err;
+    },
+    [fallback]: () => {
+      return { text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Fallback succeeded after 503' }) };
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check transmission slipping',
+    requestId: 'req_test_503_fallback',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[fallback], 1);
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+});
+
+// 5. Upstream 504 / generation timeout falls back within remaining request budget
+await test('Upstream 504 timeout on primary model falls back and completes within budget', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: async () => {
+      // Simulate timeout by throwing 504 / DEADLINE_EXCEEDED
+      const err = new Error('Upstream gateway timeout: deadline exceeded');
+      err.status = 504;
+      err.code = 'DEADLINE_EXCEEDED';
+      throw err;
+    },
+    [fallback]: () => {
+      return { text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Fallback succeeded after 504' }) };
+    },
+  });
+
+  const startTime = Date.now();
+  const result = await callGemini({
+    prompt: 'Engine overheating issue',
+    requestId: 'req_test_504_fallback',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime,
+    totalBudgetMs: 24000,
+  }, client);
+
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+  assert.ok(Date.now() - startTime < 24000, 'Total execution must not exceed request budget');
+});
+
+// 6. Non-retryable 400 / 401 invalid API key aborts immediately without attempting fallback
+await test('Non-retryable 400/401 API_KEY_INVALID aborts immediately without retrying or fallback', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error(JSON.stringify({
+        error: {
+          code: 400,
+          status: 'INVALID_ARGUMENT',
+          message: 'API key not valid. Please pass a valid API key.',
+          details: [{ reason: 'API_KEY_INVALID' }],
+        },
+      }));
+      err.status = 400;
+      throw err;
+    },
+    [fallback]: () => {
+      return { text: 'Should never be called' };
+    },
+  });
+
+  let caughtError = null;
+  try {
+    await callGemini({
+      prompt: 'Check coolant level',
+      requestId: 'req_test_invalid_key',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now(),
+      totalBudgetMs: 20000,
+    }, client);
+  } catch (err) {
+    caughtError = err;
+  }
+
+  assert.ok(caughtError, 'Must throw error on invalid API key');
+  assert.strictEqual(caughtError.retryable, false, 'Invalid API key error must NOT be retryable');
+  assert.strictEqual(client.callCounts[primary], 1, 'Primary must only be called once');
+  assert.strictEqual(client.callCounts[fallback] || 0, 0, 'Fallback must NOT be attempted when API key is invalid');
+});
+
+// 7. Non-retryable 404 model not found falls back immediately to next model
+await test('404 model not found triggers immediate fallback to next candidate model', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error(JSON.stringify({
+        error: {
+          code: 404,
+          status: 'NOT_FOUND',
+          message: 'This model models/old-model is no longer available.',
+        },
+      }));
+      err.status = 404;
+      throw err;
+    },
+    [fallback]: () => {
+      return { text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Fallback model succeeded' }) };
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check brake pads',
+    requestId: 'req_test_404_fallback',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 1, 'Deprecated 404 model must not be retried');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must be used');
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+});
+
+// 8. All models failed returns clean 503 without crashing or leaking secrets
+await test('All models failed throws clean retryable 503 error', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error('Primary model unavailable (503)');
+      err.status = 503;
+      throw err;
+    },
+    [fallback]: () => {
+      const err = new Error('Fallback model unavailable (503)');
+      err.status = 503;
+      throw err;
+    },
+  });
+
+  let caughtError = null;
+  try {
+    await callGemini({
+      prompt: 'Check tire pressure',
+      requestId: 'req_test_all_failed',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now(),
+      totalBudgetMs: 20000,
+    }, client);
+  } catch (err) {
+    caughtError = err;
+  }
+
+  assert.ok(caughtError);
+  assert.strictEqual(caughtError.retryable, true);
+  assert.strictEqual(caughtError.statusCode, 503);
+
+  // Test Express error middleware formatting
+  let sentStatus = null;
+  let sentJson = null;
+  const mockRes = {
+    status: (s) => {
+      sentStatus = s;
+      return mockRes;
+    },
+    json: (d) => {
+      sentJson = d;
+      return mockRes;
+    },
+  };
+
+  errorHandlerMiddleware(caughtError, { headers: { 'x-request-id': 'req_test_all_failed' } }, mockRes, () => {});
+  assert.strictEqual(sentStatus, 503);
+  assert.strictEqual(sentJson.success, false);
+  assert.strictEqual(sentJson.error.retryable, true);
+  assert.strictEqual(sentJson.error.code, 'GEMINI_OVERLOADED');
+  assert.strictEqual(typeof sentJson.error.message, 'string');
+  assert.strictEqual(sentJson.error.stack, undefined, 'Stack trace must NEVER be sent to client');
+});
+
+// 9. Low remaining time budget avoids timeout and aborts early
+await test('callGemini aborts fast when overall deadline is already expired (< 2s)', async () => {
+  const primary = config.gemini.model;
+  const client = createMockClient({
+    [primary]: () => ({ text: 'ok' }),
+  });
+
+  let caughtError = null;
+  try {
+    await callGemini({
+      prompt: 'Quick ping',
+      requestId: 'req_test_budget_exhausted',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now() - 24500, // already 24.5s elapsed
+      totalBudgetMs: 25000,          // only 500ms remaining
+    }, client);
+  } catch (err) {
+    caughtError = err;
+  }
+
+  assert.ok(caughtError);
+  assert.strictEqual(client.callCounts[primary] || 0, 0, 'Gemini must not be called when time budget is depleted');
+});
+
+// 10. Cooldown on primary model does not block fallback model on subsequent requests
+await test('Cooldown on primary model allows subsequent requests to immediately use fallback model', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  triggerModelCooldown(primary, 'req_cooldown_test', 'TRANSIENT_FAILURE', 15000);
+  assert.strictEqual(isModelInCooldown(primary), true);
+  assert.strictEqual(isModelInCooldown(fallback), false);
+
+  const client = createMockClient({
+    [primary]: () => { throw new Error('Primary in cooldown should not be called'); },
+    [fallback]: () => {
+      return { text: JSON.stringify({ type: 'conversation', response: 'Fallback answered immediately' }) };
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check steering vibration',
+    requestId: 'req_cooldown_exec',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary] || 0, 0, 'Primary model in cooldown must be skipped');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must be used directly');
+  assert.strictEqual(result.fallbackUsed, true);
+});
+
+console.log('================================================================');
+console.log(`Gemini Resilience Suite Results: ${passedTests}/${totalTests} tests passed cleanly.`);
+console.log('================================================================');

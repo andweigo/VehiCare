@@ -1,3 +1,4 @@
+import config from '../config/env.js';
 import { getGeminiModelName } from '../config/gemini.js';
 import { buildDiagnosisPrompt, isGeneralQuestion } from '../prompts/diagnosis.prompt.js';
 import { applySafetyRules } from '../safety/diagnosis-safety.js';
@@ -193,6 +194,8 @@ export const processDiagnosisRequest = async (payload) => {
             requestId,
             requestType,
             inputType,
+            startTime,
+            totalBudgetMs: config.gemini.totalTimeoutMs || 24000,
           });
         } catch (geminiError) {
           const isMediaError = [
@@ -241,6 +244,8 @@ export const processDiagnosisRequest = async (payload) => {
               requestId: `${requestId}_fallback`,
               requestType,
               inputType: 'text',
+              startTime,
+              totalBudgetMs: config.gemini.totalTimeoutMs || 24000,
             });
           } else {
             if (isMediaError && !hasUsableSymptoms) {
