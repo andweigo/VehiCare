@@ -580,19 +580,55 @@ export const callGemini = async (params, client = null) => {
 
       const defaultTimeout = fallbackUsed
         ? (config.gemini.timeouts.fallbackText || 10500)
-        : (config.gemini.timeouts[media?.mediaType || 'text'] || config.gemini.timeouts.text);
+        : (
+            config.gemini.timeouts[media?.mediaType || 'text']
+            || config.gemini.timeouts.text
+            || 13500
+          );
 
-      let timeoutMs;
-      if (hasNextModel) {
-        const reserveForNextMs = 10500;
-        timeoutMs = Math.max(10000, Math.min(defaultTimeout, remainingOverallMs - reserveForNextMs));
-      } else {
-        timeoutMs = Math.max(10000, Math.min(defaultTimeout, remainingOverallMs - 1000));
+      // To attempt this model when a fallback exists, we must preserve at least 10s for the fallback.
+      // If we cannot guarantee at least 10s for both, skip directly to the fallback.
+      if (hasNextModel && remainingOverallMs < 19500) {
+        logger.warn('AI_MODEL_SKIPPED_INSUFFICIENT_BUDGET', requestId, {
+          model: modelName,
+          remainingBudgetMs: remainingOverallMs,
+          requiredBudgetForBothMs: 19500,
+          action: 'skipping_to_fallback',
+        });
+        continue;
       }
 
-      const maxAttempts = fallbackUsed || media?.mediaType === 'audio' || media?.mediaType === 'video'
-        ? 1
-        : MAX_RETRIES + 1;
+      // For the final (or only) model, we need at least 10s to meet Google's minimum deadline.
+      const reserveForProcessingMs = 500;
+      const availableTimeoutMs = remainingOverallMs - (hasNextModel ? 10000 : reserveForProcessingMs);
+
+      if (availableTimeoutMs < 9500) {
+        logger.warn('AI_MODEL_SKIPPED_INSUFFICIENT_BUDGET', requestId, {
+          model: modelName,
+          remainingBudgetMs: remainingOverallMs,
+          availableTimeoutMs,
+          minimumDeadlineMs: 10000,
+        });
+        continue;
+      }
+
+      const timeoutMs = Math.max(10000, Math.min(defaultTimeout, availableTimeoutMs));
+
+      const isLongMediaRequest =
+        media?.mediaType === 'audio' || media?.mediaType === 'video';
+
+      let maxAttempts;
+
+      if (isLongMediaRequest) {
+        maxAttempts = 1;
+      } else if (fallbackUsed) {
+        // Allow a second fallback attempt only when enough total
+        // time remains for two requests and retry backoff.
+        const remainingMs = requestDeadline - Date.now();
+        maxAttempts = remainingMs >= 22000 ? 2 : 1;
+      } else {
+        maxAttempts = MAX_RETRIES + 1;
+      }
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const generationStartedAt = Date.now();
