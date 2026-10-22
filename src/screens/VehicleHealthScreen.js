@@ -14,6 +14,7 @@ import {
 
 const VehicleHealthScreen = ({ navigation }) => {
   const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
   const { activeVehicle, pendingVehicle } = useVehicle();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -158,27 +159,34 @@ const VehicleHealthScreen = ({ navigation }) => {
       ]}
     >
       {/* HEADER */}
-
       <View style={styles.header}>
         <TouchableOpacity
           style={[
             styles.backButton,
             {
-              backgroundColor: theme.surfaceAlt,
-              borderColor: theme.border,
+              backgroundColor: isDark ? '#1C1C1F' : '#FFFFFF',
+              borderColor: isDark ? '#2B2B30' : '#E2E8F0',
             },
           ]}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
+          activeOpacity={0.75}
         >
           <Icon
             name="arrow-back"
-            size={22}
+            size={20}
             color={theme.text}
           />
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
+          <Text
+            style={[
+              styles.headerEyebrow,
+              { color: theme.accent },
+            ]}
+          >
+            HEALTH METRICS
+          </Text>
           <Text
             style={[
               styles.headerTitle,
@@ -188,18 +196,6 @@ const VehicleHealthScreen = ({ navigation }) => {
             ]}
           >
             Vehicle Health
-          </Text>
-
-          <Text
-            style={[
-              styles.headerSubtitle,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-            numberOfLines={1}
-          >
-            Track your vehicle’s condition.
           </Text>
         </View>
       </View>
@@ -215,14 +211,13 @@ const VehicleHealthScreen = ({ navigation }) => {
           />
         }
       >
-        {/* HEALTH OVERVIEW */}
-
+        {/* HEALTH OVERVIEW HERO CARD */}
         <View
           style={[
             styles.healthCard,
             {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
+              backgroundColor: isDark ? '#141416' : '#FFFFFF',
+              borderColor: isDark ? '#262629' : '#E8EDF2',
             },
           ]}
         >
@@ -236,7 +231,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                CURRENT HEALTH
+                OVERALL HEALTH SCORE
               </Text>
 
               <View style={styles.scoreRow}>
@@ -268,14 +263,15 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.statusBadge,
                 {
-                  backgroundColor:
-                    theme.statusBadgeBackground,
+                  backgroundColor: isDark
+                    ? 'rgba(255, 255, 255, 0.06)'
+                    : '#F1F5F9',
                 },
               ]}
             >
               <Icon
                 name={healthStatus.icon}
-                size={17}
+                size={16}
                 color={healthColor}
               />
 
@@ -287,7 +283,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                {healthStatus.label}
+                {healthStatus.label.toUpperCase()}
               </Text>
             </View>
           </View>
@@ -296,7 +292,7 @@ const VehicleHealthScreen = ({ navigation }) => {
             style={[
               styles.progressTrack,
               {
-                backgroundColor: theme.border,
+                backgroundColor: isDark ? '#222226' : '#F1F5F9',
               },
             ]}
           >
@@ -304,7 +300,7 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.progressFill,
                 {
-                  width: `${healthPercentage}%`,
+                  width: `${Math.min(100, Math.max(0, healthPercentage))}%`,
                   backgroundColor: healthColor,
                 },
               ]}
@@ -319,26 +315,26 @@ const VehicleHealthScreen = ({ navigation }) => {
               },
             ]}
           >
-            Your vehicle health score is based on your
-            vehicle information, maintenance activity,
-            diagnostics, and completed recommendations.
+            Calculated dynamically from vehicle specifications, logged maintenance tasks, diagnostic scan findings, and completed service recommendations.
           </Text>
         </View>
 
-        {/* VEHICLE */}
-
+        {/* ACTIVE VEHICLE CARD */}
         <View
           style={[
             styles.vehicleCard,
             {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
+              backgroundColor: isDark ? '#141416' : '#FFFFFF',
+              borderColor: isDark ? '#262629' : '#E8EDF2',
             },
           ]}
         >
-          
           <View style={styles.vehicleHeader}>
             <View style={styles.vehicleInfo}>
+              <View style={styles.activeVehiclePill}>
+                <View style={styles.activeDot} />
+                <Text style={styles.activeVehicleLabel}>ACTIVE VEHICLE</Text>
+              </View>
               <Text
                 style={[
                   styles.vehicleName,
@@ -370,7 +366,9 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.vehicleIconContainer,
                 {
-                  backgroundColor: theme.accentSoft,
+                  backgroundColor: isDark
+                    ? 'rgba(246, 59, 5, 0.12)'
+                    : '#FFF2EE',
                 },
               ]}
             >
@@ -386,13 +384,14 @@ const VehicleHealthScreen = ({ navigation }) => {
             style={[
               styles.changeVehicleButton,
               {
-                backgroundColor: theme.surfaceAlt,
-                borderColor: theme.accent,
+                backgroundColor: isDark ? '#1A1A1D' : '#F8FAFC',
+                borderColor: isDark ? '#2B2B30' : '#E2E8F0',
               },
             ]}
             onPress={() => navigation.navigate('Vehicles')}
             activeOpacity={0.8}
           >
+            <Icon name="swap-horiz" size={18} color={theme.accent} />
             <Text
               style={[
                 styles.changeVehicleText,
@@ -401,13 +400,12 @@ const VehicleHealthScreen = ({ navigation }) => {
                 },
               ]}
             >
-              Change Vehicle
+              Switch Vehicle
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* HEALTH FACTORS */}
-
         <View style={styles.section}>
           <Text
             style={[
@@ -428,23 +426,26 @@ const VehicleHealthScreen = ({ navigation }) => {
               },
             ]}
           >
-            Areas contributing to your vehicle health.
+            Interactive breakdown of elements contributing to your score.
           </Text>
 
           <View
             style={[
               styles.factorCard,
               {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E8EDF2',
               },
             ]}
           >
             <HealthFactor
               icon="build"
-              title="Maintenance"
+              title="Maintenance Logs"
               value={factors.maintenance || 0}
+              unit="services"
               theme={theme}
+              isDark={isDark}
+              categoryType="maintenance"
               onPress={() => navigation.navigate('Maintenance')}
             />
 
@@ -452,16 +453,19 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.factorDivider,
                 {
-                  backgroundColor: theme.border,
+                  backgroundColor: isDark ? '#222226' : '#F1F5F9',
                 },
               ]}
             />
 
             <HealthFactor
               icon="medical-services"
-              title="Diagnostics"
+              title="Diagnostic History"
               value={factors.diagnostics || 0}
+              unit="scans"
               theme={theme}
+              isDark={isDark}
+              categoryType="diagnostics"
               onPress={() => navigation.navigate('History', { filter: 'diagnosis' })}
             />
 
@@ -469,29 +473,31 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.factorDivider,
                 {
-                  backgroundColor: theme.border,
+                  backgroundColor: isDark ? '#222226' : '#F1F5F9',
                 },
               ]}
             />
 
             <HealthFactor
-              icon="lightbulb"
+              icon="auto-awesome"
               title="Recommendations"
               value={factors.recommendations || 0}
+              unit="actions"
               theme={theme}
+              isDark={isDark}
+              categoryType="recommendations"
               onPress={() => navigation.navigate('SmartRecommendations')}
             />
           </View>
         </View>
 
-        {/* IMPROVE HEALTH */}
-
+        {/* IMPROVE HEALTH CTA */}
         <TouchableOpacity
           style={[
             styles.recommendationCard,
             {
-              backgroundColor: theme.surfaceAlt,
-              borderColor: theme.accent,
+              backgroundColor: isDark ? '#141416' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(246, 59, 5, 0.4)' : '#FDCAC0',
             },
           ]}
           activeOpacity={0.85}
@@ -503,13 +509,15 @@ const VehicleHealthScreen = ({ navigation }) => {
             style={[
               styles.recommendationIcon,
               {
-                backgroundColor: theme.accentSoft,
+                backgroundColor: isDark
+                  ? 'rgba(246, 59, 5, 0.15)'
+                  : '#FFF2EE',
               },
             ]}
           >
             <Icon
               name="auto-awesome"
-              size={25}
+              size={24}
               color={theme.accent}
             />
           </View>
@@ -534,9 +542,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                 },
               ]}
             >
-              Get personalized recommendations based
-              on your vehicle's symptoms, history, and
-              maintenance needs.
+              Get personalized AI recommendations based on your vehicle's symptoms, mileage, and maintenance needs.
             </Text>
 
             <View style={styles.recommendationAction}>
@@ -548,12 +554,12 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                View recommendations
+                View Smart Recommendations
               </Text>
 
               <Icon
                 name="arrow-forward"
-                size={16}
+                size={14}
                 color={theme.accent}
               />
             </View>
@@ -561,7 +567,6 @@ const VehicleHealthScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         {/* COMPLETED RECOMMENDATIONS */}
-
         <View style={styles.section}>
           <View style={styles.completedHeader}>
             <View>
@@ -573,7 +578,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                Completed
+                Completed Actions
               </Text>
 
               <Text
@@ -584,7 +589,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                Recommendations you've completed.
+                Milestones that helped improve vehicle longevity.
               </Text>
             </View>
 
@@ -592,8 +597,9 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.countBadge,
                 {
-                  backgroundColor:
-                    theme.statusBadgeBackground,
+                  backgroundColor: isDark
+                    ? 'rgba(246, 59, 5, 0.12)'
+                    : '#FFF2EE',
                 },
               ]}
             >
@@ -615,16 +621,25 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.emptyCard,
                 {
-                  backgroundColor: theme.surface,
-                  borderColor: theme.border,
+                  backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                  borderColor: isDark ? '#232326' : '#E8EDF2',
                 },
               ]}
             >
-              <Icon
-                name="task-alt"
-                size={25}
-                color={theme.textSecondary}
-              />
+              <View
+                style={[
+                  styles.emptyIconCircle,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                  },
+                ]}
+              >
+                <Icon
+                  name="task-alt"
+                  size={24}
+                  color={theme.textSecondary}
+                />
+              </View>
 
               <Text
                 style={[
@@ -645,8 +660,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                Complete recommended actions to help
-                improve your vehicle health score.
+                Complete recommended service actions to increase your vehicle health score.
               </Text>
             </View>
           ) : (
@@ -659,10 +673,8 @@ const VehicleHealthScreen = ({ navigation }) => {
                   style={[
                     styles.completedCard,
                     {
-                      backgroundColor:
-                        theme.surface,
-                      borderColor:
-                        theme.border,
+                      backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                      borderColor: isDark ? '#232326' : '#E8EDF2',
                     },
                   ]}
                 >
@@ -670,15 +682,14 @@ const VehicleHealthScreen = ({ navigation }) => {
                     style={[
                       styles.completedIcon,
                       {
-                        backgroundColor:
-                          theme.accentSoft,
+                        backgroundColor: isDark ? '#13241A' : '#DCFCE7',
                       },
                     ]}
                   >
                     <Icon
                       name="check"
                       size={18}
-                      color={theme.accent}
+                      color={isDark ? '#32D583' : '#15803D'}
                     />
                   </View>
 
@@ -709,7 +720,7 @@ const VehicleHealthScreen = ({ navigation }) => {
                         },
                       ]}
                     >
-                      +{item.scoreImpact || 0} health
+                      +{item.scoreImpact || 0} health impact
                     </Text>
                   </View>
                 </View>
@@ -718,21 +729,28 @@ const VehicleHealthScreen = ({ navigation }) => {
         </View>
 
         {/* LAST UPDATED */}
-
         {healthData?.lastUpdated && (
-          <Text
-            style={[
-              styles.lastUpdated,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
-            Last updated{' '}
-            {new Date(
-              healthData.lastUpdated,
-            ).toLocaleString()}
-          </Text>
+          <View style={styles.lastUpdatedBox}>
+            <Icon name="history" size={13} color={theme.textSecondary} />
+            <Text
+              style={[
+                styles.lastUpdated,
+                {
+                  color: theme.textSecondary,
+                },
+              ]}
+            >
+              Updated{' '}
+              {new Date(
+                healthData.lastUpdated,
+              ).toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -743,9 +761,26 @@ const HealthFactor = ({
   icon,
   title,
   value,
+  unit = 'completed',
   theme,
+  isDark,
+  categoryType,
   onPress,
 }) => {
+  let iconBg = theme.accentSoft;
+  let iconColor = theme.accent;
+
+  if (categoryType === 'maintenance') {
+    iconBg = isDark ? '#13241A' : '#DCFCE7';
+    iconColor = isDark ? '#32D583' : '#15803D';
+  } else if (categoryType === 'diagnostics') {
+    iconBg = isDark ? '#27160F' : '#FEE4DA';
+    iconColor = isDark ? '#F63B05' : '#C2410C';
+  } else if (categoryType === 'recommendations') {
+    iconBg = isDark ? '#19162A' : '#F3E8FF';
+    iconColor = isDark ? '#8C7BFF' : '#6D28D9';
+  }
+
   return (
     <TouchableOpacity
       style={styles.factor}
@@ -757,15 +792,14 @@ const HealthFactor = ({
         style={[
           styles.factorIcon,
           {
-            backgroundColor:
-              theme.accentSoft,
+            backgroundColor: iconBg,
           },
         ]}
       >
         <Icon
           name={icon}
           size={18}
-          color={theme.accent}
+          color={iconColor}
         />
       </View>
 
@@ -790,15 +824,15 @@ const HealthFactor = ({
             },
           ]}
         >
-          {value} completed
+          {value} {unit}
         </Text>
       </View>
 
       {onPress && (
         <Icon
           name="chevron-right"
-          size={20}
-          color={theme.textTertiary || theme.textSecondary}
+          size={19}
+          color={isDark ? '#52525B' : '#CBD5E1'}
         />
       )}
     </TouchableOpacity>
@@ -812,7 +846,8 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingTop: 4,
+    paddingBottom: 115,
   },
 
   // ==========================================
@@ -823,18 +858,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 18,
+    paddingTop: 12,
+    marginBottom: 12,
+    gap: 12,
   },
 
   backButton: {
-    width: 43,
-    height: 43,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
 
   headerTitleContainer: {
@@ -842,16 +877,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  headerTitle: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 21,
-    lineHeight: 26,
+  headerEyebrow: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    letterSpacing: 1.5,
+    marginBottom: 2,
   },
 
-  headerSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 2,
+  headerTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 21,
+    lineHeight: 26,
   },
 
   // ==========================================
@@ -860,9 +896,14 @@ const styles = StyleSheet.create({
 
   healthCard: {
     borderWidth: 1,
-    borderRadius: 21,
+    borderRadius: 22,
     padding: 18,
-    marginBottom: 15,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
   scoreHeader: {
@@ -872,10 +913,10 @@ const styles = StyleSheet.create({
   },
 
   overline: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 1,
-    marginBottom: 2,
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    marginBottom: 4,
   },
 
   scoreRow: {
@@ -885,29 +926,30 @@ const styles = StyleSheet.create({
 
   score: {
     fontFamily: 'Outfit-ExtraBold',
-    fontSize: 45,
+    fontSize: 44,
     lineHeight: 48,
   },
 
   percent: {
     fontFamily: 'Outfit-SemiBold',
-    fontSize: 18,
+    fontSize: 20,
     marginBottom: 6,
-    marginLeft: 2,
+    marginLeft: 3,
   },
 
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    gap: 5,
   },
 
   statusText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    marginLeft: 5,
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
 
   progressTrack: {
@@ -916,7 +958,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 14,
-    marginBottom: 13,
+    marginBottom: 12,
   },
 
   progressFill: {
@@ -926,7 +968,7 @@ const styles = StyleSheet.create({
 
   healthDescription: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
+    fontSize: 11.5,
     lineHeight: 17,
   },
 
@@ -936,27 +978,35 @@ const styles = StyleSheet.create({
 
   vehicleCard: {
     borderWidth: 1,
-    borderRadius: 19,
+    borderRadius: 20,
     padding: 16,
-    marginBottom: 22,
+    marginBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
-  sectionHeader: {
+  activeVehiclePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 5,
+    marginBottom: 4,
   },
 
-  sectionTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 18,
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
   },
 
-  sectionSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
-    lineHeight: 16,
-    marginTop: 3,
+  activeVehicleLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9,
+    color: '#10B981',
+    letterSpacing: 0.8,
   },
 
   vehicleHeader: {
@@ -971,38 +1021,40 @@ const styles = StyleSheet.create({
   },
 
   vehicleName: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 15,
-    lineHeight: 20,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    lineHeight: 21,
   },
 
   vehicleDetails: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
+    fontSize: 11.5,
     lineHeight: 16,
-    marginTop: 3,
+    marginTop: 2,
   },
 
   vehicleIconContainer: {
     width: 44,
     height: 44,
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   changeVehicleButton: {
-    marginTop: 16,
+    marginTop: 14,
     borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
+    borderRadius: 13,
+    paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
 
   changeVehicleText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
+    fontSize: 12.5,
   },
 
   // ==========================================
@@ -1010,7 +1062,20 @@ const styles = StyleSheet.create({
   // ==========================================
 
   section: {
-    marginBottom: 22,
+    marginBottom: 20,
+  },
+
+  sectionTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+    lineHeight: 22,
+  },
+
+  sectionSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginTop: 2,
   },
 
   // ==========================================
@@ -1019,9 +1084,14 @@ const styles = StyleSheet.create({
 
   factorCard: {
     borderWidth: 1,
-    borderRadius: 19,
+    borderRadius: 20,
     padding: 14,
-    marginTop: 12,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
   factor: {
@@ -1031,12 +1101,12 @@ const styles = StyleSheet.create({
   },
 
   factorIcon: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    marginRight: 12,
   },
 
   factorContent: {
@@ -1044,19 +1114,19 @@ const styles = StyleSheet.create({
   },
 
   factorTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
   },
 
   factorValue: {
     fontFamily: 'Inter-Regular',
-    fontSize: 9.5,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1.5,
   },
 
   factorDivider: {
     height: 1,
-    marginVertical: 7,
+    marginVertical: 8,
   },
 
   // ==========================================
@@ -1067,14 +1137,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderWidth: 1,
     borderRadius: 20,
-    padding: 16,
-    marginBottom: 22,
+    padding: 15,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
   recommendationIcon: {
-    width: 47,
-    height: 47,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1085,13 +1160,14 @@ const styles = StyleSheet.create({
   },
 
   recommendationTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    lineHeight: 20,
   },
 
   recommendationDescription: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
+    fontSize: 11.5,
     lineHeight: 16,
     marginTop: 4,
   },
@@ -1099,13 +1175,13 @@ const styles = StyleSheet.create({
   recommendationAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 8,
+    gap: 4,
   },
 
   recommendationActionText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    marginRight: 4,
+    fontSize: 11.5,
   },
 
   // ==========================================
@@ -1119,54 +1195,69 @@ const styles = StyleSheet.create({
   },
 
   countBadge: {
-    minWidth: 30,
-    height: 30,
-    borderRadius: 15,
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 8,
   },
 
   countText: {
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Bold',
     fontSize: 11,
   },
 
   emptyCard: {
     borderWidth: 1,
-    borderRadius: 19,
-    padding: 20,
+    borderRadius: 20,
+    padding: 24,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 10,
+    gap: 4,
+  },
+
+  emptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
 
   emptyTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 14,
-    marginTop: 8,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14.5,
     textAlign: 'center',
   },
 
   emptyDescription: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 11.5,
+    lineHeight: 16,
     textAlign: 'center',
-    marginTop: 4,
+    maxWidth: 260,
   },
 
   completedCard: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 17,
-    padding: 13,
-    marginTop: 10,
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
 
   completedIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1177,22 +1268,28 @@ const styles = StyleSheet.create({
   },
 
   completedTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    lineHeight: 16,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    lineHeight: 18,
   },
 
   completedImpact: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    marginTop: 3,
+    fontSize: 10.5,
+    marginTop: 2,
+  },
+
+  lastUpdatedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 8,
   },
 
   lastUpdated: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9,
-    textAlign: 'center',
-    marginTop: 2,
+    fontFamily: 'Inter-Medium',
+    fontSize: 10.5,
   },
 });
 

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,6 +27,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 const ProfileScreen = ({ navigation }) => {
   const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
   const { openSidebar } = useSidebar();
   const { user, logout, updateProfile, refreshUser } = useAuth();
   const { language, t } = useLanguage();
@@ -264,67 +267,137 @@ const ProfileScreen = ({ navigation }) => {
         onRequestClose={() => setEditModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}> 
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Profile</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Update your name and profile picture from your gallery.</Text>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setEditModalVisible(false)}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.keyboardWrap}
+          >
+            <View
+              style={[
+                styles.modalContainer,
+                {
+                  backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                  borderColor: isDark ? '#262629' : '#E2E8F0',
+                },
+              ]}
+            >
+              {/* Header Row: Pill Badge + Circular Close Button */}
+              <View style={styles.modalHeaderRow}>
+                <View
+                  style={[
+                    styles.modalBadgePill,
+                    {
+                      backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE',
+                    },
+                  ]}
+                >
+                  <Icon name="edit" size={13} color={theme.accent} />
+                  <Text style={[styles.modalBadgeText, { color: theme.accent }]}>
+                    EDIT PROFILE
+                  </Text>
+                </View>
 
-            <View style={styles.modalField}>
-              <Text style={[styles.modalLabel, { color: theme.text }]}>Display Name</Text>
-              <TextInput
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="Your display name"
-                placeholderTextColor={theme.textSecondary}
-                style={[styles.modalInput, { backgroundColor: theme.surfaceAlt, color: theme.text, borderColor: theme.border }]}
-              />
-            </View>
+                <TouchableOpacity
+                  onPress={() => setEditModalVisible(false)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.closeCircleBtn,
+                    { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                  ]}
+                  accessibilityLabel="Close dialog"
+                >
+                  <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.modalField}>
-              <Text style={[styles.modalLabel, { color: theme.text }]}>Profile Photo</Text>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={handlePickPhoto}
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Profile</Text>
+              <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                Update your name and profile picture from your gallery.
+              </Text>
+
+              <View
                 style={[
-                  styles.photoPicker,
-                  {
-                    backgroundColor: theme.surfaceAlt,
-                    borderColor: theme.border,
-                  },
+                  styles.modalDivider,
+                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
                 ]}
-              >
-                {editPhotoURL ? (
-                  <Image
-                    source={{ uri: editPhotoURL }}
-                    style={styles.photoPreview}
-                  />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <Icon name="photo-camera" size={22} color={theme.textSecondary} />
-                    <Text style={[styles.photoPlaceholderText, { color: theme.textSecondary }]}>Tap to select an image</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
+              />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => setEditModalVisible(false)}
-                style={[styles.modalButton, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
-              >
-                <Text style={[styles.modalButtonText, { color: theme.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: theme.text }]}>Display Name</Text>
+                <TextInput
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Your display name"
+                  placeholderTextColor={theme.textSecondary}
+                  style={[
+                    styles.modalInput,
+                    {
+                      backgroundColor: theme.surfaceAlt,
+                      color: theme.text,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                />
+              </View>
 
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={handleSaveProfile}
-                style={[styles.modalButton, { backgroundColor: theme.accent }]}
-                disabled={savingEdit}
-              >
-                <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>Save</Text>
-              </TouchableOpacity>
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: theme.text }]}>Profile Photo</Text>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handlePickPhoto}
+                  style={[
+                    styles.photoPicker,
+                    {
+                      backgroundColor: theme.surfaceAlt,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  {editPhotoURL ? (
+                    <Image
+                      source={{ uri: editPhotoURL }}
+                      style={styles.photoPreview}
+                    />
+                  ) : (
+                    <View style={styles.photoPlaceholder}>
+                      <Icon name="photo-camera" size={22} color={theme.textSecondary} />
+                      <Text style={[styles.photoPlaceholderText, { color: theme.textSecondary }]}>Tap to select an image</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setEditModalVisible(false)}
+                  style={[
+                    styles.modalCancelBtn,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: isDark ? '#1C1C1E' : '#F8FAFC',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.modalCancelBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleSaveProfile}
+                  style={[styles.modalSaveBtn, { backgroundColor: theme.accent }]}
+                  disabled={savingEdit}
+                >
+                  <Text style={styles.modalSaveBtnText}>{savingEdit ? 'Saving...' : 'Save Changes'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1533,34 +1606,77 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 18,
+    padding: 20,
+  },
+
+  keyboardWrap: {
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
   },
 
   modalContainer: {
     width: '100%',
     borderRadius: 22,
-    padding: 22,
+    borderWidth: 1,
+    padding: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    elevation: 12,
+  },
+
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+
+  modalBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 999,
+    gap: 6,
+  },
+
+  modalBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.8,
+  },
+
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   modalTitle: {
     fontFamily: 'Outfit-Bold',
     fontSize: 18,
-    marginBottom: 4,
+    lineHeight: 23,
+    marginBottom: 3,
   },
 
   modalSubtitle: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginBottom: 18,
+    fontSize: 11.5,
     lineHeight: 16,
+    marginBottom: 12,
+  },
+
+  modalDivider: {
+    height: 1,
+    marginBottom: 14,
   },
 
   modalField: {
@@ -1610,8 +1726,40 @@ const styles = StyleSheet.create({
 
   modalActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 6,
+    marginTop: 14,
+    gap: 10,
+  },
+
+  modalCancelBtn: {
+    minWidth: 95,
+    minHeight: 40,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+
+  modalCancelBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12.5,
+  },
+
+  modalSaveBtn: {
+    minWidth: 120,
+    minHeight: 40,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalSaveBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12.5,
+    color: '#FFFFFF',
   },
 
   modalButton: {

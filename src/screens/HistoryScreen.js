@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -344,6 +345,7 @@ const normalizeHistoryItem = item => {
 
 const HistoryScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
   const { user, isAuthenticated } = useAuth();
   const { openSidebar } = useSidebar();
   const { activeVehicle: contextActiveVehicle, vehicles: contextVehicles } = useVehicle();
@@ -1510,944 +1512,507 @@ const HistoryScreen = ({ navigation, route }) => {
         visible={sortVisible}
         transparent
         animationType="fade"
-        onRequestClose={() =>
-          setSortVisible(false)
-        }
+        statusBarTranslucent
+        onRequestClose={() => setSortVisible(false)}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={
-            styles.modalOverlay
-          }
-          onPress={() =>
-            setSortVisible(false)
-          }
-        >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity
+            style={StyleSheet.absoluteFill}
             activeOpacity={1}
+            onPress={() => setSortVisible(false)}
+          />
+          <View
             style={[
-              styles.sortModal,
+              styles.sortModalCard,
               {
-                backgroundColor:
-                  theme.background,
-                borderColor:
-                  theme.border,
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E2E8F0',
               },
             ]}
           >
+            {/* Header Row */}
+            <View style={styles.detailHeaderRow}>
+              <View
+                style={[
+                  styles.detailBadgePill,
+                  { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE' },
+                ]}
+              >
+                <Icon name="sort" size={13} color={theme.accent} />
+                <Text style={[styles.detailBadgeText, { color: theme.accent }]}>
+                  SORT ORDER
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setSortVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
+                style={[
+                  styles.closeCircleBtn,
+                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                ]}
+                accessibilityLabel="Close dialog"
+              >
+                <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.sortModalTitle, { color: theme.text }]}>
+              Sort History
+            </Text>
+            <Text style={[styles.sortModalSubtitle, { color: theme.textSecondary }]}>
+              Choose how your activities are ordered.
+            </Text>
+
             <View
               style={[
-                styles.modalHandle,
-                {
-                  backgroundColor:
-                    theme.border,
-                },
+                styles.detailDivider,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
               ]}
             />
 
-            <Text
-              style={[
-                styles.modalTitle,
-                {
-                  color:
-                    theme.text,
-                },
-              ]}
-            >
-              Sort History
-            </Text>
-
-            <Text
-              style={[
-                styles.modalSubtitle,
-                {
-                  color:
-                    theme.textSecondary,
-                },
-              ]}
-            >
-              Choose how your activity
-              is displayed.
-            </Text>
-
-            <View
-              style={
-                styles.sortOptions
-              }
-            >
-              {SORT_OPTIONS.map(
-                option => {
-                  const selected =
-                    sort ===
-                    option.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={
-                        option.id
-                      }
+            <View style={styles.sortOptions}>
+              {SORT_OPTIONS.map(option => {
+                const selected = sort === option.id;
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.sortOption,
+                      {
+                        backgroundColor: selected
+                          ? (isDark ? 'rgba(246, 59, 5, 0.12)' : '#FFF2EE')
+                          : (isDark ? '#1A1A1D' : '#F8FAFC'),
+                        borderColor: selected
+                          ? theme.accent
+                          : (isDark ? '#262629' : '#E2E8F0'),
+                      },
+                    ]}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      setSort(option.id);
+                      setSortVisible(false);
+                    }}
+                  >
+                    <View
                       style={[
-                        styles.sortOption,
+                        styles.sortOptionIcon,
                         {
-                          backgroundColor:
-                            theme.surface,
-                          borderColor:
-                            theme.border,
-                        },
-                        selected && {
-                          backgroundColor:
-                            theme.accentSoft,
-                          borderColor:
-                            theme.accent,
+                          backgroundColor: selected
+                            ? theme.accent
+                            : (isDark ? '#262629' : '#E2E8F0'),
                         },
                       ]}
-                      onPress={() => {
-                        setSort(
-                          option.id,
-                        );
-                        setSortVisible(
-                          false,
-                        );
-                      }}
                     >
-                      <View
-                        style={[
-                          styles.sortOptionIcon,
-                          {
-                            backgroundColor:
-                              theme.surfaceAlt,
-                          },
-                        ]}
-                      >
-                        <Icon
-                          name={
-                            option.id ===
-                            'recent'
-                              ? 'schedule'
-                              : option.id ===
-                                'oldest'
-                              ? 'history'
-                              : 'update'
-                          }
-                          size={20}
-                          color={
-                            selected
-                              ? theme.accent
-                              : theme.textSecondary
-                          }
-                        />
-                      </View>
-
-                      <Text
-                        style={[
-                          styles.sortOptionText,
-                          {
-                            color:
-                              selected
-                                ? theme.text
-                                : theme.textSecondary,
-                          },
-                        ]}
-                      >
-                        {
-                          option.label
+                      <Icon
+                        name={
+                          option.id === 'recent'
+                            ? 'schedule'
+                            : option.id === 'oldest'
+                            ? 'history'
+                            : 'update'
                         }
-                      </Text>
+                        size={17}
+                        color={selected ? '#FFFFFF' : theme.textSecondary}
+                      />
+                    </View>
 
-                      {selected && (
-                        <Icon
-                          name="check"
-                          size={21}
-                          color={
-                            theme.accent
-                          }
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                },
-              )}
+                    <Text
+                      style={[
+                        styles.sortOptionText,
+                        {
+                          color: selected ? theme.text : theme.textSecondary,
+                          fontFamily: selected ? 'Outfit-Bold' : 'Inter-Medium',
+                        },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+
+                    {selected && (
+                      <Icon name="check-circle" size={18} color={theme.accent} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* HISTORY DETAIL MODAL */}
 
       <Modal
-        visible={Boolean(
-          selectedItem,
-        )}
+        visible={Boolean(selectedItem)}
         transparent
-        animationType="slide"
-        onRequestClose={() =>
-          setSelectedItem(null)
-        }
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setSelectedItem(null)}
       >
-        <View
-          style={
-            styles.detailOverlay
-          }
-        >
-          <SafeAreaView
-            style={[
-              styles.detailModal,
-              {
-                backgroundColor:
-                  theme.background,
-              },
-            ]}
-          >
-            {selectedItem && (
-              <>
-                <View
-                  style={[
-                    styles.detailHeader,
-                    {
-                      borderBottomColor:
-                        theme.border,
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.detailClose,
-                      {
-                        backgroundColor:
-                          theme.surface,
-                      },
-                    ]}
-                    onPress={() =>
-                      setSelectedItem(
-                        null,
-                      )
-                    }
-                  >
-                    <Icon
-                      name="close"
-                      size={22}
-                      color={
-                        theme.text
-                      }
-                    />
-                  </TouchableOpacity>
+        <View style={styles.detailOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setSelectedItem(null)}
+          />
 
-                  <Text
-                    style={[
-                      styles.detailHeaderTitle,
-                      {
-                        color:
-                          theme.text,
-                      },
-                    ]}
-                  >
-                    Activity Details
-                  </Text>
+          {selectedItem && (() => {
+            const config = getTypeConfig(selectedItem.type);
+            const urgency = getUrgencyConfig(selectedItem.urgency);
+            const isCritical =
+              selectedItem.urgency === 'high' ||
+              selectedItem.urgency === 'urgent' ||
+              selectedItem.urgency === 'critical' ||
+              selectedItem.severity === 'HIGH' ||
+              selectedItem.severity === 'CRITICAL';
 
+            return (
+              <View
+                style={[
+                  styles.detailCard,
+                  {
+                    backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                    borderColor: isDark ? '#262629' : '#E2E8F0',
+                  },
+                ]}
+              >
+                {/* Header Row: Category Badge Pill + Circular X Close Button */}
+                <View style={styles.detailHeaderRow}>
                   <View
-                    style={
-                      styles.detailHeaderSpacer
-                    }
-                  />
+                    style={[
+                      styles.detailBadgePill,
+                      { backgroundColor: config.background },
+                    ]}
+                  >
+                    <Icon name={config.icon} size={13} color={config.color} />
+                    <Text style={[styles.detailBadgeText, { color: config.color }]}>
+                      {config.label.toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setSelectedItem(null)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.closeCircleBtn,
+                      { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                    ]}
+                    accessibilityLabel="Close dialog"
+                  >
+                    <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+                  </TouchableOpacity>
                 </View>
 
-                <FlatList
-                  data={[
-                    selectedItem,
+                {/* Title */}
+                <Text
+                  style={[styles.detailCardTitle, { color: theme.text }]}
+                  numberOfLines={2}
+                >
+                  {selectedItem.title}
+                </Text>
+
+                {/* Subtitle Row: Date + Vehicle Badge */}
+                <View style={styles.detailMetaRow}>
+                  <View style={styles.detailMetaItem}>
+                    <Icon name="schedule" size={12} color={theme.textSecondary} />
+                    <Text style={[styles.detailMetaText, { color: theme.textSecondary }]}>
+                      {formatDate(selectedItem.createdAt)}
+                    </Text>
+                  </View>
+
+                  {selectedItem.vehicleName ? (
+                    <View
+                      style={[
+                        styles.detailVehiclePill,
+                        { backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9' },
+                      ]}
+                    >
+                      <Icon name="directions-car" size={12} color={theme.textSecondary} />
+                      <Text
+                        style={[
+                          styles.detailVehiclePillText,
+                          { color: theme.textSecondary },
+                        ]}
+                      >
+                        {selectedItem.vehicleName}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Divider */}
+                <View
+                  style={[
+                    styles.detailDivider,
+                    { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
                   ]}
-                  keyExtractor={item =>
-                    item.id
-                  }
-                  showsVerticalScrollIndicator={
-                    false
-                  }
-                  contentContainerStyle={
-                    styles.detailContent
-                  }
-                  renderItem={({
-                    item,
-                  }) => {
-                    const config =
-                      getTypeConfig(
-                        item.type,
-                      );
-
-                    const urgency =
-                      getUrgencyConfig(
-                        item.urgency,
-                      );
-
-                    const isCritical =
-                      item.urgency ===
-                        'high' ||
-                      item.urgency ===
-                        'urgent' ||
-                      item.urgency ===
-                        'critical' ||
-                      item.severity ===
-                        'HIGH' ||
-                      item.severity ===
-                        'CRITICAL';
-
-                    return (
-                      <>
-                        <View
-                          style={[
-                            styles.detailIcon,
-                            {
-                              backgroundColor:
-                                config.background,
-                            },
-                          ]}
-                        >
-                          <Icon
-                            name={
-                              config.icon
-                            }
-                            size={30}
-                            color={
-                              config.color
-                            }
-                          />
-                        </View>
-
-                        <Text
-                          style={[
-                            styles.detailTitle,
-                            {
-                              color:
-                                theme.text,
-                            },
-                          ]}
-                        >
-                          {
-                            item.title
-                          }
-                        </Text>
-
-                        <Text
-                          style={[
-                            styles.detailType,
-                            {
-                              color:
-                                config.color,
-                            },
-                          ]}
-                        >
-                          {
-                            config.label
-                          }{' '}
-                          •{' '}
-                          {formatDate(
-                            item.createdAt,
-                          )}
-                        </Text>
-
-                        {item.vehicleName && (
-                          <View
-                            style={[
-                              styles.detailVehicle,
-                              {
-                                backgroundColor:
-                                  theme.surface,
-                                borderColor:
-                                  theme.border,
-                              },
-                            ]}
-                          >
-                            <Icon
-                              name="directions-car"
-                              size={
-                                17
-                              }
-                              color={
-                                theme.accent
-                              }
-                            />
-
-                            <Text
-                              style={[
-                                styles.detailVehicleText,
-                                {
-                                  color:
-                                    theme.text,
-                                },
-                              ]}
-                            >
-                              {
-                                item.vehicleName
-                              }
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* CRITICAL WARNING */}
-
-                        {isCritical && (
-                          <View
-                            style={[
-                              styles.recommendationCard,
-                              {
-                                backgroundColor:
-                                  '#2B1212',
-                                borderColor:
-                                  '#802525',
-                                marginTop:
-                                  16,
-                              },
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.recommendationIcon,
-                                {
-                                  backgroundColor:
-                                    '#451717',
-                                },
-                              ]}
-                            >
-                              <Icon
-                                name="warning"
-                                size={
-                                  22
-                                }
-                                color={
-                                  RED
-                                }
-                              />
-                            </View>
-
-                            <View
-                              style={
-                                styles.recommendationContent
-                              }
-                            >
-                              <Text
-                                style={[
-                                  styles.recommendationTitle,
-                                  {
-                                    color:
-                                      RED,
-                                  },
-                                ]}
-                              >
-                                ⚠️ SAFETY
-                                CRITICAL
-                              </Text>
-
-                              <Text
-                                style={[
-                                  styles.recommendationText,
-                                  {
-                                    color:
-                                      '#FFA8A8',
-                                  },
-                                ]}
-                              >
-                                Avoid driving
-                                the vehicle
-                                until the
-                                issue has
-                                been inspected
-                                by a qualified
-                                professional
-                                mechanic.
-                              </Text>
-                            </View>
-                          </View>
-                        )}
-
-                        {/* SUMMARY */}
-
-                        <View
-                          style={[
-                            styles.detailSection,
-                            {
-                              backgroundColor:
-                                theme.surface,
-                              borderColor:
-                                theme.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.detailSectionTitle,
-                              {
-                                color:
-                                  theme.accent,
-                              },
-                            ]}
-                          >
-                            SUMMARY
-                          </Text>
-
-                          <Text
-                            style={[
-                              styles.detailSummary,
-                              {
-                                color:
-                                  theme.textSecondary,
-                              },
-                            ]}
-                          >
-                            {
-                              item.summary
-                            }
-                          </Text>
-                        </View>
-
-                        {/* SYMPTOMS */}
-
-                        {Array.isArray(
-                          item.symptoms,
-                        ) &&
-                          item.symptoms
-                            .length >
-                            0 && (
-                            <View
-                              style={[
-                                styles.detailSection,
-                                {
-                                  backgroundColor:
-                                    theme.surface,
-                                  borderColor:
-                                    theme.border,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.detailSectionTitle,
-                                  {
-                                    color:
-                                      theme.accent,
-                                  },
-                                ]}
-                              >
-                                SYMPTOMS
-                              </Text>
-
-                              {item.symptoms.map(
-                                (
-                                  symptom,
-                                  index,
-                                ) => (
-                                  <View
-                                    key={
-                                      index
-                                    }
-                                    style={
-                                      styles.detailBullet
-                                    }
-                                  >
-                                    <View
-                                      style={[
-                                        styles.bullet,
-                                        {
-                                          backgroundColor:
-                                            theme.accent,
-                                        },
-                                      ]}
-                                    />
-
-                                    <Text
-                                      style={[
-                                        styles.detailBulletText,
-                                        {
-                                          color:
-                                            theme.textSecondary,
-                                        },
-                                      ]}
-                                    >
-                                      {typeof symptom ===
-                                      'string'
-                                        ? symptom
-                                        : String(
-                                            symptom,
-                                          )}
-                                    </Text>
-                                  </View>
-                                ),
-                              )}
-                            </View>
-                          )}
-
-                        {/* ASSESSMENT CONFIDENCE */}
-                        {item.confidence && (
-                          <ConfidenceCard confidence={item.confidence} />
-                        )}
-
-                        {/* POSSIBLE CAUSES */}
-                        {Array.isArray(
-                          item.possibleCauses ||
-                            item.possible_causes,
-                        ) &&
-                          (
-                            item.possibleCauses ||
-                            item.possible_causes
-                          ).length >
-                            0 && (
-                            <View style={{ marginBottom: 18 }}>
-                              <View style={styles.sectionHeaderRow}>
-                                <View>
-                                  <Text
-                                    style={[
-                                      styles.detailSectionTitle,
-                                      {
-                                        color:
-                                          theme.accent,
-                                      },
-                                    ]}
-                                  >
-                                    POSSIBLE CAUSES
-                                  </Text>
-                                  <Text style={{ fontFamily: 'Inter-Regular', fontSize: 9, color: theme.textSecondary, marginTop: 2 }}>
-                                    Ranked based on the symptoms provided
-                                  </Text>
-                                </View>
-
-                                <View style={[styles.causeCount, { backgroundColor: theme.surfaceAlt }]}>
-                                  <Text style={[styles.causeCountText, { color: theme.textSecondary }]}>
-                                    {(item.possibleCauses || item.possible_causes).length}
-                                  </Text>
-                                </View>
-                              </View>
-
-                              {(
-                                item.possibleCauses ||
-                                item.possible_causes
-                              ).map((causeObj, index) => (
-                                <PossibleCauseCard
-                                  key={`cause-${index}`}
-                                  cause={causeObj}
-                                  index={index}
-                                />
-                              ))}
-                            </View>
-                          )}
-
-                        {/* RECOMMENDED ACTIONS */}
-
-                        {Array.isArray(
-                          item.recommendedActions ||
-                            item.recommended_actions,
-                        ) &&
-                          (
-                            item.recommendedActions ||
-                            item.recommended_actions
-                          ).length >
-                            0 && (
-                            <View
-                              style={[
-                                styles.detailSection,
-                                {
-                                  backgroundColor:
-                                    theme.surface,
-                                  borderColor:
-                                    theme.border,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.detailSectionTitle,
-                                  {
-                                    color:
-                                      theme.accent,
-                                  },
-                                ]}
-                              >
-                                RECOMMENDED
-                                ACTIONS
-                              </Text>
-
-                              {(
-                                item.recommendedActions ||
-                                item.recommended_actions
-                              ).map(
-                                (
-                                  action,
-                                  index,
-                                ) => (
-                                  <View
-                                    key={
-                                      index
-                                    }
-                                    style={
-                                      styles.detailBullet
-                                    }
-                                  >
-                                    <View
-                                      style={[
-                                        styles.bullet,
-                                        {
-                                          backgroundColor:
-                                            GREEN,
-                                        },
-                                      ]}
-                                    />
-
-                                    <Text
-                                      style={[
-                                        styles.detailBulletText,
-                                        {
-                                          color:
-                                            theme.textSecondary,
-                                        },
-                                      ]}
-                                    >
-                                      {typeof action ===
-                                      'string'
-                                        ? action
-                                        : action?.action ||
-                                          String(
-                                            action,
-                                          )}
-                                    </Text>
-                                  </View>
-                                ),
-                              )}
-                            </View>
-                          )}
-
-                        {/* ESTIMATED COST */}
-
-                        {(item.estimatedCost ||
-                          item.estimated_cost) && (
-                          <View
-                            style={[
-                              styles.detailSection,
-                              {
-                                backgroundColor:
-                                  theme.surface,
-                                borderColor:
-                                  theme.border,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.detailSectionTitle,
-                                {
-                                  color:
-                                    theme.accent,
-                                },
-                              ]}
-                            >
-                              ESTIMATED
-                              COST
-                            </Text>
-
-                            <Text
-                              style={[
-                                styles.detailSummary,
-                                {
-                                  color:
-                                    theme.text,
-                                },
-                              ]}
-                            >
-                              ₱
-                              {Number(
-                                item
-                                  .estimatedCost
-                                  ?.min ??
-                                  item
-                                    .estimated_cost
-                                    ?.min ??
-                                  item.estimated_cost_min ??
-                                  0,
-                              ).toLocaleString()}{' '}
-                              – ₱
-                              {Number(
-                                item
-                                  .estimatedCost
-                                  ?.max ??
-                                  item
-                                    .estimated_cost
-                                    ?.max ??
-                                  item.estimated_cost_max ??
-                                  0,
-                              ).toLocaleString()}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* RECOMMENDATION */}
-
-                        {item.recommendation && (
-                          <View
-                            style={[
-                              styles.recommendationCard,
-                              {
-                                backgroundColor:
-                                  theme.surface,
-                                borderColor:
-                                  theme.border,
-                              },
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.recommendationIcon,
-                                {
-                                  backgroundColor:
-                                    theme.accentSoft,
-                                },
-                              ]}
-                            >
-                              <Icon
-                                name="auto-awesome"
-                                size={
-                                  20
-                                }
-                                color={
-                                  theme.accent
-                                }
-                              />
-                            </View>
-
-                            <View
-                              style={
-                                styles.recommendationContent
-                              }
-                            >
-                              <Text
-                                style={[
-                                  styles.recommendationTitle,
-                                  {
-                                    color:
-                                      theme.text,
-                                  },
-                                ]}
-                              >
-                                VehiCare
-                                Recommendation
-                              </Text>
-
-                              <Text
-                                style={[
-                                  styles.recommendationText,
-                                  {
-                                    color:
-                                      theme.textSecondary,
-                                  },
-                                ]}
-                              >
-                                {
-                                  item.recommendation
-                                }
-                              </Text>
-                            </View>
-                          </View>
-                        )}
-
-                        {/* URGENCY */}
-
-                        {urgency && (
-                          <View
-                            style={
-                              styles.detailUrgency
-                            }
-                          >
-                            <Text
-                              style={[
-                                styles.detailSectionTitle,
-                                {
-                                  color:
-                                    theme.textSecondary,
-                                },
-                              ]}
-                            >
-                              URGENCY
-                            </Text>
-
-                            <View
-                              style={[
-                                styles.detailUrgencyBadge,
-                                {
-                                  backgroundColor:
-                                    urgency.background,
-                                },
-                              ]}
-                            >
-                              <View
-                                style={[
-                                  styles.urgencyDot,
-                                  {
-                                    backgroundColor:
-                                      urgency.color,
-                                  },
-                                ]}
-                              />
-
-                              <Text
-                                style={[
-                                  styles.detailUrgencyText,
-                                  {
-                                    color:
-                                      urgency.color,
-                                  },
-                                ]}
-                              >
-                                {
-                                  urgency.label
-                                }
-                              </Text>
-                            </View>
-                          </View>
-                        )}
-
-                        {/* CHAT */}
-
-                        {item.type ===
-                          'chat' && (
-                          <TouchableOpacity
-                            style={[
-                              styles.viewConversationButton,
-                              {
-                                backgroundColor:
-                                  theme.accent,
-                              },
-                            ]}
-                            onPress={() => {
-                              setSelectedItem(
-                                null,
-                              );
-
-                              navigation.navigate(
-                                'AskVehiCare',
-                                {
-                                  historyId:
-                                    item.session_id ||
-                                    item.id,
-                                },
-                              );
-                            }}
-                          >
-                            <Icon
-                              name="chat"
-                              size={18}
-                              color="#FFFFFF"
-                            />
-
-                            <Text
-                              style={
-                                styles.viewConversationText
-                              }
-                            >
-                              View Conversation
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </>
-                    );
-                  }}
                 />
-              </>
-            )}
-          </SafeAreaView>
+
+                {/* Scrollable Content */}
+                <ScrollView
+                  style={styles.detailBodyScroll}
+                  contentContainerStyle={styles.detailBodyScrollContent}
+                  showsVerticalScrollIndicator={true}
+                >
+                  {/* CRITICAL WARNING */}
+                  {isCritical && (
+                    <View
+                      style={[
+                        styles.recommendationCard,
+                        {
+                          backgroundColor: isDark ? '#2B1212' : '#FEE2E2',
+                          borderColor: isDark ? '#802525' : '#FCA5A5',
+                          marginTop: 4,
+                          marginBottom: 12,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.recommendationIcon,
+                          {
+                            backgroundColor: isDark ? '#451717' : '#FDC2C2',
+                          },
+                        ]}
+                      >
+                        <Icon name="warning" size={20} color={RED} />
+                      </View>
+                      <View style={styles.recommendationContent}>
+                        <Text style={[styles.recommendationTitle, { color: RED }]}>
+                          SAFETY CRITICAL
+                        </Text>
+                        <Text
+                          style={[
+                            styles.recommendationText,
+                            { color: isDark ? '#FFA8A8' : '#991B1B' },
+                          ]}
+                        >
+                          Avoid driving the vehicle until inspected by a qualified professional mechanic.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* SUMMARY */}
+                  {selectedItem.summary ? (
+                    <View
+                      style={[
+                        styles.detailSection,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                          borderColor: isDark ? '#262629' : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.detailSectionTitle, { color: theme.accent }]}>
+                        SUMMARY
+                      </Text>
+                      <Text style={[styles.detailSummary, { color: theme.textSecondary }]}>
+                        {selectedItem.summary}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* SYMPTOMS */}
+                  {Array.isArray(selectedItem.symptoms) && selectedItem.symptoms.length > 0 && (
+                    <View
+                      style={[
+                        styles.detailSection,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                          borderColor: isDark ? '#262629' : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.detailSectionTitle, { color: theme.accent }]}>
+                        SYMPTOMS
+                      </Text>
+                      {selectedItem.symptoms.map((symptom, index) => (
+                        <View key={index} style={styles.detailBullet}>
+                          <View style={[styles.bullet, { backgroundColor: theme.accent }]} />
+                          <Text style={[styles.detailBulletText, { color: theme.textSecondary }]}>
+                            {typeof symptom === 'string' ? symptom : String(symptom)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* CONFIDENCE */}
+                  {selectedItem.confidence && (
+                    <ConfidenceCard confidence={selectedItem.confidence} />
+                  )}
+
+                  {/* POSSIBLE CAUSES */}
+                  {Array.isArray(selectedItem.possibleCauses || selectedItem.possible_causes) &&
+                    (selectedItem.possibleCauses || selectedItem.possible_causes).length > 0 && (
+                      <View style={{ marginTop: 14 }}>
+                        <View style={styles.sectionHeaderRow}>
+                          <View>
+                            <Text style={[styles.detailSectionTitle, { color: theme.accent }]}>
+                              POSSIBLE CAUSES
+                            </Text>
+                            <Text style={{ fontFamily: 'Inter-Regular', fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
+                              Ranked based on symptoms
+                            </Text>
+                          </View>
+                          <View style={[styles.causeCount, { backgroundColor: isDark ? '#262629' : '#E2E8F0' }]}>
+                            <Text style={[styles.causeCountText, { color: theme.textSecondary }]}>
+                              {(selectedItem.possibleCauses || selectedItem.possible_causes).length}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {(selectedItem.possibleCauses || selectedItem.possible_causes).map((causeObj, index) => (
+                          <PossibleCauseCard
+                            key={`cause-${index}`}
+                            cause={causeObj}
+                            index={index}
+                          />
+                        ))}
+                      </View>
+                    )}
+
+                  {/* RECOMMENDED ACTIONS */}
+                  {Array.isArray(selectedItem.recommendedActions || selectedItem.recommended_actions) &&
+                    (selectedItem.recommendedActions || selectedItem.recommended_actions).length > 0 && (
+                      <View
+                        style={[
+                          styles.detailSection,
+                          {
+                            backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                            borderColor: isDark ? '#262629' : '#E2E8F0',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.detailSectionTitle, { color: theme.accent }]}>
+                          RECOMMENDED ACTIONS
+                        </Text>
+                        {(selectedItem.recommendedActions || selectedItem.recommended_actions).map((action, index) => (
+                          <View key={index} style={styles.detailBullet}>
+                            <View style={[styles.bullet, { backgroundColor: GREEN }]} />
+                            <Text style={[styles.detailBulletText, { color: theme.textSecondary }]}>
+                              {typeof action === 'string' ? action : action?.action || String(action)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                  {/* ESTIMATED COST */}
+                  {(selectedItem.estimatedCost || selectedItem.estimated_cost) && (
+                    <View
+                      style={[
+                        styles.detailSection,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                          borderColor: isDark ? '#262629' : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.detailSectionTitle, { color: theme.accent }]}>
+                        ESTIMATED COST
+                      </Text>
+                      <Text style={[styles.detailSummary, { color: theme.text }]}>
+                        ₱{Number(selectedItem.estimatedCost?.min ?? selectedItem.estimated_cost?.min ?? selectedItem.estimated_cost_min ?? 0).toLocaleString()} – ₱{Number(selectedItem.estimatedCost?.max ?? selectedItem.estimated_cost?.max ?? selectedItem.estimated_cost_max ?? 0).toLocaleString()}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* RECOMMENDATION */}
+                  {selectedItem.recommendation && (
+                    <View
+                      style={[
+                        styles.recommendationCard,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                          borderColor: isDark ? '#262629' : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.recommendationIcon,
+                          { backgroundColor: theme.accentSoft },
+                        ]}
+                      >
+                        <Icon name="auto-awesome" size={19} color={theme.accent} />
+                      </View>
+                      <View style={styles.recommendationContent}>
+                        <Text style={[styles.recommendationTitle, { color: theme.text }]}>
+                          VehiCare Recommendation
+                        </Text>
+                        <Text style={[styles.recommendationText, { color: theme.textSecondary }]}>
+                          {selectedItem.recommendation}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* URGENCY */}
+                  {urgency && (
+                    <View style={styles.detailUrgency}>
+                      <Text style={[styles.detailSectionTitle, { color: theme.textSecondary }]}>
+                        URGENCY LEVEL
+                      </Text>
+                      <View
+                        style={[
+                          styles.detailUrgencyBadge,
+                          { backgroundColor: urgency.background },
+                        ]}
+                      >
+                        <View style={[styles.urgencyDot, { backgroundColor: urgency.color }]} />
+                        <Text style={[styles.detailUrgencyText, { color: urgency.color }]}>
+                          {urgency.label}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
+
+                {/* Footer Action */}
+                {selectedItem.type === 'chat' ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.viewConversationButton,
+                      { backgroundColor: theme.accent },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const item = selectedItem;
+                      setSelectedItem(null);
+                      navigation.navigate('AskVehiCare', {
+                        historyId: item.session_id || item.id,
+                      });
+                    }}
+                  >
+                    <Icon name="chat" size={16} color="#FFFFFF" />
+                    <Text style={styles.viewConversationText}>
+                      View Conversation
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.detailCloseBtn,
+                      {
+                        backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedItem(null)}
+                  >
+                    <Text style={[styles.detailCloseBtnText, { color: theme.text }]}>
+                      Done
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })()}
         </View>
       </Modal>
     </SafeAreaView>
@@ -2832,24 +2397,39 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
 
-  modalHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: 4,
-    alignSelf: 'center',
-    marginBottom: 22,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
 
-  modalTitle: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 21,
+  sortModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
 
-  modalSubtitle: {
+  sortModalTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    lineHeight: 23,
+    marginBottom: 3,
+  },
+
+  sortModalSubtitle: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 4,
-    marginBottom: 18,
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 12,
   },
 
   sortOptions: {
@@ -2861,13 +2441,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderRadius: 14,
-    padding: 13,
+    padding: 12,
   },
 
   sortOptionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -2875,63 +2455,128 @@ const styles = StyleSheet.create({
 
   sortOptionText: {
     flex: 1,
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
+    fontSize: 12,
   },
 
   /* DETAIL MODAL */
 
   detailOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
 
-  detailModal: {
-    flex: 1,
-    marginTop: 45,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: 'hidden',
+  detailCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
 
-  detailHeader: {
-    height: 65,
+  detailHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    marginBottom: 10,
   },
 
-  detailClose: {
-    width: 38,
-    height: 38,
+  detailBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 999,
+    gap: 6,
+  },
+
+  detailBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  detailCardTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17.5,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+
+  detailMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  detailMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  detailMetaText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+  },
+
+  detailVehiclePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7.5,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    gap: 4,
+  },
+
+  detailVehiclePillText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 10.5,
+  },
+
+  detailDivider: {
+    height: 1,
+    marginBottom: 12,
+  },
+
+  detailBodyScroll: {
+    maxHeight: 400,
+  },
+
+  detailBodyScrollContent: {
+    paddingBottom: 10,
+  },
+
+  detailCloseBtn: {
+    minHeight: 42,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    marginTop: 14,
   },
 
-  detailHeaderTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 16,
-  },
-
-  detailHeaderSpacer: {
-    width: 38,
-  },
-
-  detailContent: {
-    padding: 22,
-    paddingBottom: 50,
-  },
-
-  detailIcon: {
-    width: 62,
-    height: 62,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+  detailCloseBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
   },
 
   detailTitle: {

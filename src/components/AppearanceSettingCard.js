@@ -110,25 +110,19 @@ const AppearanceSettingCard = ({
       <Modal
         visible={visible}
         transparent
-        animationType="slide"
+        animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setVisible(false)}
       >
-        <View
-          style={[
-            styles.modalOverlay,
-            {
-              backgroundColor: theme.modalOverlay,
-            },
-          ]}
-        >
+        <View style={styles.modalOverlay}>
           {/* BACKDROP */}
           <TouchableOpacity
-            style={styles.modalBackdrop}
+            style={StyleSheet.absoluteFill}
             activeOpacity={1}
             onPress={() => setVisible(false)}
           />
 
-          {/* MODAL */}
+          {/* MODAL CARD */}
           <View
             style={[
               styles.modalCard,
@@ -138,57 +132,48 @@ const AppearanceSettingCard = ({
               },
             ]}
           >
-            {/* HANDLE */}
-            <View
-              style={[
-                styles.modalHandle,
-                {
-                  backgroundColor: theme.border,
-                },
-              ]}
-            />
-
-            {/* HEADER */}
-            <View style={styles.modalHeader}>
+            {/* Header Row: Badge Pill + Circular X Close Button */}
+            <View style={styles.headerRow}>
               <View
                 style={[
-                  styles.modalIcon,
-                  {
-                    backgroundColor: theme.surfaceAlt,
-                  },
+                  styles.badgePill,
+                  { backgroundColor: theme.accentSoft || 'rgba(246, 59, 5, 0.15)' },
                 ]}
               >
-                <Icon
-                  name="palette"
-                  size={21}
-                  color={theme.accent}
-                />
-              </View>
-
-              <View style={styles.modalHeaderText}>
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    {
-                      color: theme.text,
-                    },
-                  ]}
-                >
-                  Theme preference
-                </Text>
-
-                <Text
-                  style={[
-                    styles.modalSubtitle,
-                    {
-                      color: theme.textSecondary,
-                    },
-                  ]}
-                >
-                  Choose how VehiCare should look.
+                <Icon name="palette" size={14} color={theme.accent || '#F63B05'} />
+                <Text style={[styles.badgeText, { color: theme.accent || '#F63B05' }]}>
+                  APPEARANCE
                 </Text>
               </View>
+
+              <TouchableOpacity
+                onPress={() => setVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
+                style={[
+                  styles.closeCircleBtn,
+                  { backgroundColor: theme.surfaceAlt },
+                ]}
+                accessibilityLabel="Close appearance dialog"
+              >
+                <Icon name="close" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
             </View>
+
+            {/* Title & Subtitle */}
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              Theme preference
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              Choose how VehiCare should look on your device.
+            </Text>
+
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: theme.border },
+              ]}
+            />
 
             {/* THEME OPTIONS */}
             <View style={styles.optionsContainer}>
@@ -199,15 +184,11 @@ const AppearanceSettingCard = ({
                   <TouchableOpacity
                     key={option.id}
                     activeOpacity={0.8}
-                    onPress={() =>
-                      handleSelectTheme(option.id)
-                    }
+                    onPress={() => handleSelectTheme(option.id)}
                     style={[
                       styles.themeOption,
                       {
-                        borderColor: selected
-                          ? theme.accent
-                          : theme.border,
+                        borderColor: selected ? theme.accent : theme.border,
                         backgroundColor: selected
                           ? theme.accentSoft || theme.surfaceAlt
                           : theme.surfaceAlt,
@@ -219,20 +200,14 @@ const AppearanceSettingCard = ({
                       style={[
                         styles.themeOptionIcon,
                         {
-                          backgroundColor: selected
-                            ? theme.accent
-                            : theme.surface,
+                          backgroundColor: selected ? theme.accent : theme.surface,
                         },
                       ]}
                     >
                       <Icon
                         name={option.icon}
-                        size={20}
-                        color={
-                          selected
-                            ? '#FFFFFF'
-                            : theme.textSecondary
-                        }
+                        size={18}
+                        color={selected ? '#FFFFFF' : theme.textSecondary}
                       />
                     </View>
 
@@ -243,6 +218,7 @@ const AppearanceSettingCard = ({
                           styles.themeOptionLabel,
                           {
                             color: theme.text,
+                            fontFamily: selected ? 'Outfit-Bold' : 'Inter-SemiBold',
                           },
                         ]}
                       >
@@ -266,9 +242,7 @@ const AppearanceSettingCard = ({
                       style={[
                         styles.radioOuter,
                         {
-                          borderColor: selected
-                            ? theme.accent
-                            : theme.border,
+                          borderColor: selected ? theme.accent : theme.border,
                         },
                       ]}
                     >
@@ -287,30 +261,6 @@ const AppearanceSettingCard = ({
                 );
               })}
             </View>
-
-            {/* CLOSE BUTTON */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setVisible(false)}
-              style={[
-                styles.cancelButton,
-                {
-                  backgroundColor: theme.surfaceAlt,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.cancelText,
-                  {
-                    color: theme.text,
-                  },
-                ]}
-              >
-                Done
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -364,63 +314,73 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
-  },
-
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
 
   modalCard: {
     width: '100%',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
+    maxWidth: 380,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 14,
   },
 
-  modalHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: 10,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-
-  /* HEADER */
-
-  modalHeader: {
+  /* HEADER ROW */
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
 
-  modalIcon: {
-    width: 46,
-    height: 46,
+  badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 16,
+    gap: 5,
+  },
+
+  badgeText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+  },
+
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 13,
-  },
-
-  modalHeaderText: {
-    flex: 1,
   },
 
   modalTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 18,
-    letterSpacing: -0.3,
+    fontSize: 17,
+    lineHeight: 22,
+    marginBottom: 4,
   },
 
   modalSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 4,
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+
+  divider: {
+    height: 1,
+    marginBottom: 14,
   },
 
   /* OPTIONS */
@@ -431,18 +391,18 @@ const styles = StyleSheet.create({
 
   themeOption: {
     width: '100%',
-    minHeight: 76,
+    minHeight: 64,
     borderWidth: 1,
-    borderRadius: 17,
+    borderRadius: 16,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
 
   themeOptionIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -455,49 +415,31 @@ const styles = StyleSheet.create({
   },
 
   themeOptionLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
+    fontSize: 13.5,
   },
 
   themeOptionDescription: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
+    fontSize: 11,
     lineHeight: 15,
-    marginTop: 4,
+    marginTop: 2,
   },
 
   /* RADIO */
 
   radioOuter: {
-    width: 21,
-    height: 21,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   radioInner: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-  },
-
-  /* DONE BUTTON */
-
-  cancelButton: {
-    width: '100%',
-    minHeight: 50,
-    borderWidth: 1,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-  },
-
-  cancelText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 });
 

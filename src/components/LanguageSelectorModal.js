@@ -51,13 +51,15 @@ const LanguageSelectorModal = ({ visible, onClose, onSelectSuccess }) => {
       visible={visible}
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
+      <View style={styles.overlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View
           style={[
             styles.card,
@@ -67,26 +69,46 @@ const LanguageSelectorModal = ({ visible, onClose, onSelectSuccess }) => {
             },
           ]}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <Icon name="language" size={22} color={theme.accent} />
-              <Text style={[styles.title, { color: theme.text }]}>
-                {t('selectLanguage', 'Select Language')}
+          {/* Header Row: Badge Pill + Circular X Close Button */}
+          <View style={styles.headerRow}>
+            <View
+              style={[
+                styles.badgePill,
+                { backgroundColor: theme.accentSoft || 'rgba(246, 59, 5, 0.15)' },
+              ]}
+            >
+              <Icon name="language" size={14} color={theme.accent || '#F63B05'} />
+              <Text style={[styles.badgeText, { color: theme.accent || '#F63B05' }]}>
+                LANGUAGE
               </Text>
             </View>
 
             <TouchableOpacity
               onPress={onClose}
-              style={[styles.closeBtn, { backgroundColor: theme.surfaceAlt }]}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+              style={[styles.closeCircleBtn, { backgroundColor: theme.surfaceAlt }]}
+              accessibilityLabel="Close language selector"
             >
-              <Icon name="close" size={18} color={theme.textSecondary} />
+              <Icon name="close" size={16} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
+
+          {/* Title & Subtitle */}
+          <Text style={[styles.title, { color: theme.text }]}>
+            {t('selectLanguage', 'Select Language')}
+          </Text>
 
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Choose your preferred language for VehiCare interface and AI diagnostics.
           </Text>
+
+          <View
+            style={[
+              styles.divider,
+              { backgroundColor: theme.border },
+            ]}
+          />
 
           {/* Options */}
           <View style={styles.optionsList}>
@@ -139,7 +161,7 @@ const LanguageSelectorModal = ({ visible, onClose, onSelectSuccess }) => {
             })}
           </View>
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 };
@@ -147,44 +169,64 @@ const LanguageSelectorModal = ({ visible, onClose, onSelectSuccess }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
   },
   card: {
     width: '100%',
+    maxWidth: 380,
     borderRadius: 22,
     borderWidth: 1,
     padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 14,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 12,
   },
-  titleRow: {
+  badgePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 16,
+    gap: 5,
+  },
+  badgeText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+  },
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 18,
+    fontSize: 17,
+    lineHeight: 22,
+    marginBottom: 4,
   },
   subtitle: {
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-Medium',
     fontSize: 11.5,
-    marginBottom: 16,
     lineHeight: 16,
+    marginBottom: 10,
   },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+  divider: {
+    height: 1,
+    marginBottom: 14,
   },
   optionsList: {
     gap: 10,
@@ -192,12 +234,12 @@ const styles = StyleSheet.create({
   langItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
     borderRadius: 16,
     borderWidth: 1,
   },
   flagText: {
-    fontSize: 24,
+    fontSize: 22,
     marginRight: 12,
   },
   langContent: {
@@ -210,8 +252,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   langName: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 13,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
   },
   langNative: {
     fontFamily: 'Inter-Regular',
@@ -219,13 +261,13 @@ const styles = StyleSheet.create({
   },
   langDesc: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10,
+    fontSize: 10.5,
     marginTop: 2,
   },
   checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },

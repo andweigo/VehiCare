@@ -864,38 +864,6 @@ const NotificationsScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* UNREAD STATUS SUMMARY BANNER */}
-      <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={[styles.summaryIcon, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-          <Icon
-            name={unreadCount > 0 ? 'notifications-active' : 'notifications-none'}
-            size={22}
-            color={isDark ? '#F63B05' : '#C2410C'}
-          />
-        </View>
-
-        <View style={styles.summaryContent}>
-          <View style={styles.summaryTitleRow}>
-            <Text style={[styles.summaryTitle, { color: theme.text }]}>
-              {unreadCount > 0 ? `${unreadCount} Unread Notifications` : 'All Caught Up'}
-            </Text>
-
-            <View style={[styles.summaryStatus, { backgroundColor: unreadCount > 0 ? (isDark ? '#27160F' : '#FEE4DA') : (isDark ? '#13241A' : '#DCFCE7') }]}>
-              <View style={[styles.summaryStatusDot, { backgroundColor: unreadCount > 0 ? '#F63B05' : (isDark ? '#32D583' : '#15803D') }]} />
-              <Text style={[styles.summaryStatusText, { color: unreadCount > 0 ? (isDark ? '#F63B05' : '#C2410C') : (isDark ? '#32D583' : '#15803D') }]}>
-                {unreadCount > 0 ? 'UNREAD' : 'UP TO DATE'}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.summarySub, { color: theme.textSecondary }]}>
-            {unreadCount > 0
-              ? 'Tap any notification below to review details or navigate to action.'
-              : 'You have read all notifications. New updates will appear here.'}
-          </Text>
-        </View>
-      </View>
-
       {/* CATEGORY FILTER CHIPS */}
       <View style={styles.filterContainer}>
         <SectionChips
@@ -1245,10 +1213,10 @@ const styles = StyleSheet.create({
 
   /* LIST CONTENT */
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: 115,
   },
   emptyListContent: {
-    paddingBottom: 40,
+    paddingBottom: 115,
   },
 
   /* NOTIFICATION ROW */

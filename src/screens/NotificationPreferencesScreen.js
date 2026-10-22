@@ -459,60 +459,89 @@ const NotificationPreferencesScreen = ({ navigation }) => {
         visible={Boolean(timePickerTarget)}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setTimePickerTarget(null)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setTimePickerTarget(null)}
-        >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setTimePickerTarget(null)}
+          />
           <View style={[styles.timeModalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            {/* Header Row: Badge Pill + Circular X Close Button */}
+            <View style={styles.modalHeaderRow}>
+              <View
+                style={[
+                  styles.modalBadgePill,
+                  { backgroundColor: theme.accentSoft || 'rgba(246, 59, 5, 0.15)' },
+                ]}
+              >
+                <Icon name="schedule" size={14} color={theme.accent || '#F63B05'} />
+                <Text style={[styles.modalBadgeText, { color: theme.accent || '#F63B05' }]}>
+                  QUIET HOURS
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setTimePickerTarget(null)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
+                style={[styles.closeCircleBtn, { backgroundColor: theme.surfaceAlt }]}
+                accessibilityLabel="Close time picker"
+              >
+                <Icon name="close" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
             <Text style={[styles.timeModalTitle, { color: theme.text }]}>
-              Select Quiet Hours {timePickerTarget === 'start' ? 'Start' : 'End'} Time
+              {timePickerTarget === 'start' ? 'Quiet Hours Start Time' : 'Quiet Hours End Time'}
+            </Text>
+            <Text style={[styles.timeModalSubtitle, { color: theme.textSecondary }]}>
+              Choose when notifications should be silenced.
             </Text>
 
-            <ScrollView style={{ maxHeight: 280 }}>
-              {TIME_OPTIONS.map(item => (
-                <TouchableOpacity
-                  key={item.value}
-                  activeOpacity={0.7}
-                  onPress={() => handleTimeSelect(item.value)}
-                  style={[
-                    styles.timeOptionItem,
-                    {
-                      backgroundColor:
-                        (timePickerTarget === 'start' ? prefs.quiet_hours_start : prefs.quiet_hours_end) === item.value
-                          ? theme.accentSoft
-                          : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text
+            <View style={[styles.modalDivider, { backgroundColor: theme.border }]} />
+
+            <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={true}>
+              {TIME_OPTIONS.map(item => {
+                const isSelected =
+                  (timePickerTarget === 'start' ? prefs.quiet_hours_start : prefs.quiet_hours_end) === item.value;
+                return (
+                  <TouchableOpacity
+                    key={item.value}
+                    activeOpacity={0.7}
+                    onPress={() => handleTimeSelect(item.value)}
                     style={[
-                      styles.timeOptionText,
+                      styles.timeOptionItem,
                       {
-                        color:
-                          (timePickerTarget === 'start' ? prefs.quiet_hours_start : prefs.quiet_hours_end) === item.value
-                            ? theme.accent
-                            : theme.text,
+                        backgroundColor: isSelected ? (theme.accentSoft || 'rgba(246, 59, 5, 0.12)') : theme.surfaceAlt,
+                        borderColor: isSelected ? theme.accent : theme.border,
                       },
                     ]}
                   >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.timeOptionText,
+                        {
+                          color: isSelected ? theme.accent : theme.text,
+                          fontFamily: isSelected ? 'Outfit-Bold' : 'Inter-Medium',
+                        },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                    {isSelected && (
+                      <View style={[styles.timeCheckCircle, { backgroundColor: theme.accent }]}>
+                        <Icon name="check" size={13} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
-
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setTimePickerTarget(null)}
-              style={[styles.closeTimeModalBtn, { backgroundColor: theme.surfaceAlt }]}
-            >
-              <Text style={[styles.closeTimeModalText, { color: theme.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -677,41 +706,84 @@ const styles = StyleSheet.create({
   /* MODAL */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
   },
   timeModalCard: {
     width: '100%',
+    maxWidth: 380,
     borderRadius: 22,
     borderWidth: 1,
     padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 16,
+    gap: 5,
+  },
+  modalBadgeText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+  },
+  closeCircleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timeModalTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 16,
-    marginBottom: 14,
-  },
-  timeOptionItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    fontSize: 17,
+    lineHeight: 22,
     marginBottom: 4,
   },
-  timeOptionText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
+  timeModalSubtitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 10,
   },
-  closeTimeModalBtn: {
-    marginTop: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
+  modalDivider: {
+    height: 1,
+    marginBottom: 12,
+  },
+  timeOptionItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 6,
   },
-  closeTimeModalText: {
-    fontFamily: 'Outfit-Bold',
+  timeOptionText: {
     fontSize: 13,
+  },
+  timeCheckCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
