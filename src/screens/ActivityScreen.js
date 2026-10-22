@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   SectionList,
   StyleSheet,
@@ -19,6 +19,8 @@ import {
   handleActivityPress,
 } from '../utils/activityUtils';
 
+const ITEMS_PER_PAGE = 15;
+
 const getActivityBadgeLabel = type => {
   const norm = String(type || '').toLowerCase();
   if (norm.includes('diag') || norm.includes('symptom')) return 'DIAGNOSTIC';
@@ -33,9 +35,147 @@ const getActivityBadgeLabel = type => {
 const ActivityScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
-  const { activities, loading } = useRecentActivities(50);
+  const { activities, loading } = useRecentActivities(100);
+  const [currentPage, setCurrentPage] = useState(1);
+  const listRef = useRef(null);
 
-  const sections = useMemo(() => groupActivitiesByDate(activities), [activities]);
+  const shouldPaginate = activities.length >= ITEMS_PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(activities.length / ITEMS_PER_PAGE));
+
+  const paginatedActivities = useMemo(() => {
+    if (!shouldPaginate) return activities;
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return activities.slice(start, start + ITEMS_PER_PAGE);
+  }, [activities, currentPage, shouldPaginate]);
+
+  const sections = useMemo(() => groupActivitiesByDate(paginatedActivities), [paginatedActivities]);
+
+  const renderPaginationFooter = () => {
+    if (!shouldPaginate) {
+      return <View style={{ height: 20 }} />;
+    }
+
+    const startItem = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(activities.length, currentPage * ITEMS_PER_PAGE);
+
+    return (
+      <View
+        style={[
+          styles.paginationCard,
+          {
+            backgroundColor: isDark ? '#141416' : '#FFFFFF',
+            borderColor: isDark ? '#232326' : '#E8EDF2',
+          },
+        ]}
+      >
+        <View style={styles.paginationInfoRow}>
+          <Text style={[styles.paginationInfoText, { color: theme.textSecondary }]}>
+            Showing <Text style={{ color: theme.text, fontFamily: 'Outfit-Bold' }}>{startItem}–{endItem}</Text> of <Text style={{ color: theme.text, fontFamily: 'Outfit-Bold' }}>{activities.length}</Text> logs
+          </Text>
+          <View
+            style={[
+              styles.pageIndicatorPill,
+              { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.14)' : '#FFF2EE' },
+            ]}
+          >
+            <Text style={[styles.pageIndicatorText, { color: theme.accent || '#F63B05' }]}>
+              Page {currentPage} of {totalPages}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.paginationControlsRow}>
+          <TouchableOpacity
+            disabled={currentPage === 1}
+            onPress={() => {
+              if (currentPage > 1) {
+                setCurrentPage(p => p - 1);
+                listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+              }
+            }}
+            activeOpacity={0.75}
+            style={[
+              styles.paginationNavButton,
+              {
+                backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                opacity: currentPage === 1 ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Icon name="chevron-left" size={18} color={theme.text} />
+            <Text style={[styles.paginationNavText, { color: theme.text }]}>Prev</Text>
+          </TouchableOpacity>
+
+          <View style={styles.pagePillsRow}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+              .map((p, idx, arr) => {
+                const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                const isActive = p === currentPage;
+                return (
+                  <React.Fragment key={p}>
+                    {showEllipsis && (
+                      <Text style={[styles.paginationDots, { color: theme.textSecondary }]}>•••</Text>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCurrentPage(p);
+                        listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+                      }}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.pagePill,
+                        isActive
+                          ? { backgroundColor: theme.accent || '#F63B05', borderColor: theme.accent || '#F63B05' }
+                          : {
+                              backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                              borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                            },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.pagePillText,
+                          {
+                            color: isActive ? '#FFFFFF' : theme.textSecondary,
+                            fontFamily: isActive ? 'Outfit-Bold' : 'Inter-Medium',
+                          },
+                        ]}
+                      >
+                        {p}
+                      </Text>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+          </View>
+
+          <TouchableOpacity
+            disabled={currentPage === totalPages}
+            onPress={() => {
+              if (currentPage < totalPages) {
+                setCurrentPage(p => p + 1);
+                listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+              }
+            }}
+            activeOpacity={0.75}
+            style={[
+              styles.paginationNavButton,
+              {
+                backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                opacity: currentPage === totalPages ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.paginationNavText, { color: theme.text }]}>Next</Text>
+            <Icon name="chevron-right" size={18} color={theme.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -56,7 +196,7 @@ const ActivityScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         <View style={styles.headerTitleBox}>
-          <Text style={[styles.eyebrow, { color: theme.accent }]}>
+          <Text style={[styles.eyebrow, { color: theme.accent || '#F63B05' }]}>
             TIMELINE
           </Text>
           <Text style={[styles.headerTitle, { color: theme.text }]}>
@@ -73,7 +213,7 @@ const ActivityScreen = ({ navigation }) => {
               },
             ]}
           >
-            <Text style={[styles.countPillText, { color: theme.accent }]}>
+            <Text style={[styles.countPillText, { color: theme.accent || '#F63B05' }]}>
               {activities.length} LOGS
             </Text>
           </View>
@@ -82,6 +222,7 @@ const ActivityScreen = ({ navigation }) => {
 
       {/* SECTION LIST */}
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
@@ -171,16 +312,16 @@ const ActivityScreen = ({ navigation }) => {
                   {item.title}
                 </Text>
 
-                {item.description ? (
+                {Boolean(item.description) && (
                   <Text
                     style={[styles.cardDesc, { color: theme.textSecondary }]}
                     numberOfLines={2}
                   >
                     {item.description}
                   </Text>
-                ) : null}
+                )}
 
-                {item.vehicleName ? (
+                {Boolean(item.vehicleName) && (
                   <View
                     style={[
                       styles.vehiclePill,
@@ -203,7 +344,7 @@ const ActivityScreen = ({ navigation }) => {
                       {item.vehicleName}
                     </Text>
                   </View>
-                ) : null}
+                )}
               </View>
 
               <Icon
@@ -214,6 +355,7 @@ const ActivityScreen = ({ navigation }) => {
             </TouchableOpacity>
           );
         }}
+        ListFooterComponent={renderPaginationFooter}
         ListEmptyComponent={
           !loading ? (
             <View
@@ -235,7 +377,7 @@ const ActivityScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                <Icon name="history" size={32} color={theme.accent} />
+                <Icon name="history" size={32} color={theme.accent || '#F63B05'} />
               </View>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>
                 No Recent Activity
@@ -302,7 +444,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 6,
-    paddingBottom: 115,
+    paddingBottom: 120,
   },
 
   sectionHeaderBox: {
@@ -424,6 +566,74 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
+  },
+
+  /* PAGINATION */
+  paginationCard: {
+    marginTop: 14,
+    marginBottom: 24,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+  },
+  paginationInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  paginationInfoText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+  },
+  pageIndicatorPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  pageIndicatorText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  paginationControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paginationNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 2,
+  },
+  paginationNavText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+  },
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pagePill: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pagePillText: {
+    fontSize: 12,
+  },
+  paginationDots: {
+    fontSize: 10,
+    letterSpacing: 1,
+    paddingHorizontal: 2,
   },
 });
 

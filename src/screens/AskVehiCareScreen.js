@@ -633,13 +633,8 @@ export default function AskVehiCareScreen({
   ]);
 
   const handleNewChatPress = useCallback(() => {
-    const hasUserMessages = chatMessages.some(m => (m.role === 'user' || m.sender === 'user'));
-    if (hasUserMessages) {
-      setShowNewChatConfirmModal(true);
-    } else {
-      confirmNewChat();
-    }
-  }, [chatMessages, confirmNewChat]);
+    setShowNewChatConfirmModal(true);
+  }, []);
 
   const historyId = route?.params?.historyId || route?.params?.sessionId;
 
@@ -1906,14 +1901,14 @@ export default function AskVehiCareScreen({
           </Text>
         </View>
 
-        {/* TOP RIGHT ACTION ROW: NEW CHAT PILL + SIDEBAR TOGGLE */}
+        {/* TOP RIGHT ACTION ROW: NEW CHAT (PEN ICON) + SIDEBAR TOGGLE */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Pressable
             style={({ pressed }) => [
-              styles.newChatPillButton,
+              styles.headerIconButton,
               {
-                backgroundColor: isDark ? 'rgba(246, 59, 5, 0.14)' : '#FFF2EE',
-                borderColor: isDark ? 'rgba(246, 59, 5, 0.35)' : '#FDD8D0',
+                backgroundColor: theme.surfaceAlt,
+                borderColor: theme.border,
               },
               pressed && styles.headerButtonPressed,
             ]}
@@ -1922,19 +1917,11 @@ export default function AskVehiCareScreen({
             accessibilityRole="button"
             accessibilityLabel="Start New Chat"
           >
-            <Feather
-              name="plus"
-              size={15}
+            <Ionicons
+              name="create-outline"
+              size={20}
               color={theme.accent || '#F63B05'}
             />
-            <Text
-              style={[
-                styles.newChatPillText,
-                { color: theme.accent || '#F63B05' },
-              ]}
-            >
-              New Chat
-            </Text>
           </Pressable>
 
           <Pressable

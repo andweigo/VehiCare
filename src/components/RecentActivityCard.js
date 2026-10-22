@@ -1,3 +1,4 @@
+import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
@@ -8,27 +9,79 @@ const RecentActivityCard = ({ activities = [], onViewAll, onItemPress }) => {
   const isDark = themeName === 'dark';
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: isDark ? '#141416' : '#FFFFFF',
+          borderColor: isDark ? '#232326' : '#E8EDF2',
+        },
+      ]}
+    >
+      {/* CARD HEADER */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Icon name="history" size={20} color={theme.accent} />
-          <Text style={[styles.title, { color: theme.text }]}>Recent Activity</Text>
+          <View
+            style={[
+              styles.headerIconCircle,
+              {
+                backgroundColor: isDark ? 'rgba(246, 59, 5, 0.14)' : '#FFF2EE',
+              },
+            ]}
+          >
+            <Icon name="history" size={18} color={theme.accent || '#F63B05'} />
+          </View>
+          <View>
+            <Text style={[styles.title, { color: theme.text }]}>Recent Activity</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Latest logs and updates
+            </Text>
+          </View>
         </View>
 
-        <TouchableOpacity onPress={onViewAll} activeOpacity={0.7} style={styles.viewAllButton}>
-          <Text style={[styles.viewAllText, { color: theme.accent }]}>See All</Text>
+        <TouchableOpacity
+          onPress={onViewAll}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[
+            styles.seeAllPill,
+            {
+              backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+              borderColor: isDark ? '#2A2A2E' : '#E2E8F0',
+            },
+          ]}
+        >
+          <Text style={[styles.seeAllText, { color: theme.accent || '#F63B05' }]}>
+            See All
+          </Text>
+          <Icon name="chevron-right" size={16} color={theme.accent || '#F63B05'} />
         </TouchableOpacity>
       </View>
 
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-        Your latest actions, completed maintenance, and AI diagnostic updates across VehiCare.
-      </Text>
+      {/* HAIRLINE DIVIDER */}
+      <View
+        style={[
+          styles.headerDivider,
+          { backgroundColor: isDark ? '#202024' : '#F1F5F9' },
+        ]}
+      />
 
+      {/* CONTENT / ACTIVITY ITEMS */}
       {activities.length === 0 ? (
         <View style={styles.emptyBox}>
+          <View
+            style={[
+              styles.emptyIconCircle,
+              {
+                backgroundColor: isDark ? 'rgba(246, 59, 5, 0.1)' : '#FFF2EE',
+              },
+            ]}
+          >
+            <Icon name="history" size={24} color={theme.accent || '#F63B05'} />
+          </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>No recent activity</Text>
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
-            Your VehiCare activity will appear here as you use the app.
+            Your vehicle diagnostics, maintenance, and consultations will appear here.
           </Text>
         </View>
       ) : (
@@ -42,13 +95,24 @@ const RecentActivityCard = ({ activities = [], onViewAll, onItemPress }) => {
               key={activity.id || index}
               style={[
                 styles.activityItem,
-                index < activities.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
+                index < activities.length - 1 && [
+                  styles.itemDivider,
+                  { borderBottomColor: isDark ? '#1F1F23' : '#F1F5F9' },
+                ],
               ]}
               activeOpacity={0.75}
               onPress={() => onItemPress && onItemPress(activity)}
             >
-              <View style={[styles.iconBox, { backgroundColor: categoryStyle.background }]}>
-                <Icon name={iconName} size={17} color={categoryStyle.color} />
+              <View
+                style={[
+                  styles.iconBox,
+                  {
+                    backgroundColor: categoryStyle.background,
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+                  },
+                ]}
+              >
+                <Icon name={iconName} size={18} color={categoryStyle.color} />
               </View>
 
               <View style={styles.activityText}>
@@ -65,14 +129,30 @@ const RecentActivityCard = ({ activities = [], onViewAll, onItemPress }) => {
                   {activity.description || activity.detail || 'Activity logged'}
                 </Text>
 
-                {activity.vehicleName ? (
-                  <View style={[styles.vehicleBadge, { backgroundColor: theme.surfaceAlt }]}>
+                {Boolean(activity.vehicleName) && (
+                  <View
+                    style={[
+                      styles.vehicleBadge,
+                      {
+                        backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                      },
+                    ]}
+                  >
+                    <Icon name="directions-car" size={11} color={theme.textSecondary} />
                     <Text style={[styles.vehicleBadgeText, { color: theme.textSecondary }]}>
                       {activity.vehicleName}
                     </Text>
                   </View>
-                ) : null}
+                )}
               </View>
+
+              <Icon
+                name="chevron-right"
+                size={18}
+                color={isDark ? '#52525B' : '#CBD5E1'}
+                style={styles.chevronIcon}
+              />
             </TouchableOpacity>
           );
         })
@@ -87,64 +167,98 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 12,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  title: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 17,
-  },
-  subtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  viewAllButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  viewAllText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-  },
-  emptyBox: {
-    paddingVertical: 24,
+  headerIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  title: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    marginTop: 1,
+  },
+  seeAllPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  seeAllText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+  },
+  headerDivider: {
+    height: 1,
+    marginBottom: 4,
+  },
+  emptyBox: {
+    paddingVertical: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
   emptyTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15,
+    fontSize: 14,
     marginBottom: 4,
   },
   emptySub: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 16,
   },
   activityItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingVertical: 12,
     gap: 12,
   },
+  itemDivider: {
+    borderBottomWidth: 1,
+  },
   iconBox: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
   activityText: {
     flex: 1,
@@ -158,11 +272,11 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14,
+    fontSize: 13.5,
     flex: 1,
   },
   timeText: {
-    fontFamily: 'Inter-Regular',
+    fontFamily: 'Inter-Medium',
     fontSize: 11,
   },
   activityDetail: {
@@ -171,16 +285,23 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   vehicleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 6,
+    borderWidth: 1,
     marginTop: 6,
   },
   vehicleBadgeText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+  chevronIcon: {
+    marginLeft: 2,
   },
 });
 
