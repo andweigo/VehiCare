@@ -231,8 +231,15 @@ export const formatAiResponseText = (data) => {
     data.type === 'clarification' ||
     data.status === 'needs_clarification';
 
-  if (isClarification && data.response) {
-    return typeof data.response === 'string' ? data.response.trim() : String(data.response);
+  if (isClarification) {
+    const directText = (typeof data.response === 'string' && data.response.trim())
+      || (typeof data.summary === 'string' && data.summary.trim())
+      || (typeof data.whats_happening === 'string' && data.whats_happening.trim());
+
+    if (directText) {
+      const ackHeader = [data.follow_up_ack, data.diagnostic_progress].filter(Boolean).join('\n\n');
+      return ackHeader ? `${ackHeader}\n\n${directText}` : directText;
+    }
   }
 
   const isConversation =
@@ -279,7 +286,10 @@ export const formatAiResponseText = (data) => {
   } else {
     const hasCannedGreeting = /^Hey,?\s*no\s+worries/i.test(data.whats_happening || '');
     if (hasCannedGreeting || !data.whats_happening) {
-      const opener = getRandomOpener();
+      const isPhotoOverview = Boolean(data.image_vehicle_match && data.image_vehicle_match !== 'not_applicable');
+      const opener = isPhotoOverview
+        ? 'Based on visual inspection of your vehicle photo:'
+        : getRandomOpener();
       whatsHappening = `${opener}\n${cleanWhatsHappening}`.trim();
     } else {
       whatsHappening = data.whats_happening.trim();
@@ -305,11 +315,10 @@ export const formatAiResponseText = (data) => {
 
   // 3. Is it safe to keep using? (Cautious brake safety enforcement)
   const isBrakeIssue = Boolean(
-    (data.summary && /brake/i.test(data.summary)) ||
-    (data.whats_happening && /brake/i.test(data.whats_happening)) ||
-    (data.safety_guidance && /brake/i.test(data.safety_guidance)) ||
-    (Array.isArray(data.possible_causes) && data.possible_causes.some(c => /brake/i.test(typeof c === 'string' ? c : (c?.cause || '')))) ||
-    (Array.isArray(data.reported) && data.reported.some(r => /brake/i.test(r)))
+    (Array.isArray(data.possible_causes) && data.possible_causes.some(c => /\bbrake\b/i.test(typeof c === 'string' ? c : (c?.cause || '')))) ||
+    (Array.isArray(data.reported) && data.reported.some(r => /\bbrake\b/i.test(r))) ||
+    (data.summary && /\bbrake\s+(noise|squeal|squeak|grind|pedal|lever|failure|problem|fluid|rotor|disc|caliper|pad)\b/i.test(data.summary)) ||
+    (data.whats_happening && /\bbrake\s+(noise|squeal|squeak|grind|pedal|lever|failure|problem|fluid|rotor|disc|caliper|pad)\b/i.test(data.whats_happening))
   );
 
   if (data.safety_guidance) {

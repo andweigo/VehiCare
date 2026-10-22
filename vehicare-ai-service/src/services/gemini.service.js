@@ -578,10 +578,13 @@ export const callGemini = async (params, client = null) => {
         break;
       }
 
+      const mediaType = media?.mediaType;
       const defaultTimeout = fallbackUsed
-        ? (config.gemini.timeouts.fallbackText || 10500)
+        ? (mediaType && config.gemini.timeouts[mediaType]
+            ? config.gemini.timeouts[mediaType]
+            : (config.gemini.timeouts.fallbackText || 10500))
         : (
-            config.gemini.timeouts[media?.mediaType || 'text']
+            config.gemini.timeouts[mediaType || 'text']
             || config.gemini.timeouts.text
             || 13500
           );

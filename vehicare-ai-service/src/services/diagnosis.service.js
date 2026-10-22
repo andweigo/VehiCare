@@ -249,12 +249,19 @@ export const processDiagnosisRequest = async (payload) => {
             });
           } else {
             if (isMediaError && !hasUsableSymptoms) {
+              const isRetryableMediaError = geminiError.code === 'GEMINI_TIMEOUT' ||
+                geminiError.code === 'GEMINI_OVERLOADED' ||
+                geminiError.code === 'GEMINI_UNAVAILABLE' ||
+                geminiError.statusCode === 503 ||
+                geminiError.statusCode === 504 ||
+                geminiError.retryable === true;
+
               const structuredError = new Error(
-                'The uploaded media could not be processed. Please describe your vehicle\'s symptoms in words or try uploading again.'
+                'The uploaded media could not be processed at this time. Please describe your vehicle\'s symptoms in words or try uploading again.'
               );
               structuredError.code = geminiError.code || 'MEDIA_PROCESSING_FAILED';
-              structuredError.statusCode = 422;
-              structuredError.retryable = false;
+              structuredError.statusCode = isRetryableMediaError ? 503 : 422;
+              structuredError.retryable = isRetryableMediaError;
               throw structuredError;
             }
             throw geminiError;
