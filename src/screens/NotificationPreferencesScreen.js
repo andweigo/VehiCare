@@ -389,16 +389,6 @@ const NotificationPreferencesScreen = ({ navigation }) => {
                 value: prefs.nearby_repair_shops,
                 onToggle: () => handleToggle('nearby_repair_shops'),
               })}
-
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-              {renderToggleItem({
-                icon: 'confirmation-number',
-                title: t('serviceReferrals', 'Service Referral Updates'),
-                subtitle: t('serviceReferralsSub', 'Updates about your repair-service referrals'),
-                value: prefs.service_referrals,
-                onToggle: () => handleToggle('service_referrals'),
-              })}
             </View>
           </View>
 

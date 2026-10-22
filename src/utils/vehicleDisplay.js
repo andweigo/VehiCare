@@ -8,40 +8,45 @@ export const normalizeVehicleProfile = vehicleProfile => {
   const rawVehicleType =
     normalized.vehicle_type ??
     normalized.vehicleType ??
+    normalized.vehicle_type_name ??
     normalized.type ??
+    normalized.category ??
     null;
 
-  if (rawVehicleType && typeof rawVehicleType === 'object' && !normalized.vehicle_type) {
+  if (rawVehicleType && !normalized.vehicle_type) {
     normalized.vehicle_type = rawVehicleType;
   }
 
   const rawVehicleBrand =
+    normalized.custom_brand ??
     normalized.vehicle_brand ??
     normalized.vehicleBrand ??
     normalized.brand ??
     null;
 
-  if (rawVehicleBrand && typeof rawVehicleBrand === 'object' && !normalized.vehicle_brand) {
+  if (rawVehicleBrand && !normalized.vehicle_brand) {
     normalized.vehicle_brand = rawVehicleBrand;
   }
 
   const rawVehicleModel =
+    normalized.custom_model ??
     normalized.vehicle_model ??
     normalized.vehicleModel ??
     normalized.model ??
     null;
 
-  if (rawVehicleModel && typeof rawVehicleModel === 'object' && !normalized.vehicle_model) {
+  if (rawVehicleModel && !normalized.vehicle_model) {
     normalized.vehicle_model = rawVehicleModel;
   }
 
   const rawVehicleYear =
+    normalized.custom_year ??
     normalized.vehicle_year ??
     normalized.vehicleYear ??
     normalized.year ??
     null;
 
-  if (rawVehicleYear && typeof rawVehicleYear === 'object' && !normalized.vehicle_year) {
+  if (rawVehicleYear && !normalized.vehicle_year) {
     normalized.vehicle_year = rawVehicleYear;
   }
 

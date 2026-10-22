@@ -205,6 +205,8 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
     return '#35B86B';
   };
 
+  const isDark = theme?.name === 'dark';
+
   if (!visible) {
     return null;
   }
@@ -212,70 +214,134 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent
       statusBarTranslucent
       onRequestClose={closeModal}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardAvoiding}
-      >
-        <View style={[styles.overlay, { backgroundColor: theme.modalOverlay }]}>
-          <SafeAreaView style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+      <View style={styles.overlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={closeModal}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardWrap}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                borderColor: isDark ? '#262629' : '#E2E8F0',
+              },
+            ]}
+          >
+            {/* Header Row: Badge Pill + Circular Close Button */}
+            <View style={styles.headerRow}>
+              <View
+                style={[
+                  styles.badgePill,
+                  { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE' },
+                ]}
+              >
+                <Icon name="lock-outline" size={13} color={theme.accent || '#F63B05'} />
+                <Text style={[styles.badgeText, { color: theme.accent || '#F63B05' }]}>
+                  SECURITY & AUTH
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={closeModal}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                activeOpacity={0.7}
+                disabled={saving}
+                style={[
+                  styles.closeCircleBtn,
+                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                ]}
+                accessibilityLabel="Close security dialog"
+              >
+                <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Title & Subtitle */}
+            <Text style={[styles.title, { color: theme.text }]}>
+              Password & Security
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Manage your credentials and account protection.
+            </Text>
+
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+              ]}
+            />
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.scrollContent}
             >
-              {/* HEADER */}
-              <View style={styles.headerRow}>
-                <View style={[styles.iconWrapper, { backgroundColor: theme.accentSoft }]}>
-                  <Icon name="security" size={24} color={theme.accent} />
-                </View>
-
-                <View style={styles.headerText}>
-                  <Text style={[styles.title, { color: theme.text }]}>
-                    Password & Security
-                  </Text>
-                  <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                    Manage account security & credentials
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={closeModal}
-                  disabled={saving}
-                  style={[styles.closeButton, { backgroundColor: theme.surfaceAlt }]}
-                >
-                  <Icon name="close" size={20} color={theme.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              {/* AUTH PROVIDER BADGE */}
-              <View style={[styles.statusBadge, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                <Icon
-                  name={
-                    authMode === 'guest'
-                      ? 'person-outline'
-                      : authMode === 'google'
-                      ? 'account-circle'
-                      : 'email'
-                  }
-                  size={15}
-                  color={theme.accent}
+              {/* AUTH PROVIDER SESSION BAR */}
+              <View
+                style={[
+                  styles.authSessionPill,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.authDot,
+                    {
+                      backgroundColor:
+                        authMode === 'guest'
+                          ? '#F59E0B'
+                          : '#10B981',
+                    },
+                  ]}
                 />
-                <Text style={[styles.statusText, { color: theme.text }]}>
+                <Text style={[styles.authSessionLabel, { color: theme.textSecondary }]}>
+                  Session:
+                </Text>
+                <Text style={[styles.authSessionValue, { color: theme.text }]}>
                   {authProviderLabel}
                 </Text>
+                {authMode === 'password' && userEmail ? (
+                  <Text
+                    style={[styles.authSessionEmail, { color: theme.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    • {userEmail}
+                  </Text>
+                ) : null}
               </View>
 
               {/* GUEST ACCOUNT CARD */}
               {authMode === 'guest' ? (
-                <View style={[styles.infoCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                  <View style={[styles.infoIconCircle, { backgroundColor: `${theme.accent}18` }]}>
-                    <Icon name="person-outline" size={24} color={theme.accent} />
+                <View
+                  style={[
+                    styles.infoCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.infoIconCircle,
+                      { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.16)' : '#FFF2EE' },
+                    ]}
+                  >
+                    <Icon name="person-outline" size={22} color={theme.accent || '#F63B05'} />
                   </View>
 
                   <View style={styles.infoContent}>
@@ -284,19 +350,32 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                     </Text>
 
                     <Text style={[styles.infoDescription, { color: theme.textSecondary }]}>
-                      You are using VehiCare as a Guest. Guest accounts do not store passwords or security credentials on our server.
+                      You are exploring VehiCare in guest mode. Guest sessions do not store passwords or credentials on our secure servers.
                     </Text>
 
-                    <Text style={[styles.infoDescription, { color: theme.textSecondary, marginTop: 8 }]}>
-                      Create an account to protect your vehicle details, change passwords, and sync seamlessly across devices.
+                    <Text style={[styles.infoDescription, { color: theme.textSecondary, marginTop: 6 }]}>
+                      Create an account to protect your vehicle data, change passwords, and sync across devices.
                     </Text>
                   </View>
                 </View>
               ) : authMode === 'google' ? (
                 /* GOOGLE ACCOUNT CARD */
-                <View style={[styles.infoCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                  <View style={[styles.infoIconCircle, { backgroundColor: `${theme.accent}18` }]}>
-                    <Icon name="account-circle" size={24} color={theme.accent} />
+                <View
+                  style={[
+                    styles.infoCard,
+                    {
+                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                      borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.infoIconCircle,
+                      { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.16)' : '#FFF2EE' },
+                    ]}
+                  >
+                    <Icon name="account-circle" size={22} color={theme.accent || '#F63B05'} />
                   </View>
 
                   <View style={styles.infoContent}>
@@ -305,36 +384,43 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                     </Text>
 
                     <Text style={[styles.infoDescription, { color: theme.textSecondary }]}>
-                      This account uses Google Sign-In. VehiCare does not store or manage a separate Google password.
+                      This profile is authenticated via Google Sign-In. VehiCare does not manage a separate password for this account.
                     </Text>
 
-                    <Text style={[styles.infoDescription, { color: theme.textSecondary, marginTop: 8 }]}>
-                      To change your password, manage your Google Account security settings.
+                    <Text style={[styles.infoDescription, { color: theme.textSecondary, marginTop: 6 }]}>
+                      To update your password, visit your Google Account Security settings.
                     </Text>
                   </View>
                 </View>
               ) : (
-                /* EMAIL PASSWORD CARD */
-                <>
-                  <View style={[styles.emailCard, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                    <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Account Email</Text>
-                    <Text style={[styles.emailValue, { color: theme.text }]}>
-                      {userEmail || 'No email available'}
-                    </Text>
-                  </View>
-
+                /* EMAIL PASSWORD FORM */
+                <View style={styles.formContainer}>
                   {/* CURRENT PASSWORD */}
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                      Current Password
+                    <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                      CURRENT PASSWORD
                     </Text>
 
-                    <View style={[styles.inputRow, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+                    <View
+                      style={[
+                        styles.inputRow,
+                        {
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name="lock-outline"
+                        size={17}
+                        color={theme.textSecondary}
+                        style={{ marginRight: 10 }}
+                      />
                       <TextInput
                         value={currentPassword}
                         onChangeText={setCurrentPassword}
-                        placeholder="Enter current password"
-                        placeholderTextColor={theme.placeholder || theme.textSecondary}
+                        placeholder="Enter your current password"
+                        placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                         secureTextEntry={!showCurrentPassword}
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -345,10 +431,11 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                         activeOpacity={0.7}
                         onPress={() => setShowCurrentPassword(prev => !prev)}
                         style={styles.inputVisibility}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
                         <Icon
                           name={showCurrentPassword ? 'visibility' : 'visibility-off'}
-                          size={19}
+                          size={18}
                           color={theme.textSecondary}
                         />
                       </TouchableOpacity>
@@ -357,8 +444,8 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
 
                   {/* NEW PASSWORD */}
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                      New Password
+                    <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                      NEW PASSWORD
                     </Text>
 
                     <View
@@ -368,18 +455,24 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                           borderColor:
                             newPassword.length > 0
                               ? passwordStrong
-                                ? '#35B86B'
-                                : theme.border
-                              : theme.border,
-                          backgroundColor: theme.surfaceAlt,
+                                ? '#10B981'
+                                : (isDark ? '#2B2B30' : '#E2E8F0')
+                              : (isDark ? '#2B2B30' : '#E2E8F0'),
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
                         },
                       ]}
                     >
+                      <Icon
+                        name="vpn-key"
+                        size={17}
+                        color={theme.textSecondary}
+                        style={{ marginRight: 10 }}
+                      />
                       <TextInput
                         value={newPassword}
                         onChangeText={setNewPassword}
-                        placeholder="Enter new password"
-                        placeholderTextColor={theme.placeholder || theme.textSecondary}
+                        placeholder="Create a strong new password"
+                        placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                         secureTextEntry={!showNewPassword}
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -390,10 +483,11 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                         activeOpacity={0.7}
                         onPress={() => setShowNewPassword(prev => !prev)}
                         style={styles.inputVisibility}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
                         <Icon
                           name={showNewPassword ? 'visibility' : 'visibility-off'}
-                          size={19}
+                          size={18}
                           color={theme.textSecondary}
                         />
                       </TouchableOpacity>
@@ -404,15 +498,14 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                       <View style={styles.passwordStrengthContainer}>
                         <View style={styles.passwordStrengthHeader}>
                           <Text style={[styles.passwordStrengthLabel, { color: theme.textSecondary }]}>
-                            Password Strength
+                            Strength
                           </Text>
-
                           <Text style={[styles.passwordStrengthValue, { color: getStrengthColor() }]}>
                             {passwordStrength}
                           </Text>
                         </View>
 
-                        <View style={[styles.strengthBarBackground, { backgroundColor: theme.border }]}>
+                        <View style={[styles.strengthBarBackground, { backgroundColor: isDark ? '#2B2B30' : '#E2E8F0' }]}>
                           <View
                             style={[
                               styles.strengthBar,
@@ -424,93 +517,125 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                           />
                         </View>
 
-                        {/* REQUIREMENTS */}
-                        <View style={styles.requirementsContainer}>
-                          <View style={styles.requirement}>
-                            <View
+                        {/* REQUIREMENTS CHIPS */}
+                        <View style={styles.requirementsGrid}>
+                          <View
+                            style={[
+                              styles.requirementChip,
+                              {
+                                backgroundColor: passwordRequirements.length
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : (isDark ? '#222226' : '#F1F5F9'),
+                                borderColor: passwordRequirements.length
+                                  ? 'rgba(16, 185, 129, 0.3)'
+                                  : 'transparent',
+                              },
+                            ]}
+                          >
+                            <Icon
+                              name={passwordRequirements.length ? 'check' : 'remove'}
+                              size={12}
+                              color={passwordRequirements.length ? '#10B981' : theme.textSecondary}
+                            />
+                            <Text
                               style={[
-                                styles.requirementIcon,
+                                styles.requirementText,
                                 {
-                                  backgroundColor: passwordRequirements.length
-                                    ? '#35B86B'
-                                    : theme.border,
+                                  color: passwordRequirements.length ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
-                              <Icon
-                                name={passwordRequirements.length ? 'check' : 'close'}
-                                size={11}
-                                color="#FFFFFF"
-                              />
-                            </View>
-                            <Text style={[styles.requirementText, { color: theme.textSecondary }]}>
-                              At least 8 characters
+                              8+ chars
                             </Text>
                           </View>
 
-                          <View style={styles.requirement}>
-                            <View
+                          <View
+                            style={[
+                              styles.requirementChip,
+                              {
+                                backgroundColor: passwordRequirements.uppercase
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : (isDark ? '#222226' : '#F1F5F9'),
+                                borderColor: passwordRequirements.uppercase
+                                  ? 'rgba(16, 185, 129, 0.3)'
+                                  : 'transparent',
+                              },
+                            ]}
+                          >
+                            <Icon
+                              name={passwordRequirements.uppercase ? 'check' : 'remove'}
+                              size={12}
+                              color={passwordRequirements.uppercase ? '#10B981' : theme.textSecondary}
+                            />
+                            <Text
                               style={[
-                                styles.requirementIcon,
+                                styles.requirementText,
                                 {
-                                  backgroundColor: passwordRequirements.uppercase
-                                    ? '#35B86B'
-                                    : theme.border,
+                                  color: passwordRequirements.uppercase ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
-                              <Icon
-                                name={passwordRequirements.uppercase ? 'check' : 'close'}
-                                size={11}
-                                color="#FFFFFF"
-                              />
-                            </View>
-                            <Text style={[styles.requirementText, { color: theme.textSecondary }]}>
-                              1 uppercase letter
+                              1 uppercase
                             </Text>
                           </View>
 
-                          <View style={styles.requirement}>
-                            <View
+                          <View
+                            style={[
+                              styles.requirementChip,
+                              {
+                                backgroundColor: passwordRequirements.number
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : (isDark ? '#222226' : '#F1F5F9'),
+                                borderColor: passwordRequirements.number
+                                  ? 'rgba(16, 185, 129, 0.3)'
+                                  : 'transparent',
+                              },
+                            ]}
+                          >
+                            <Icon
+                              name={passwordRequirements.number ? 'check' : 'remove'}
+                              size={12}
+                              color={passwordRequirements.number ? '#10B981' : theme.textSecondary}
+                            />
+                            <Text
                               style={[
-                                styles.requirementIcon,
+                                styles.requirementText,
                                 {
-                                  backgroundColor: passwordRequirements.number
-                                    ? '#35B86B'
-                                    : theme.border,
+                                  color: passwordRequirements.number ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
-                              <Icon
-                                name={passwordRequirements.number ? 'check' : 'close'}
-                                size={11}
-                                color="#FFFFFF"
-                              />
-                            </View>
-                            <Text style={[styles.requirementText, { color: theme.textSecondary }]}>
                               1 number
                             </Text>
                           </View>
 
-                          <View style={styles.requirement}>
-                            <View
+                          <View
+                            style={[
+                              styles.requirementChip,
+                              {
+                                backgroundColor: passwordRequirements.special
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : (isDark ? '#222226' : '#F1F5F9'),
+                                borderColor: passwordRequirements.special
+                                  ? 'rgba(16, 185, 129, 0.3)'
+                                  : 'transparent',
+                              },
+                            ]}
+                          >
+                            <Icon
+                              name={passwordRequirements.special ? 'check' : 'remove'}
+                              size={12}
+                              color={passwordRequirements.special ? '#10B981' : theme.textSecondary}
+                            />
+                            <Text
                               style={[
-                                styles.requirementIcon,
+                                styles.requirementText,
                                 {
-                                  backgroundColor: passwordRequirements.special
-                                    ? '#35B86B'
-                                    : theme.border,
+                                  color: passwordRequirements.special ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
-                              <Icon
-                                name={passwordRequirements.special ? 'check' : 'close'}
-                                size={11}
-                                color="#FFFFFF"
-                              />
-                            </View>
-                            <Text style={[styles.requirementText, { color: theme.textSecondary }]}>
-                              1 special character
+                              1 symbol
                             </Text>
                           </View>
                         </View>
@@ -520,8 +645,8 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
 
                   {/* CONFIRM PASSWORD */}
                   <View style={styles.field}>
-                    <Text style={[styles.fieldLabel, { color: theme.text }]}>
-                      Confirm New Password
+                    <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                      CONFIRM NEW PASSWORD
                     </Text>
 
                     <View
@@ -531,18 +656,24 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                           borderColor:
                             confirmPassword.length > 0
                               ? passwordsMatch
-                                ? '#35B86B'
+                                ? '#10B981'
                                 : '#FF5A5F'
-                              : theme.border,
-                          backgroundColor: theme.surfaceAlt,
+                              : (isDark ? '#2B2B30' : '#E2E8F0'),
+                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
                         },
                       ]}
                     >
+                      <Icon
+                        name="check-circle-outline"
+                        size={17}
+                        color={theme.textSecondary}
+                        style={{ marginRight: 10 }}
+                      />
                       <TextInput
                         value={confirmPassword}
                         onChangeText={setConfirmPassword}
-                        placeholder="Confirm new password"
-                        placeholderTextColor={theme.placeholder || theme.textSecondary}
+                        placeholder="Re-enter your new password"
+                        placeholderTextColor={isDark ? '#6B7280' : '#9CA3AF'}
                         secureTextEntry={!showConfirmPassword}
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -553,10 +684,11 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                         activeOpacity={0.7}
                         onPress={() => setShowConfirmPassword(prev => !prev)}
                         style={styles.inputVisibility}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
                         <Icon
                           name={showConfirmPassword ? 'visibility' : 'visibility-off'}
-                          size={19}
+                          size={18}
                           color={theme.textSecondary}
                         />
                       </TouchableOpacity>
@@ -564,26 +696,16 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
 
                     {confirmPassword.length > 0 && (
                       <View style={styles.matchStatus}>
-                        <View
-                          style={[
-                            styles.matchIcon,
-                            {
-                              backgroundColor: passwordsMatch ? '#35B86B' : '#FF5A5F',
-                            },
-                          ]}
-                        >
-                          <Icon
-                            name={passwordsMatch ? 'check' : 'close'}
-                            size={11}
-                            color="#FFFFFF"
-                          />
-                        </View>
-
+                        <Icon
+                          name={passwordsMatch ? 'check-circle' : 'cancel'}
+                          size={13}
+                          color={passwordsMatch ? '#10B981' : '#FF5A5F'}
+                        />
                         <Text
                           style={[
                             styles.matchText,
                             {
-                              color: passwordsMatch ? '#35B86B' : '#FF5A5F',
+                              color: passwordsMatch ? '#10B981' : '#FF5A5F',
                             },
                           ]}
                         >
@@ -592,7 +714,7 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                       </View>
                     )}
                   </View>
-                </>
+                </View>
               )}
 
               {/* ACTIONS */}
@@ -600,9 +722,16 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                 {authMode === 'guest' ? (
                   <>
                     <TouchableOpacity
-                      activeOpacity={0.85}
+                      activeOpacity={0.8}
                       onPress={closeModal}
-                      style={[styles.actionButton, styles.cancelButton, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
+                      style={[
+                        styles.actionButton,
+                        styles.cancelButton,
+                        {
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                        },
+                      ]}
                     >
                       <Text style={[styles.actionText, { color: theme.textSecondary }]}>Close</Text>
                     </TouchableOpacity>
@@ -610,7 +739,7 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                     <TouchableOpacity
                       activeOpacity={0.85}
                       onPress={handleCreateAccount}
-                      style={[styles.actionButton, { backgroundColor: theme.accent }]}
+                      style={[styles.actionButton, { backgroundColor: theme.accent || '#F63B05' }]}
                     >
                       <Text style={[styles.actionText, { color: '#FFFFFF' }]}>Create Account</Text>
                     </TouchableOpacity>
@@ -619,16 +748,30 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={closeModal}
-                    style={[styles.actionButton, { backgroundColor: theme.surfaceAlt, borderColor: theme.border, borderWidth: 1 }]}
+                    style={[
+                      styles.actionButton,
+                      {
+                        backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                        borderWidth: 1,
+                      },
+                    ]}
                   >
                     <Text style={[styles.actionText, { color: theme.text }]}>Close</Text>
                   </TouchableOpacity>
                 ) : (
                   <>
                     <TouchableOpacity
-                      activeOpacity={0.85}
+                      activeOpacity={0.8}
                       onPress={closeModal}
-                      style={[styles.actionButton, styles.cancelButton, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
+                      style={[
+                        styles.actionButton,
+                        styles.cancelButton,
+                        {
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                        },
+                      ]}
                       disabled={saving}
                     >
                       <Text style={[styles.actionText, { color: theme.textSecondary }]}>Cancel</Text>
@@ -637,11 +780,17 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                     <TouchableOpacity
                       activeOpacity={0.85}
                       onPress={handleUpdatePassword}
-                      style={[styles.actionButton, { backgroundColor: theme.accent }]}
+                      style={[
+                        styles.actionButton,
+                        {
+                          backgroundColor: theme.accent || '#F63B05',
+                          opacity: saving || !currentPassword || !passwordStrong || !passwordsMatch ? 0.45 : 1,
+                        },
+                      ]}
                       disabled={saving || !currentPassword || !passwordStrong || !passwordsMatch}
                     >
                       {saving ? (
-                        <ActivityIndicator color="#FFFFFF" />
+                        <ActivityIndicator color="#FFFFFF" size="small" />
                       ) : (
                         <Text style={[styles.actionText, { color: '#FFFFFF' }]}>Update Password</Text>
                       )}
@@ -650,98 +799,123 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                 )}
               </View>
             </ScrollView>
-          </SafeAreaView>
-        </View>
-      </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  keyboardAvoiding: {
-    flex: 1,
-  },
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  keyboardWrap: {
+    width: '100%',
+    maxWidth: 420,
   },
   modalCard: {
-    maxHeight: '92%',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 22,
+    maxHeight: '90%',
   },
   scrollContent: {
-    paddingBottom: 16,
+    paddingBottom: 4,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  iconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  headerText: {
-    flex: 1,
-  },
-  title: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 18,
-    letterSpacing: -0.2,
-  },
-  subtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  statusBadge: {
-    borderRadius: 99,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 16,
-    alignSelf: 'flex-start',
+  badgePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
   },
-  statusText: {
-    fontFamily: 'Inter-SemiBold',
+  badgeText: {
+    fontFamily: 'Outfit-Bold',
     fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  closeCircleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 20,
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  divider: {
+    height: 1,
+    width: '100%',
+    marginBottom: 16,
+  },
+
+  // Auth Session Pill
+  authSessionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 7,
+  },
+  authDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  authSessionLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+  },
+  authSessionValue: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 12,
+  },
+  authSessionEmail: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    flex: 1,
   },
 
   // Info Cards (Guest / Google)
   infoCard: {
     flexDirection: 'row',
     padding: 16,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 20,
-    gap: 14,
+    marginBottom: 16,
+    gap: 12,
     alignItems: 'flex-start',
   },
   infoIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -750,68 +924,59 @@ const styles = StyleSheet.create({
   },
   infoTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15,
+    fontSize: 14.5,
     marginBottom: 4,
   },
   infoDescription: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
   },
 
-  // Email Card
-  emailCard: {
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 16,
+  // Form
+  formContainer: {
+    marginBottom: 4,
   },
-  emailValue: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-    marginTop: 2,
-  },
-
-  // Fields
   field: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   fieldLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
     marginBottom: 6,
   },
   inputRow: {
-    minHeight: 50,
+    minHeight: 46,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 14,
-    paddingRight: 6,
+    paddingHorizontal: 12,
   },
   input: {
     flex: 1,
-    minHeight: 48,
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
+    minHeight: 44,
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    paddingVertical: 0,
   },
   inputVisibility: {
-    width: 40,
-    height: 40,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // Strength Indicator
+  // Password Strength
   passwordStrengthContainer: {
-    marginTop: 10,
+    marginTop: 8,
   },
   passwordStrengthHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   passwordStrengthLabel: {
     fontFamily: 'Inter-Medium',
@@ -822,48 +987,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   strengthBarBackground: {
-    height: 5,
-    borderRadius: 99,
+    height: 4,
+    borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   strengthBar: {
     height: '100%',
-    borderRadius: 99,
+    borderRadius: 2,
   },
-  requirementsContainer: {
+  requirementsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
-  requirement: {
+  requirementChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-  },
-  requirementIcon: {
-    width: 16,
-    height: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1,
+    gap: 4,
   },
   requirementText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
+    fontFamily: 'Inter-Medium',
+    fontSize: 10.5,
   },
   matchStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  matchIcon: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 6,
+    gap: 5,
   },
   matchText: {
     fontFamily: 'Inter-SemiBold',
@@ -873,13 +1028,14 @@ const styles = StyleSheet.create({
   // Actions
   actionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 4,
   },
   actionButton: {
     flex: 1,
-    height: 50,
-    borderRadius: 16,
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -888,7 +1044,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14,
+    fontSize: 13.5,
   },
 });
 

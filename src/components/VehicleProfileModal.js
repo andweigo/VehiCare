@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 import { getDisplayValue, getVehicleDisplayName } from '../utils/vehicleDisplay';
 
-const getVehicleIconName = vehicleTypeValue => {
+const getVehicleIconName = (vehicleTypeValue, vehicleObj = null) => {
   let typeValue = vehicleTypeValue;
 
   if (typeValue && typeof typeValue === 'object') {
@@ -24,6 +24,7 @@ const getVehicleIconName = vehicleTypeValue => {
       typeValue.title,
       typeValue.value,
       typeValue.code,
+      typeValue.category,
       typeValue.id,
     ];
 
@@ -32,9 +33,87 @@ const getVehicleIconName = vehicleTypeValue => {
     );
   }
 
-  const text = `${typeValue || ''}`.toLowerCase().trim();
+  let text = `${typeValue || ''}`.toLowerCase().trim();
 
-  if (text.includes('moto') || text.includes('motor') || text.includes('scooter')) {
+  // If type string is still generic, empty, or unknown, deduce from vehicle brand/model/name
+  if (!text || text === 'unknown' || text === 'other') {
+    const v = vehicleObj || (typeof vehicleTypeValue === 'object' ? vehicleTypeValue : null);
+    if (v) {
+      const brand = `${v.custom_brand || v.vehicle_brand || v.vehicleBrand || v.brand || ''}`.toLowerCase();
+      const model = `${v.custom_model || v.vehicle_model || v.vehicleModel || v.model || ''}`.toLowerCase();
+      const name = `${v.name || ''}`.toLowerCase();
+      const combined = `${brand} ${model} ${name}`.trim();
+
+      if (
+        combined.includes('moto') ||
+        combined.includes('scooter') ||
+        combined.includes('mio') ||
+        combined.includes('aerox') ||
+        combined.includes('nmax') ||
+        combined.includes('click') ||
+        combined.includes('beat') ||
+        combined.includes('wave') ||
+        combined.includes('raider') ||
+        combined.includes('sniper') ||
+        combined.includes('vespa') ||
+        combined.includes('ducati') ||
+        combined.includes('kawasaki') ||
+        combined.includes('harley') ||
+        combined.includes('ktm') ||
+        combined.includes('ninja') ||
+        combined.includes('cbr') ||
+        combined.includes('r15') ||
+        combined.includes('r3') ||
+        combined.includes('pcx') ||
+        combined.includes('adv') ||
+        combined.includes('barako') ||
+        combined.includes('smash') ||
+        combined.includes('tmax')
+      ) {
+        return 'motorcycle';
+      }
+
+      if (
+        combined.includes('bicycle') ||
+        combined.includes('bike') ||
+        combined.includes('cycle') ||
+        combined.includes('bmx') ||
+        combined.includes('shimano') ||
+        combined.includes('trek') ||
+        combined.includes('giant')
+      ) {
+        return 'directions-bike';
+      }
+
+      if (combined.includes('bus')) {
+        return 'directions-bus';
+      }
+
+      if (
+        combined.includes('truck') ||
+        combined.includes('van') ||
+        combined.includes('pickup') ||
+        combined.includes('hilux') ||
+        combined.includes('ranger') ||
+        combined.includes('navara') ||
+        combined.includes('d-max') ||
+        combined.includes('strada') ||
+        combined.includes('hiace') ||
+        combined.includes('urvan') ||
+        combined.includes('l300')
+      ) {
+        return 'local-shipping';
+      }
+    }
+  }
+
+  if (
+    text.includes('moto') ||
+    text.includes('motor') ||
+    text.includes('scooter') ||
+    text.includes('two-wheeler') ||
+    text.includes('moped')
+  ) {
     return 'motorcycle';
   }
 
@@ -83,9 +162,24 @@ const VehicleProfileModal = ({
     vehicleProfile?.vehicle_year ?? vehicleProfile?.vehicleYear ?? vehicleProfile?.custom_year,
     'Unknown',
   );
-  const rawVehicleType = vehicleProfile?.vehicle_type ?? vehicleProfile?.vehicleType;
-  const vehicleTypeLabel = getDisplayValue(rawVehicleType, 'Unknown');
-  const vehicleIcon = getVehicleIconName(rawVehicleType);
+  const rawVehicleType =
+    vehicleProfile?.vehicle_type ??
+    vehicleProfile?.vehicleType ??
+    vehicleProfile?.vehicle_type_name ??
+    vehicleProfile?.type ??
+    vehicleProfile?.category;
+  const vehicleIcon = getVehicleIconName(rawVehicleType, vehicleProfile);
+  const deducedType =
+    vehicleIcon === 'motorcycle'
+      ? 'Motorcycle'
+      : vehicleIcon === 'directions-bike'
+      ? 'Bicycle'
+      : vehicleIcon === 'local-shipping'
+      ? 'Truck / Van'
+      : vehicleIcon === 'directions-bus'
+      ? 'Bus'
+      : 'Car / Sedan';
+  const vehicleTypeLabel = getDisplayValue(rawVehicleType, '') || deducedType;
   const vehicleBrand = getDisplayValue(
     vehicleProfile?.custom_brand || vehicleProfile?.vehicle_brand || vehicleProfile?.vehicleBrand,
     'Unknown',

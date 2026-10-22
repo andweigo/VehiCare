@@ -43,15 +43,96 @@ import {
     getVehicleDisplayName,
 } from '../utils/vehicleDisplay';
 
-const getVehicleIconName = vehicleType => {
-  const text = `${vehicleType || ''}`.toLowerCase();
+const getVehicleIconName = (vehicleType, vehicleProfile = null) => {
+  let text = `${getDisplayValue(vehicleType, '')}`.toLowerCase().trim();
+
+  if (!text || text === 'unknown' || text === 'other') {
+    const v = vehicleProfile || (typeof vehicleType === 'object' ? vehicleType : null);
+    if (v) {
+      const brand = `${v.custom_brand || v.vehicle_brand || v.vehicleBrand || v.brand || ''}`.toLowerCase();
+      const model = `${v.custom_model || v.vehicle_model || v.vehicleModel || v.model || ''}`.toLowerCase();
+      const name = `${v.name || ''}`.toLowerCase();
+      const combined = `${brand} ${model} ${name}`.trim();
+
+      if (
+        combined.includes('moto') ||
+        combined.includes('scooter') ||
+        combined.includes('mio') ||
+        combined.includes('aerox') ||
+        combined.includes('nmax') ||
+        combined.includes('click') ||
+        combined.includes('beat') ||
+        combined.includes('wave') ||
+        combined.includes('raider') ||
+        combined.includes('sniper') ||
+        combined.includes('vespa') ||
+        combined.includes('ducati') ||
+        combined.includes('kawasaki') ||
+        combined.includes('harley') ||
+        combined.includes('ktm') ||
+        combined.includes('ninja') ||
+        combined.includes('cbr') ||
+        combined.includes('r15') ||
+        combined.includes('r3') ||
+        combined.includes('pcx') ||
+        combined.includes('adv') ||
+        combined.includes('barako') ||
+        combined.includes('smash') ||
+        combined.includes('tmax')
+      ) {
+        return 'motorcycle';
+      }
+
+      if (
+        combined.includes('bicycle') ||
+        combined.includes('bike') ||
+        combined.includes('cycle') ||
+        combined.includes('bmx') ||
+        combined.includes('shimano') ||
+        combined.includes('trek') ||
+        combined.includes('giant')
+      ) {
+        return 'directions-bike';
+      }
+
+      if (combined.includes('bus')) {
+        return 'directions-bus';
+      }
+
+      if (
+        combined.includes('truck') ||
+        combined.includes('van') ||
+        combined.includes('pickup') ||
+        combined.includes('hilux') ||
+        combined.includes('ranger') ||
+        combined.includes('navara') ||
+        combined.includes('d-max') ||
+        combined.includes('strada') ||
+        combined.includes('hiace') ||
+        combined.includes('urvan') ||
+        combined.includes('l300')
+      ) {
+        return 'local-shipping';
+      }
+    }
+  }
 
   if (
     text.includes('moto') ||
-    text.includes('bike') ||
-    text.includes('scooter')
+    text.includes('motor') ||
+    text.includes('scooter') ||
+    text.includes('two-wheeler') ||
+    text.includes('moped')
   ) {
     return 'motorcycle';
+  }
+
+  if (
+    text.includes('bicycle') ||
+    text.includes('bike') ||
+    text.includes('cycle')
+  ) {
+    return 'directions-bike';
   }
 
   if (text.includes('bus')) {
@@ -167,15 +248,23 @@ const DashboardScreen = ({ navigation }) => {
       '',
     );
 
+  const rawVehicleType =
+    vehicleProfile?.vehicle_type ??
+    vehicleProfile?.vehicleType ??
+    vehicleProfile?.vehicle_type_name ??
+    vehicleProfile?.type ??
+    vehicleProfile?.category;
+
   const vehicleType =
     getDisplayValue(
-      vehicleProfile?.vehicle_type,
+      rawVehicleType,
       '',
     );
 
   const vehicleIconName =
     getVehicleIconName(
-      vehicleType,
+      rawVehicleType,
+      vehicleProfile,
     );
 
   // ==================================================
