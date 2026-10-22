@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -55,6 +55,9 @@ const VehicleHealthScreen = ({ navigation }) => {
   );
 
   const getHealthColor = score => {
+    if (typeof score !== 'number' || score === null) {
+      return theme.accent;
+    }
     if (score >= 80) {
       return theme.success || '#35B86B';
     }
@@ -149,6 +152,21 @@ const VehicleHealthScreen = ({ navigation }) => {
 
   const factors = healthData?.factors || {};
 
+  const COMPLETED_PAGE_SIZE = 15;
+  const [completedPage, setCompletedPage] = useState(1);
+
+  const reversedCompleted = useMemo(
+    () => (Array.isArray(completedRecommendations) ? completedRecommendations.slice().reverse() : []),
+    [completedRecommendations],
+  );
+
+  const totalCompletedPages = Math.max(1, Math.ceil(reversedCompleted.length / COMPLETED_PAGE_SIZE));
+
+  const paginatedCompleted = useMemo(() => {
+    const start = (completedPage - 1) * COMPLETED_PAGE_SIZE;
+    return reversedCompleted.slice(start, start + COMPLETED_PAGE_SIZE);
+  }, [reversedCompleted, completedPage]);
+
   return (
     <SafeAreaView
       style={[
@@ -234,29 +252,38 @@ const VehicleHealthScreen = ({ navigation }) => {
                 OVERALL HEALTH SCORE
               </Text>
 
-              <View style={styles.scoreRow}>
-                <Text
-                  style={[
-                    styles.score,
-                    {
-                      color: healthColor,
-                    },
-                  ]}
-                >
-                  {healthPercentage}
-                </Text>
+              {loading || healthPercentage === null ? (
+                <View style={styles.scoreLoadingRow}>
+                  <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
+                  <Text style={[styles.scoreLoadingText, { color: theme.textSecondary }]}>
+                    Calculating health score...
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.scoreRow}>
+                  <Text
+                    style={[
+                      styles.score,
+                      {
+                        color: healthColor,
+                      },
+                    ]}
+                  >
+                    {healthPercentage}
+                  </Text>
 
-                <Text
-                  style={[
-                    styles.percent,
-                    {
-                      color: healthColor,
-                    },
-                  ]}
-                >
-                  %
-                </Text>
-              </View>
+                  <Text
+                    style={[
+                      styles.percent,
+                      {
+                        color: healthColor,
+                      },
+                    ]}
+                  >
+                    %
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View
@@ -300,7 +327,7 @@ const VehicleHealthScreen = ({ navigation }) => {
               style={[
                 styles.progressFill,
                 {
-                  width: `${Math.min(100, Math.max(0, healthPercentage))}%`,
+                  width: `${healthPercentage === null ? 0 : Math.min(100, Math.max(0, healthPercentage))}%`,
                   backgroundColor: healthColor,
                 },
               ]}
@@ -441,7 +468,7 @@ const VehicleHealthScreen = ({ navigation }) => {
             <HealthFactor
               icon="build"
               title="Maintenance Logs"
-              value={factors.maintenance || 0}
+              value={factors.maintenance !== undefined ? factors.maintenance : null}
               unit="services"
               theme={theme}
               isDark={isDark}
@@ -461,7 +488,7 @@ const VehicleHealthScreen = ({ navigation }) => {
             <HealthFactor
               icon="medical-services"
               title="Diagnostic History"
-              value={factors.diagnostics || 0}
+              value={factors.diagnostics !== undefined ? factors.diagnostics : null}
               unit="scans"
               theme={theme}
               isDark={isDark}
@@ -481,7 +508,7 @@ const VehicleHealthScreen = ({ navigation }) => {
             <HealthFactor
               icon="auto-awesome"
               title="Recommendations"
-              value={factors.recommendations || 0}
+              value={factors.recommendations !== undefined ? factors.recommendations : null}
               unit="actions"
               theme={theme}
               isDark={isDark}
@@ -616,7 +643,29 @@ const VehicleHealthScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {completedRecommendations.length === 0 ? (
+          {loading && completedRecommendations.length === 0 ? (
+            <View
+              style={[
+                styles.emptyCard,
+                {
+                  backgroundColor: isDark ? '#141416' : '#FFFFFF',
+                  borderColor: isDark ? '#232326' : '#E8EDF2',
+                },
+              ]}
+            >
+              <ActivityIndicator size="small" color={theme.accent} style={{ marginBottom: 8 }} />
+              <Text
+                style={[
+                  styles.emptyDescription,
+                  {
+                    color: theme.textSecondary,
+                  },
+                ]}
+              >
+                Checking completed vehicle records...
+              </Text>
+            </View>
+          ) : completedRecommendations.length === 0 ? (
             <View
               style={[
                 styles.emptyCard,
@@ -664,10 +713,8 @@ const VehicleHealthScreen = ({ navigation }) => {
               </Text>
             </View>
           ) : (
-            completedRecommendations
-              .slice()
-              .reverse()
-              .map(item => (
+            <>
+              {paginatedCompleted.map(item => (
                 <View
                   key={item.id}
                   style={[
@@ -724,7 +771,76 @@ const VehicleHealthScreen = ({ navigation }) => {
                     </Text>
                   </View>
                 </View>
-              ))
+              ))}
+
+              {reversedCompleted.length > COMPLETED_PAGE_SIZE && (
+                <View style={styles.paginationContainer}>
+                  <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+                    Showing {((completedPage - 1) * COMPLETED_PAGE_SIZE) + 1}–{Math.min(completedPage * COMPLETED_PAGE_SIZE, reversedCompleted.length)} of {reversedCompleted.length} actions
+                  </Text>
+                  <View style={styles.paginationControls}>
+                    <TouchableOpacity
+                      style={[
+                        styles.pageNavButton,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          opacity: completedPage === 1 ? 0.4 : 1,
+                        },
+                      ]}
+                      disabled={completedPage === 1}
+                      onPress={() => setCompletedPage(p => Math.max(1, p - 1))}
+                    >
+                      <Icon name="chevron-left" size={18} color={theme.text} />
+                      <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.pagePillsRow}>
+                      {Array.from({ length: totalCompletedPages }, (_, idx) => idx + 1).map(pageNum => {
+                        const isActive = pageNum === completedPage;
+                        return (
+                          <TouchableOpacity
+                            key={pageNum}
+                            style={[
+                              styles.pagePill,
+                              isActive
+                                ? { backgroundColor: theme.accent, borderColor: theme.accent }
+                                : { backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9', borderColor: isDark ? '#2B2B30' : '#E2E8F0' },
+                            ]}
+                            onPress={() => setCompletedPage(pageNum)}
+                          >
+                            <Text
+                              style={[
+                                styles.pagePillText,
+                                { color: isActive ? '#FFFFFF' : theme.text },
+                              ]}
+                            >
+                              {pageNum}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.pageNavButton,
+                        {
+                          backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
+                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                          opacity: completedPage >= totalCompletedPages ? 0.4 : 1,
+                        },
+                      ]}
+                      disabled={completedPage >= totalCompletedPages}
+                      onPress={() => setCompletedPage(p => Math.min(totalCompletedPages, p + 1))}
+                    >
+                      <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
+                      <Icon name="chevron-right" size={18} color={theme.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -824,7 +940,7 @@ const HealthFactor = ({
             },
           ]}
         >
-          {value} {unit}
+          {value !== null && value !== undefined ? `${value} ${unit}` : 'Analyzing...'}
         </Text>
       </View>
 
@@ -922,6 +1038,18 @@ const styles = StyleSheet.create({
   scoreRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+  },
+
+  scoreLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    marginTop: 4,
+  },
+
+  scoreLoadingText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
   },
 
   score: {
@@ -1290,6 +1418,64 @@ const styles = StyleSheet.create({
   lastUpdated: {
     fontFamily: 'Inter-Medium',
     fontSize: 10.5,
+  },
+
+  paginationContainer: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  paginationSummary: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  pageNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+
+  pageNavButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+  },
+
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  pagePill: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+
+  pagePillText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12,
   },
 });
 

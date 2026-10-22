@@ -261,6 +261,22 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   );
 
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'do_this_now' | 'coming_up_soon' | 'helpful_tips'
+  const [expandedCardIds, setExpandedCardIds] = useState(new Set());
+  const toggleExpandCard = useCallback(id => {
+    setExpandedCardIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const REC_PAGE_SIZE = 15;
+  const [recPage, setRecPage] = useState(1);
+  const mainScrollViewRef = useRef(null);
 
   /*
   |--------------------------------------------------------------------------
@@ -301,6 +317,39 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     if (activeTab === 'helpful_tips') return triSections.helpfulTips;
     return recommendations;
   }, [activeTab, triSections, recommendations]);
+
+  const allOrderedItems = useMemo(() => {
+    const combined = [
+      ...triSections.doThisNow,
+      ...triSections.comingUpSoon,
+      ...triSections.helpfulTips,
+    ];
+    return combined.length > 0 ? combined : recommendations;
+  }, [triSections, recommendations]);
+
+  const currentTabItems = useMemo(() => {
+    if (activeTab === 'do_this_now') return triSections.doThisNow;
+    if (activeTab === 'coming_up_soon') return triSections.comingUpSoon;
+    if (activeTab === 'helpful_tips') return triSections.helpfulTips;
+    return allOrderedItems;
+  }, [activeTab, triSections, allOrderedItems]);
+
+  const totalRecPages = Math.max(1, Math.ceil(currentTabItems.length / REC_PAGE_SIZE));
+
+  const paginatedRecItems = useMemo(() => {
+    const start = (recPage - 1) * REC_PAGE_SIZE;
+    return currentTabItems.slice(start, start + REC_PAGE_SIZE);
+  }, [currentTabItems, recPage]);
+
+  const handlePageChange = useCallback(newPage => {
+    setRecPage(newPage);
+    mainScrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+
+  const handleTabChange = useCallback(tabKey => {
+    setActiveTab(tabKey);
+    setRecPage(1);
+  }, []);
 
   const isRecommendationCompleted = useCallback(
     itemOrId => {
@@ -384,6 +433,30 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   const renderRecommendation = ({ item }) => {
     const completed = isRecommendationCompleted(item.id);
+    const isExpanded = expandedCardIds.has(item.id);
+
+    const isUrgent =
+      item.section === 'do_this_now' ||
+      item.category_section === 'do_this_now' ||
+      item.priority === 'Immediate' ||
+      item.priority === 'Urgent';
+
+    const isUpcoming =
+      item.section === 'coming_up_soon' ||
+      item.category_section === 'coming_up_soon' ||
+      item.priority === 'Important';
+
+    const urgencyColor = isUrgent ? '#FF5A5F' : isUpcoming ? '#D6A23A' : '#32D583';
+    const urgencyBg = isUrgent
+      ? 'rgba(255, 90, 95, 0.14)'
+      : isUpcoming
+      ? 'rgba(214, 162, 58, 0.14)'
+      : 'rgba(50, 213, 131, 0.14)';
+    const urgencyLabel = isUrgent ? 'DO THIS NOW' : isUpcoming ? 'COMING UP SOON' : 'HELPFUL TIP';
+
+    const hasGuideDetails = Boolean(
+      item.completion_check || item.warning_signs || item.safety_precaution || item.source === 'diagnostic'
+    );
 
     return (
       <Animated.View
@@ -407,236 +480,205 @@ const SmartRecommendationsScreen = ({ navigation }) => {
             styles.recommendationCard,
             {
               backgroundColor: theme.surface,
-              borderColor: theme.border,
+              borderColor: isUrgent ? `${urgencyColor}40` : theme.border,
             },
           ]}
         >
-          <View style={styles.recommendationHeader}>
-            <View
-              style={[
-                styles.recommendationIcon,
-                {
-                  backgroundColor: theme.accentSoft,
-                },
-              ]}
-            >
-              <Icon name={item.icon} size={20} color={theme.accent} />
-            </View>
-
-            <View style={styles.recommendationTitleBlock}>
-              <View style={styles.badgeRow}>
-                <View
-                  style={[
-                    styles.sourceBadge,
-                    item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
-                      ? { backgroundColor: 'rgba(255, 90, 95, 0.16)', borderColor: '#FF5A5F' }
-                      : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
-                      ? { backgroundColor: 'rgba(214, 162, 58, 0.16)', borderColor: '#D6A23A' }
-                      : { backgroundColor: 'rgba(50, 213, 131, 0.16)', borderColor: '#32D583' },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sourceBadgeText,
-                      item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
-                        ? { color: '#FF5A5F' }
-                        : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
-                        ? { color: '#D6A23A' }
-                        : { color: '#32D583' },
-                    ]}
-                  >
-                    {item.section === 'do_this_now' || item.category_section === 'do_this_now' || item.priority === 'Immediate' || item.priority === 'Urgent'
-                      ? 'DO THIS NOW'
-                      : item.section === 'coming_up_soon' || item.category_section === 'coming_up_soon' || item.priority === 'Important'
-                      ? 'COMING UP SOON'
-                      : 'HELPFUL TIP'}
-                  </Text>
-                </View>
-
-                <Text
-                  style={[
-                    styles.recommendationCategory,
-                    {
-                      color: theme.textSecondary,
-                    },
-                  ]}
-                >
-                  {typeof item.category === 'string' ? item.category.toUpperCase() : (item.category?.name || 'CARE').toUpperCase()}
+          {/* TOP METADATA & URGENCY ROW */}
+          <View style={styles.cardTopMetaRow}>
+            <View style={styles.cardBadgesGroup}>
+              <View style={[styles.sourceBadge, { backgroundColor: urgencyBg, borderColor: urgencyColor }]}>
+                <Text style={[styles.sourceBadgeText, { color: urgencyColor }]}>
+                  {urgencyLabel}
                 </Text>
               </View>
 
-              <Text
-                style={[
-                  styles.recommendationTitle,
-                  {
-                    color: theme.text,
-                  },
-                ]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
+              <View style={[styles.categoryPill, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.05)' }]}>
+                <Text style={[styles.categoryPillText, { color: theme.textSecondary }]}>
+                  {typeof item.category === 'string' ? item.category.toUpperCase() : (item.category?.name || 'CARE').toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.impactBadge, { backgroundColor: `${healthBarColor}1A` }]}>
+              <Icon name="bolt" size={13} color={healthBarColor} />
+              <Text style={[styles.impactBadgeText, { color: healthBarColor }]}>
+                +{item.scoreImpact || 5} Health
+              </Text>
+            </View>
+          </View>
+
+          {/* TITLE & ICON HEADER */}
+          <View style={styles.recommendationHeader}>
+            <View style={[styles.recommendationIcon, { backgroundColor: theme.accentSoft }]}>
+              <Icon name={item.icon || 'build'} size={20} color={theme.accent} />
+            </View>
+
+            <View style={styles.recommendationTitleBlock}>
+              <Text style={[styles.recommendationTitle, { color: theme.text }]} numberOfLines={2}>
                 {item.what_to_do || item.title}
               </Text>
             </View>
           </View>
 
+          {/* RELATED PROBLEM IF DIAGNOSTIC */}
           {item.source === 'diagnostic' && item.relatedProblem ? (
-            <View style={[styles.relatedBox, { backgroundColor: theme.border, borderColor: theme.border }]}>
-              <Text style={[styles.relatedLabel, { color: theme.textSecondary }]}>Related to:</Text>
+            <View style={[styles.relatedBox, { backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.04)', borderColor: theme.border }]}>
+              <Icon name="medical-services" size={12} color={theme.accent} style={{ marginRight: 6 }} />
+              <Text style={[styles.relatedLabel, { color: theme.textSecondary }]}>Related Issue: </Text>
               <Text style={[styles.relatedTitle, { color: theme.text }]} numberOfLines={1}>
                 {item.relatedProblem}
               </Text>
             </View>
           ) : null}
 
-          {/* 5-QUESTION BEGINNER FRAMEWORK DETAILS */}
-          <View style={{ backgroundColor: theme.border || '#292929', borderRadius: 10, padding: 12, marginTop: 10, gap: 8 }}>
-            {/* Why it matters */}
-            <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                <Icon name="help-outline" size={13} color={theme.accent} style={{ marginRight: 5 }} />
-                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.accent, letterSpacing: 0.5 }}>
-                  WHY IT MATTERS
-                </Text>
-              </View>
-              <Text style={{ fontSize: 12, color: theme.text, lineHeight: 17 }}>
-                {item.why_it_matters || item.reason || item.preventive_action || item.description}
+          {/* CORE SUMMARY / WHY IT MATTERS - CLEAN AIRY TEXT */}
+          <Text style={[styles.recommendationSummaryText, { color: theme.textSecondary }]}>
+            {item.why_it_matters || item.reason || item.preventive_action || item.description}
+          </Text>
+
+          {/* QUICK METADATA CHIPS ROW */}
+          <View style={styles.chipsRow}>
+            <View style={[styles.metaChip, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.04)', borderColor: theme.border }]}>
+              <Icon name="schedule" size={13} color="#D6A23A" style={{ marginRight: 5 }} />
+              <Text style={[styles.metaChipText, { color: theme.textSecondary }]} numberOfLines={1}>
+                {item.when_due || (item.source === 'diagnostic' ? 'Check before ride' : 'Routine check')}
               </Text>
             </View>
 
-            {/* When to do it & Skill level row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
-                  WHEN TO DO IT:
-                </Text>
-                <Text style={{ fontSize: 11, color: theme.textSecondary }} numberOfLines={1}>
-                  {item.when_due || (item.source === 'diagnostic' ? 'Check before next ride/drive' : 'Routine schedule')}
-                </Text>
-              </View>
-
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#35B86B', marginBottom: 2 }}>
-                  CAN I DO IT MYSELF?
-                </Text>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: theme.text }}>
-                  {item.skill_level || 'Beginner-friendly'}
-                </Text>
-              </View>
+            <View style={[styles.metaChip, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.04)', borderColor: theme.border }]}>
+              <Icon name="handyman" size={13} color="#35B86B" style={{ marginRight: 5 }} />
+              <Text style={[styles.metaChipText, { color: theme.textSecondary }]} numberOfLines={1}>
+                {item.skill_level || 'Beginner-friendly'}
+              </Text>
             </View>
-
-            {/* How to know it's done */}
-            {item.completion_check ? (
-              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.textSecondary, marginBottom: 2 }}>
-                  HOW TO KNOW IT'S DONE:
-                </Text>
-                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
-                  {item.completion_check}
-                </Text>
-              </View>
-            ) : null}
-
-            {item.warning_signs ? (
-              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#D6A23A', marginBottom: 2 }}>
-                  WARNING SIGNS TO MONITOR:
-                </Text>
-                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
-                  {item.warning_signs}
-                </Text>
-              </View>
-            ) : null}
-
-            {item.safety_precaution ? (
-              <View style={{ paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255, 255, 255, 0.12)' }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FF5A5F', marginBottom: 2 }}>
-                  SAFETY BOUNDARY:
-                </Text>
-                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
-                  {item.safety_precaution}
-                </Text>
-              </View>
-            ) : null}
           </View>
 
-          {item.source === 'diagnostic' ? (
-            <TouchableOpacity
-              style={styles.viewDiagnosisButton}
-              onPress={() => handleOpenDiagnosisModal(item)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.viewDiagnosisText, { color: theme.accent }]}>View Full Diagnosis</Text>
-              <Icon name="visibility" size={16} color={theme.accent} />
-            </TouchableOpacity>
-          ) : null}
+          {/* COLLAPSIBLE ACTION GUIDE & SAFETY SECTION */}
+          {hasGuideDetails && (
+            <View style={styles.guideWrapper}>
+              <TouchableOpacity
+                style={[
+                  styles.guideToggleButton,
+                  {
+                    backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.04)',
+                    borderColor: theme.border,
+                  },
+                ]}
+                activeOpacity={0.75}
+                onPress={() => toggleExpandCard(item.id)}
+              >
+                <View style={styles.guideToggleLeft}>
+                  <Icon name="info-outline" size={14} color={theme.accent} style={{ marginRight: 6 }} />
+                  <Text style={[styles.guideToggleText, { color: theme.text }]}>
+                    Action Guide & Safety Checklist
+                  </Text>
+                </View>
+                <Icon
+                  name={isExpanded ? 'expand-less' : 'expand-more'}
+                  size={19}
+                  color={theme.textSecondary}
+                />
+              </TouchableOpacity>
 
+              {isExpanded && (
+                <View style={[styles.guideDetailsCard, { backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.03)', borderColor: theme.border }]}>
+                  {item.completion_check ? (
+                    <View style={styles.guideDetailRow}>
+                      <Icon name="check-circle-outline" size={14} color="#35B86B" style={{ marginRight: 8, marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.guideDetailHeading, { color: '#35B86B' }]}>
+                          HOW TO VERIFY IT'S DONE
+                        </Text>
+                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
+                          {item.completion_check}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {item.warning_signs ? (
+                    <View style={[styles.guideDetailRow, { marginTop: item.completion_check ? 10 : 0 }]}>
+                      <Icon name="warning-amber" size={14} color="#D6A23A" style={{ marginRight: 8, marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.guideDetailHeading, { color: '#D6A23A' }]}>
+                          WARNING SIGNS TO MONITOR
+                        </Text>
+                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
+                          {item.warning_signs}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {item.safety_precaution ? (
+                    <View style={[styles.guideDetailRow, { marginTop: (item.completion_check || item.warning_signs) ? 10 : 0 }]}>
+                      <Icon name="shield" size={14} color="#FF5A5F" style={{ marginRight: 8, marginTop: 2 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.guideDetailHeading, { color: '#FF5A5F' }]}>
+                          SAFETY BOUNDARY
+                        </Text>
+                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
+                          {item.safety_precaution}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {item.source === 'diagnostic' ? (
+                    <TouchableOpacity
+                      style={[styles.viewDiagnosisButton, { marginTop: 10, borderColor: theme.accent }]}
+                      onPress={() => handleOpenDiagnosisModal(item)}
+                      activeOpacity={0.75}
+                    >
+                      <Icon name="visibility" size={14} color={theme.accent} style={{ marginRight: 6 }} />
+                      <Text style={[styles.viewDiagnosisText, { color: theme.accent }]}>View Full Diagnosis Report</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* CARD FOOTER */}
           <View style={styles.recommendationFooter}>
-            <View>
-              <Text
-                style={[
-                  styles.priorityLabel,
-                  {
-                    color: theme.textSecondary,
-                  },
-                ]}
-              >
-                {item.priority.toUpperCase()}
-              </Text>
-              <Text
-                style={[
-                  styles.healthImpact,
-                  {
-                    color: healthBarColor,
-                  },
-                ]}
-              >
-                +{item.scoreImpact} HEALTH
+            <View style={styles.priorityWrap}>
+              <Text style={[styles.priorityLabel, { color: theme.textSecondary }]}>
+                PRIORITY: <Text style={{ color: urgencyColor, fontWeight: '700' }}>{item.priority.toUpperCase()}</Text>
               </Text>
             </View>
 
             {completed ? (
               <View style={styles.completedRow}>
-                <Icon
-                  name="check-circle"
-                  size={18}
-                  color={theme.success || '#35B86B'}
-                />
+                <View style={styles.completedBadgeWrap}>
+                  <Icon name="check-circle" size={16} color={theme.success || '#35B86B'} />
+                  <Text style={[styles.completedStatusText, { color: theme.success || '#35B86B' }]}>
+                    Done
+                  </Text>
+                </View>
                 <TouchableOpacity
-                  style={styles.undoButton}
+                  style={[styles.undoButton, { borderColor: theme.border }]}
                   onPress={() => undoRecommendation(item)}
                   accessibilityRole="button"
                   accessibilityLabel={`Undo ${item.title}`}
                 >
-                  <Text
-                    style={[
-                      styles.undoText,
-                      {
-                        color: theme.accent,
-                      },
-                    ]}
-                  >
-                    Undo
-                  </Text>
+                  <Text style={[styles.undoText, { color: theme.textSecondary }]}>Undo</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
-                style={[
-                  styles.completeButton,
-                  {
-                    backgroundColor: theme.accent,
-                  },
-                ]}
+                style={[styles.completeButton, { backgroundColor: theme.accent }]}
                 onPress={() => completeRecommendation(item)}
+                activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel={`Mark ${item.title} as done`}
               >
+                <Icon name="check" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
                 <Text
                   style={[
                     styles.completeButtonText,
                     {
-                      color: theme.surface,
+                      color: '#FFFFFF',
                     },
                   ]}
                 >
@@ -735,6 +777,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
       ]}
     >
       <ScrollView
+        ref={mainScrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -1041,7 +1084,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                   borderColor: activeTab === 'all' ? theme.accent : theme.border,
                 },
               ]}
-              onPress={() => setActiveTab('all')}
+              onPress={() => handleTabChange('all')}
               activeOpacity={0.8}
             >
               <Text
@@ -1080,7 +1123,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                   borderColor: activeTab === 'do_this_now' ? '#FF5A5F' : theme.border,
                 },
               ]}
-              onPress={() => setActiveTab('do_this_now')}
+              onPress={() => handleTabChange('do_this_now')}
               activeOpacity={0.8}
             >
               <Icon
@@ -1127,7 +1170,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                   borderColor: activeTab === 'coming_up_soon' ? '#D6A23A' : theme.border,
                 },
               ]}
-              onPress={() => setActiveTab('coming_up_soon')}
+              onPress={() => handleTabChange('coming_up_soon')}
               activeOpacity={0.8}
             >
               <Icon
@@ -1174,7 +1217,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                   borderColor: activeTab === 'helpful_tips' ? (theme.success || '#35B86B') : theme.border,
                 },
               ]}
-              onPress={() => setActiveTab('helpful_tips')}
+              onPress={() => handleTabChange('helpful_tips')}
               activeOpacity={0.8}
             >
               <Icon
@@ -1216,7 +1259,14 @@ const SmartRecommendationsScreen = ({ navigation }) => {
         ) : null}
 
         <View style={styles.recommendationList}>
-          {activeTab === 'all' ? (
+          {currentTabItems.length === 0 ? (
+            <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border, marginVertical: 15 }]}>
+              <Icon name="check-circle" size={20} color={theme.success || '#35B86B'} style={{ marginRight: 10 }} />
+              <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
+                No pending items in this category. Everything is up to date!
+              </Text>
+            </View>
+          ) : activeTab === 'all' && currentTabItems.length <= REC_PAGE_SIZE ? (
             <View>
               {/* 1. DO THIS NOW SECTION */}
               {triSections.doThisNow.length > 0 && (
@@ -1274,18 +1324,78 @@ const SmartRecommendationsScreen = ({ navigation }) => {
             </View>
           ) : (
             <View>
-              {displayedItems.length === 0 ? (
-                <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border, marginVertical: 15 }]}>
-                  <Icon name="check-circle" size={20} color={theme.success || '#35B86B'} style={{ marginRight: 10 }} />
-                  <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
-                    No pending items in this category. Everything is up to date!
-                  </Text>
+              {paginatedRecItems.map(item => (
+                <View key={item.id}>{renderRecommendation({ item })}</View>
+              ))}
+            </View>
+          )}
+
+          {/* PAGINATION CONTROLS */}
+          {currentTabItems.length > REC_PAGE_SIZE && (
+            <View style={styles.paginationContainer}>
+              <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+                Showing {((recPage - 1) * REC_PAGE_SIZE) + 1}–{Math.min(recPage * REC_PAGE_SIZE, currentTabItems.length)} of {currentTabItems.length} recommendations
+              </Text>
+              <View style={styles.paginationControls}>
+                <TouchableOpacity
+                  style={[
+                    styles.pageNavButton,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      opacity: recPage === 1 ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={recPage === 1}
+                  onPress={() => handlePageChange(Math.max(1, recPage - 1))}
+                >
+                  <Icon name="chevron-left" size={18} color={theme.text} />
+                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+                </TouchableOpacity>
+
+                <View style={styles.pagePillsRow}>
+                  {Array.from({ length: totalRecPages }, (_, idx) => idx + 1).map(pageNum => {
+                    const isActive = pageNum === recPage;
+                    return (
+                      <TouchableOpacity
+                        key={pageNum}
+                        style={[
+                          styles.pagePill,
+                          isActive
+                            ? { backgroundColor: theme.accent, borderColor: theme.accent }
+                            : { backgroundColor: theme.surface, borderColor: theme.border },
+                        ]}
+                        onPress={() => handlePageChange(pageNum)}
+                      >
+                        <Text
+                          style={[
+                            styles.pagePillText,
+                            { color: isActive ? '#FFFFFF' : theme.text },
+                          ]}
+                        >
+                          {pageNum}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              ) : (
-                displayedItems.map(item => (
-                  <View key={item.id}>{renderRecommendation({ item })}</View>
-                ))
-              )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.pageNavButton,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      opacity: recPage >= totalRecPages ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={recPage >= totalRecPages}
+                  onPress={() => handlePageChange(Math.min(totalRecPages, recPage + 1))}
+                >
+                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
+                  <Icon name="chevron-right" size={18} color={theme.text} />
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -1757,8 +1867,41 @@ const styles = StyleSheet.create({
   },
   recommendationCard: {
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 18,
     padding: 16,
+  },
+  cardTopMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  cardBadgesGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  categoryPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+  },
+  impactBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    gap: 3,
+  },
+  impactBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10.5,
   },
   recommendationHeader: {
     flexDirection: 'row',
@@ -1766,114 +1909,231 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   recommendationIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: 12,
   },
   recommendationTitleBlock: {
     flex: 1,
   },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
   sourceBadge: {
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
   },
   sourceBadgeText: {
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Bold',
     fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  recommendationCategory: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
   recommendationTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 15.5,
+    lineHeight: 21,
   },
   relatedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     marginBottom: 10,
   },
   relatedLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   relatedTitle: {
     fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11.5,
+    flex: 1,
   },
-  recommendationDescription: {
+  recommendationSummaryText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
     marginBottom: 12,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  metaChipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+  },
+  guideWrapper: {
+    marginBottom: 12,
+  },
+  guideToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  guideToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  guideToggleText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11.5,
+  },
+  guideDetailsCard: {
+    marginTop: 6,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  guideDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  guideDetailHeading: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  guideDetailBody: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    lineHeight: 16,
   },
   viewDiagnosisButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   viewDiagnosisText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    marginRight: 4,
+    fontSize: 11.5,
   },
   recommendationFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  priorityWrap: {
+    flex: 1,
   },
   priorityLabel: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10,
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  healthImpact: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 12,
-    lineHeight: 16,
+    letterSpacing: 0.8,
   },
   completeButton: {
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   completeButtonText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12,
-    textTransform: 'uppercase',
+    fontFamily: 'Inter-Bold',
+    fontSize: 11.5,
+    letterSpacing: 0.3,
   },
   completedRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  completedBadgeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  completedStatusText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12,
   },
   undoButton: {
-    marginLeft: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
   },
   undoText: {
     fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+  },
+  paginationContainer: {
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  paginationSummary: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    letterSpacing: 0.3,
+  },
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  pageNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  pageNavButtonText: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12,
-    textTransform: 'uppercase',
+  },
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pagePill: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  pagePillText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12,
   },
 
   /* MODAL STYLES */

@@ -478,7 +478,7 @@ const NotificationsScreen = ({ navigation }) => {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const listRef = useRef(null);
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 15;
   const mountedRef = useRef(false);
   const loadInFlightRef = useRef(false);
   const refreshPendingRef = useRef(false);

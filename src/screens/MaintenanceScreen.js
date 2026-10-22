@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -99,6 +99,11 @@ const MaintenanceScreen = ({ navigation }) => {
   const safeDiagnosticItems = Array.isArray(diagnosticItems) ? diagnosticItems : [];
   const safeHistoryItems = Array.isArray(historyItems) ? historyItems : [];
   const safeHealthStatus = healthStatus || DEFAULT_HEALTH_STATUS;
+
+  const CAT_PAGE_SIZE = 15;
+  const [categoryPage, setCategoryPage] = useState(1);
+  const totalCatPages = Math.max(1, Math.ceil(safeCategories.length / CAT_PAGE_SIZE));
+  const paginatedCategories = safeCategories.slice((categoryPage - 1) * CAT_PAGE_SIZE, categoryPage * CAT_PAGE_SIZE);
 
   const recentActivity = safeHistoryItems.slice(0, 3);
   const hasDiagnosticItems = safeDiagnosticItems.length > 0;
@@ -441,7 +446,7 @@ const MaintenanceScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.categoryGrid}>
-            {safeCategories.map(cat => {
+            {paginatedCategories.map(cat => {
               const iconStyle = getCategoryIconStyle(cat.name, cat.isDiagnostic, isDark);
               const itemCountText = cat.isDiagnostic
                 ? `${cat.diagnosticCount || cat.todoCount || 1} diagnostic issue${(cat.diagnosticCount || cat.todoCount) !== 1 ? 's' : ''}`
@@ -497,6 +502,74 @@ const MaintenanceScreen = ({ navigation }) => {
               );
             })}
           </View>
+
+          {safeCategories.length > CAT_PAGE_SIZE && (
+            <View style={styles.paginationContainer}>
+              <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+                Showing {((categoryPage - 1) * CAT_PAGE_SIZE) + 1}–{Math.min(categoryPage * CAT_PAGE_SIZE, safeCategories.length)} of {safeCategories.length} categories
+              </Text>
+              <View style={styles.paginationControls}>
+                <TouchableOpacity
+                  style={[
+                    styles.pageNavButton,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      opacity: categoryPage === 1 ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={categoryPage === 1}
+                  onPress={() => setCategoryPage(p => Math.max(1, p - 1))}
+                >
+                  <Icon name="chevron-left" size={18} color={theme.text} />
+                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+                </TouchableOpacity>
+
+                <View style={styles.pagePillsRow}>
+                  {Array.from({ length: totalCatPages }, (_, idx) => idx + 1).map(pageNum => {
+                    const isActive = pageNum === categoryPage;
+                    return (
+                      <TouchableOpacity
+                        key={pageNum}
+                        style={[
+                          styles.pagePill,
+                          isActive
+                            ? { backgroundColor: theme.accent, borderColor: theme.accent }
+                            : { backgroundColor: theme.surface, borderColor: theme.border },
+                        ]}
+                        onPress={() => setCategoryPage(pageNum)}
+                      >
+                        <Text
+                          style={[
+                            styles.pagePillText,
+                            { color: isActive ? '#FFFFFF' : theme.text },
+                          ]}
+                        >
+                          {pageNum}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.pageNavButton,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                      opacity: categoryPage >= totalCatPages ? 0.4 : 1,
+                    },
+                  ]}
+                  disabled={categoryPage >= totalCatPages}
+                  onPress={() => setCategoryPage(p => Math.min(totalCatPages, p + 1))}
+                >
+                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
+                  <Icon name="chevron-right" size={18} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* SUBTLE INFO CARD IF VEHICLE HAS NO DIAGNOSTIC HISTORY */}
           {safeDiagnostics.length === 0 && (
@@ -1111,6 +1184,58 @@ const styles = StyleSheet.create({
   quickActionPillText: {
     fontFamily: 'Outfit-Bold',
     fontSize: 11,
+  },
+
+  paginationContainer: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  paginationSummary: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    letterSpacing: 0.3,
+  },
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  pageNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  pageNavButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+  },
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pagePill: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  pagePillText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12,
   },
 });
 

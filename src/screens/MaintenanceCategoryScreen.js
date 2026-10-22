@@ -1,5 +1,5 @@
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -78,6 +78,14 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
     allRecommendations,
     categoryId,
   ]);
+
+  const TODO_PAGE_SIZE = 15;
+  const [todoPage, setTodoPage] = useState(1);
+  const totalTodoPages = Math.max(1, Math.ceil(categoryTodoItems.length / TODO_PAGE_SIZE));
+  const paginatedTodoItems = useMemo(() => {
+    const start = (todoPage - 1) * TODO_PAGE_SIZE;
+    return categoryTodoItems.slice(start, start + TODO_PAGE_SIZE);
+  }, [categoryTodoItems, todoPage]);
 
   const categoryHistoryItems = useMemo(() => {
     return Array.isArray(activeCategory?.historyItems)
@@ -604,7 +612,7 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
             </Text>
           </View>
         ) : (
-          categoryTodoItems.map(item => {
+          paginatedTodoItems.map(item => {
             const priority = getPriorityConfig(
               item.priority,
             );
@@ -884,6 +892,74 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
               </View>
             );
           })
+        )}
+
+        {categoryTodoItems.length > TODO_PAGE_SIZE && (
+          <View style={styles.paginationContainer}>
+            <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+              Showing {((todoPage - 1) * TODO_PAGE_SIZE) + 1}–{Math.min(todoPage * TODO_PAGE_SIZE, categoryTodoItems.length)} of {categoryTodoItems.length} recommendations
+            </Text>
+            <View style={styles.paginationControls}>
+              <TouchableOpacity
+                style={[
+                  styles.pageNavButton,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    opacity: todoPage === 1 ? 0.4 : 1,
+                  },
+                ]}
+                disabled={todoPage === 1}
+                onPress={() => setTodoPage(p => Math.max(1, p - 1))}
+              >
+                <Icon name="chevron-left" size={18} color={theme.text} />
+                <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+              </TouchableOpacity>
+
+              <View style={styles.pagePillsRow}>
+                {Array.from({ length: totalTodoPages }, (_, idx) => idx + 1).map(pageNum => {
+                  const isActive = pageNum === todoPage;
+                  return (
+                    <TouchableOpacity
+                      key={pageNum}
+                      style={[
+                        styles.pagePill,
+                        isActive
+                          ? { backgroundColor: theme.accent, borderColor: theme.accent }
+                          : { backgroundColor: theme.surface, borderColor: theme.border },
+                      ]}
+                      onPress={() => setTodoPage(pageNum)}
+                    >
+                      <Text
+                        style={[
+                          styles.pagePillText,
+                          { color: isActive ? '#FFFFFF' : theme.text },
+                        ]}
+                      >
+                        {pageNum}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.pageNavButton,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    opacity: todoPage >= totalTodoPages ? 0.4 : 1,
+                  },
+                ]}
+                disabled={todoPage >= totalTodoPages}
+                onPress={() => setTodoPage(p => Math.min(totalTodoPages, p + 1))}
+              >
+                <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
+                <Icon name="chevron-right" size={18} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         {/* =====================================================
@@ -1560,6 +1636,58 @@ const styles = StyleSheet.create({
   undoText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 10.5,
+  },
+
+  paginationContainer: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  paginationSummary: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    letterSpacing: 0.3,
+  },
+  paginationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  pageNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  pageNavButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+  },
+  pagePillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pagePill: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  pagePillText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 12,
   },
 
   bottomSpace: {

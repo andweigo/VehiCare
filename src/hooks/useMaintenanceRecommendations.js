@@ -29,6 +29,7 @@ const DEFAULT_HEALTH_STATUS = {
 
 // Global in-memory cache to prevent flickering during vehicle switching
 const healthScoreMemoryCache = new Map();
+export const healthFactorsMemoryCache = new Map();
 
 /**
  * Core internal hook containing the authoritative vehicle health calculation
@@ -69,13 +70,23 @@ export const useMaintenanceRecommendationsInternal = () => {
   const [diagnostics, setDiagnostics] = useState([]);
   const [serviceHistory, setServiceHistory] = useState([]);
   const [repairRecords, setRepairRecords] = useState([]);
-  const [loadingDiagnostics, setLoadingDiagnostics] = useState(false);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(() => Boolean(activeVehicleId));
+  const [initialDiagnosticsLoaded, setInitialDiagnosticsLoaded] = useState(false);
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
+
+  const vehicleInitialScore = useMemo(() => {
+    const vHealth = vehicleProfile?.health || vehicleProfile?.vehicle_health || vehicleProfile?.vehicleHealth || {};
+    const scoreVal = vHealth.score ?? vHealth.health_score ?? vHealth.overall_score ?? null;
+    return (typeof scoreVal === 'number' && !isNaN(scoreVal)) ? scoreVal : null;
+  }, [vehicleProfile]);
 
   // In-memory / storage cached health score to prevent initial flash to 100
   const [cachedHealthScore, setCachedHealthScore] = useState(() => {
     if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
       return healthScoreMemoryCache.get(activeVehicleId);
+    }
+    if (typeof vehicleInitialScore === 'number') {
+      return vehicleInitialScore;
     }
     return null;
   });
@@ -86,6 +97,8 @@ export const useMaintenanceRecommendationsInternal = () => {
       setCachedHealthScore(null);
       return;
     }
+    setInitialDiagnosticsLoaded(false);
+    setLoadingDiagnostics(true);
     if (healthScoreMemoryCache.has(activeVehicleId)) {
       setCachedHealthScore(healthScoreMemoryCache.get(activeVehicleId));
     } else {
@@ -164,9 +177,11 @@ export const useMaintenanceRecommendationsInternal = () => {
       setServiceHistory([]);
       setRepairRecords([]);
       setLoadingDiagnostics(false);
+      setInitialDiagnosticsLoaded(true);
       return;
     }
 
+    setInitialDiagnosticsLoaded(false);
     setLoadingDiagnostics(true);
 
     const filterByVehicle = list =>
@@ -257,6 +272,7 @@ export const useMaintenanceRecommendationsInternal = () => {
     } catch (error) {
       console.warn('Error loading vehicle diagnostics:', error?.message);
     } finally {
+      setInitialDiagnosticsLoaded(true);
       setLoadingDiagnostics(false);
     }
   }, [vehicleProfile, activeVehicleId, isAuthenticated, userId]);
@@ -632,24 +648,28 @@ export const useMaintenanceRecommendationsInternal = () => {
 
   const maintenanceHealth = useMemo(() => {
     // While initial diagnostics are loading for active vehicle, use cached score to prevent 100% flash
-    if (loadingDiagnostics && diagnostics.length === 0) {
+    if (!initialDiagnosticsLoaded || loadingDiagnostics) {
       if (typeof cachedHealthScore === 'number') {
         return cachedHealthScore;
       }
       if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
         return healthScoreMemoryCache.get(activeVehicleId);
       }
+      if (typeof vehicleInitialScore === 'number') {
+        return vehicleInitialScore;
+      }
+      return null;
     }
     return calculatedScore;
-  }, [loadingDiagnostics, diagnostics.length, cachedHealthScore, activeVehicleId, calculatedScore]);
+  }, [initialDiagnosticsLoaded, loadingDiagnostics, cachedHealthScore, activeVehicleId, vehicleInitialScore, calculatedScore]);
 
   // Keep memory and persistent health cache updated
   useEffect(() => {
-    if (!loadingDiagnostics && activeVehicleId && typeof calculatedScore === 'number') {
+    if (!loadingDiagnostics && initialDiagnosticsLoaded && activeVehicleId && typeof calculatedScore === 'number') {
       healthScoreMemoryCache.set(activeVehicleId, calculatedScore);
       AsyncStorage.setItem(`@vehicare_cached_health_${activeVehicleId}`, String(calculatedScore)).catch(() => {});
     }
-  }, [loadingDiagnostics, activeVehicleId, calculatedScore]);
+  }, [loadingDiagnostics, initialDiagnosticsLoaded, activeVehicleId, calculatedScore]);
 
   const resolvedTasks = useMemo(
     () => maintenanceTasks.filter(item => item.isResolved),
@@ -657,7 +677,10 @@ export const useMaintenanceRecommendationsInternal = () => {
   );
 
   // Accurate loading flag: stays true while vehicle or initial vehicle diagnostics are loading
-  const loading = Boolean(vehicleLoading || (Boolean(vehicleProfile) && loadingDiagnostics && diagnostics.length === 0));
+  const loading = Boolean(
+    vehicleLoading ||
+    (Boolean(vehicleProfile) && (!initialDiagnosticsLoaded || loadingDiagnostics))
+  );
 
   return {
     vehicleProfile: vehicleProfile || null,
@@ -683,6 +706,7 @@ export const useMaintenanceRecommendationsInternal = () => {
     healthScore: typeof maintenanceHealth === 'number' ? maintenanceHealth : 100,
     healthPercentage: typeof maintenanceHealth === 'number' ? Math.min(100, Math.max(0, Math.round(maintenanceHealth))) : 100,
     loading,
+    initialDiagnosticsLoaded: !!initialDiagnosticsLoaded,
     loadingDiagnostics: !!loadingDiagnostics,
     refresh: fetchVehicleDiagnostics,
     refreshVehicleHealth: fetchVehicleDiagnostics,

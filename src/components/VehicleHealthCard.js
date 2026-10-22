@@ -146,15 +146,22 @@ const VehicleHealthCard = ({ onPress }) => {
   const progress = useRef(
     new Animated.Value(percentage),
   ).current;
+  const hasAnimatedRef = useRef(false);
 
   useEffect(() => {
     if (loading) {
       return;
     }
 
+    if (!hasAnimatedRef.current) {
+      progress.setValue(percentage);
+      hasAnimatedRef.current = true;
+      return;
+    }
+
     Animated.timing(progress, {
       toValue: percentage,
-      duration: 600,
+      duration: 500,
       useNativeDriver: false,
     }).start();
   }, [percentage, loading, progress]);
@@ -192,7 +199,7 @@ const VehicleHealthCard = ({ onPress }) => {
   // LOADING STATE
   // ==========================================
 
-  if (loading) {
+  if (loading || healthPercentage === null) {
     return (
       <View
         style={[
