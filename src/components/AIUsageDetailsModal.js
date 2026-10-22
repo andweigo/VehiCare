@@ -169,68 +169,67 @@ const AIUsageDetailsModal = ({
               ]}
             />
 
-            {/* MAIN STATS ROW: DONUT CHART + 3 METRIC CARDS */}
-            <View style={styles.statsRow}>
-              <View style={styles.donutCol}>
-                <AIUsageDonut
-                  used={used}
-                  limit={limit}
-                  size={92}
-                  strokeWidth={8}
-                  isExhausted={exhausted}
-                  activeColor={theme.accent || '#F63B05'}
-                  trackColor={isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'}
-                  textColor={theme.text}
-                  testID="modal-donut-chart"
-                />
+            {/* HERO DONUT CHART */}
+            <View style={styles.donutHeroWrap}>
+              <AIUsageDonut
+                used={used}
+                limit={limit}
+                size={104}
+                strokeWidth={9}
+                isExhausted={exhausted}
+                activeColor={theme.accent || '#F63B05'}
+                trackColor={isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'}
+                textColor={theme.text}
+                testID="modal-donut-chart"
+              />
+            </View>
+
+            {/* FULL-WIDTH 3-METRIC GRID */}
+            <View style={styles.metricsRow}>
+              <View
+                style={[
+                  styles.metricCard,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Used</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>{used}</Text>
               </View>
 
-              <View style={styles.metricsCol}>
-                <View
+              <View
+                style={[
+                  styles.metricCard,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Remaining</Text>
+                <Text
                   style={[
-                    styles.metricCard,
-                    {
-                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                      borderColor: isDark ? '#28282D' : '#E2E8F0',
-                    },
+                    styles.metricValue,
+                    { color: exhausted ? '#EF4444' : '#10B981' },
                   ]}
                 >
-                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Used</Text>
-                  <Text style={[styles.metricValue, { color: theme.text }]}>{used}</Text>
-                </View>
+                  {remaining}
+                </Text>
+              </View>
 
-                <View
-                  style={[
-                    styles.metricCard,
-                    {
-                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                      borderColor: isDark ? '#28282D' : '#E2E8F0',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Remaining</Text>
-                  <Text
-                    style={[
-                      styles.metricValue,
-                      { color: exhausted ? '#EF4444' : '#10B981' },
-                    ]}
-                  >
-                    {remaining}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.metricCard,
-                    {
-                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                      borderColor: isDark ? '#28282D' : '#E2E8F0',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Allowance</Text>
-                  <Text style={[styles.metricValue, { color: theme.text }]}>{limit}</Text>
-                </View>
+              <View
+                style={[
+                  styles.metricCard,
+                  {
+                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
+                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Allowance</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>{limit}</Text>
               </View>
             </View>
 
@@ -363,26 +362,28 @@ const AIUsageDetailsModal = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 20,
   },
   keyboardWrap: {
     width: '100%',
+    maxWidth: 460,
     alignItems: 'center',
   },
   modalCard: {
     width: '100%',
-    maxWidth: 420,
     borderRadius: 24,
     borderWidth: 1,
-    padding: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -445,27 +446,23 @@ const styles = StyleSheet.create({
     height: 1,
     marginBottom: 16,
   },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 16,
-  },
-  donutCol: {
+  donutHeroWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingVertical: 8,
+    marginBottom: 16,
   },
-  metricsCol: {
-    flex: 1,
+  metricsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
+    marginBottom: 18,
+    width: '100%',
   },
   metricCard: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -474,10 +471,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 10.5,
     marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   metricValue: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 16,
+    fontSize: 18,
   },
   hiddenTestContainer: {
     height: 0,
@@ -490,7 +489,7 @@ const styles = StyleSheet.create({
   tipCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    padding: 12,
+    padding: 14,
     borderRadius: 14,
     borderWidth: 1,
     marginBottom: 18,
@@ -502,15 +501,15 @@ const styles = StyleSheet.create({
   tipText: {
     flex: 1,
     fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
   actionsContainer: {
     gap: 10,
   },
   primaryButton: {
-    height: 44,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -519,11 +518,11 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontFamily: 'Outfit-Bold',
-    fontSize: 13.5,
+    fontSize: 14,
   },
   secondaryButton: {
-    height: 44,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -531,7 +530,7 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13,
+    fontSize: 13.5,
   },
 });
 
