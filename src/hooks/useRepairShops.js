@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MAP_CONFIG from '../config/mapConfig';
 import { fetchNearbyRepairShops, filterShopsByCategory } from '../services/repairShopApi';
@@ -189,7 +190,17 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
         const gpsObj = await useCurrentGpsLocation();
         return gpsObj;
       } else {
-        setPermissionState('DENIED');
+        setPermissionState(perm.isPermanentlyDenied ? 'PERMANENTLY_DENIED' : 'DENIED');
+        if (perm.isPermanentlyDenied) {
+          Alert.alert(
+            'Location Access Needed',
+            'VehiCare needs device location to find repair shops near your position. Please enable location permission in App Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => LocationService.openSettings() },
+            ],
+          );
+        }
         if (!selectedLocation) {
           setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);
         }
@@ -305,8 +316,25 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
           // Priority 3: Fallback preset
           setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         }
+      } else if (perm.state === 'NOT_REQUESTED') {
+        const reqResult = await LocationService.requestPermissions();
+        if (cancelled) return;
+        if (reqResult.isGranted) {
+          setPermissionState(reqResult.isPrecise ? 'GRANTED_PRECISE' : 'GRANTED_APPROXIMATE');
+          const gpsFix = await acquireFreshGps();
+          if (cancelled) return;
+          if (gpsFix) {
+            setSelectedLocationState(gpsFix);
+          } else {
+            setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
+          }
+        } else {
+          setPermissionState(reqResult.isPermanentlyDenied ? 'PERMANENTLY_DENIED' : 'DENIED');
+          setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
+          setLoading(false);
+        }
       } else {
-        setPermissionState(perm.state === 'NOT_REQUESTED' ? 'NOT_REQUESTED' : 'DENIED');
+        setPermissionState(perm.state === 'PERMANENTLY_DENIED' ? 'PERMANENTLY_DENIED' : 'DENIED');
         setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         setLoading(false);
       }

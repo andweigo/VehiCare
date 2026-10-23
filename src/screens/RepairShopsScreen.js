@@ -143,7 +143,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
       </View>
 
       {/* LOCATION PERMISSION OR ACCURACY STATUS BAR */}
-      {!userLocation ? (
+      {(!deviceGpsLocation && permissionState !== 'GRANTED_PRECISE' && permissionState !== 'GRANTED_APPROXIMATE') ? (
         <View style={[styles.permissionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.permissionTopRow}>
             <View style={[styles.permissionIconBox, { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.16)' : '#FEE4DA' }]}>

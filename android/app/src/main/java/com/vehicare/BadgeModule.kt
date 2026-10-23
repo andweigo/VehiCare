@@ -197,11 +197,27 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             val isNewNotifId = !notificationId.isNullOrBlank() && notificationId != persistedNotifId
             val isContentUpgrade = hasCustomContent && !persistedHasContent
 
-            // If count has not increased, notification ID has not changed, and we aren't upgrading
-            // a generic badge count notification with its actual title/content, do not re-alert.
-            if (count <= persisted && !isNewNotifId && !isContentUpgrade) {
+            val isCurrentlyShowing = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    notificationManager.activeNotifications.any { it.id == NOTIFICATION_ID }
+                } catch (_: Exception) {
+                    true
+                }
+            } else {
+                true
+            }
+
+            // If count has not increased, notification ID has not changed, we aren't upgrading
+            // a generic badge count notification with its actual title/content, AND the notification
+            // is still actively displayed in the status bar, skip redundant alert.
+            if (isCurrentlyShowing && count <= persisted && !isNewNotifId && !isContentUpgrade) {
                 promise.resolve(true)
                 return
+            }
+
+            // Log diagnostic info if system notifications are disabled for the app
+            if (!androidx.core.app.NotificationManagerCompat.from(reactContext).areNotificationsEnabled()) {
+                android.util.Log.w("VehiCareBadge", "Notifications are not enabled for VehiCare in Android system settings.")
             }
 
             // Record updated state

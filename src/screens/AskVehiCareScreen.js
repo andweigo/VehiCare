@@ -21,6 +21,11 @@ import {
 
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import NitroSound from 'react-native-nitro-sound';
+import {
+  requestCameraPermission,
+  requestMicrophonePermission,
+  requestCameraAndAudioPermission,
+} from '../services/permissionService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Feather from 'react-native-vector-icons/Feather';
@@ -511,6 +516,7 @@ export default function AskVehiCareScreen({
   const textInputRef = useRef(null);
   const recordingIntervalRef = useRef(null);
   const copyTimeoutRef = useRef(null);
+  const pendingMediaActionRef = useRef(null);
   const screenMountedRef = useRef(false);
   const ownerUserId = user?.id || user?.uid || null;
   const setConversationField = useCallback((field, value) => {
@@ -938,100 +944,13 @@ export default function AskVehiCareScreen({
   */
 
   const requestAudioPermission = async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    try {
-      const isAlreadyGranted = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      );
-      if (isAlreadyGranted) {
-        return true;
-      }
-
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        {
-          title: 'Microphone Permission Required',
-          message: 'VehiCare needs access to your microphone to record audio of vehicle sounds and symptoms.',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Deny',
-        },
-      );
-
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        return true;
-      }
-
-      Alert.alert(
-        'Microphone Access Required',
-        'VehiCare needs microphone permission to record audio of your vehicle sound symptoms. Please grant permission in App Info settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => Linking.openSettings(),
-          },
-        ],
-      );
-      return false;
-    } catch (err) {
-      console.warn('[AskVehiCareScreen] Microphone permission error:', err);
-      return false;
-    }
+    const result = await requestMicrophonePermission({ showSettingsDialog: true });
+    return result.isGranted;
   };
 
-  const requestCameraPermission = async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    try {
-      const isAlreadyGranted = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.CAMERA,
-      );
-      if (isAlreadyGranted) {
-        return true;
-      }
-
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.CAMERA,
-        {
-          title: 'Camera Permission Required',
-          message: 'VehiCare needs access to your camera to take photos or record videos of your vehicle symptoms.',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Deny',
-        },
-      );
-
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        return true;
-      }
-
-      if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-        Alert.alert(
-          'Camera Permission Permanently Denied',
-          'Camera permission is needed to capture photos and videos of vehicle issues. Please enable it in App Info settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Open Settings',
-              onPress: () => Linking.openSettings(),
-            },
-          ],
-        );
-      } else {
-        Alert.alert(
-          'Camera Permission Denied',
-          'VehiCare needs camera access to capture vehicle symptoms.',
-        );
-      }
-      return false;
-    } catch (err) {
-      console.warn('[AskVehiCareScreen] Camera permission error:', err);
-      return false;
-    }
+  const requestCameraPermissionWrapper = async () => {
+    const result = await requestCameraPermission({ showSettingsDialog: true });
+    return result.isGranted;
   };
 
   const requestMediaLibraryPermission = async (mediaType = 'photo') => {
@@ -1552,17 +1471,20 @@ export default function AskVehiCareScreen({
   */
 
   const handleMediaOption = (action) => {
+    pendingMediaActionRef.current = action;
     setShowMediaPickerModal(false);
     setTimeout(() => {
-      if (typeof action === 'function') {
-        action();
+      if (pendingMediaActionRef.current) {
+        const act = pendingMediaActionRef.current;
+        pendingMediaActionRef.current = null;
+        act();
       }
-    }, 200);
+    }, Platform.OS === 'android' ? 350 : 150);
   };
 
   const capturePhoto = async () => {
-    const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
+    const permResult = await requestCameraPermission({ showSettingsDialog: true });
+    if (!permResult.isGranted) return;
 
     try {
       const result = await launchCamera({
@@ -1660,8 +1582,8 @@ export default function AskVehiCareScreen({
   };
 
   const captureVideo = async () => {
-    const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
+    const permResult = await requestCameraAndAudioPermission({ showSettingsDialog: true });
+    if (!permResult.isGranted) return;
 
     try {
       const result = await launchCamera({
@@ -1790,8 +1712,8 @@ export default function AskVehiCareScreen({
       }
     }
 
-    const permission = await requestAudioPermission();
-    if (!permission) {
+    const permission = await requestMicrophonePermission({ showSettingsDialog: true });
+    if (!permission.isGranted) {
       return;
     }
 
@@ -1808,7 +1730,8 @@ export default function AskVehiCareScreen({
         setRecordingSeconds(sec => sec + 1);
       }, 1000);
     } catch (error) {
-      Alert.alert('Recording error', 'Unable to start audio recording.');
+      console.warn('[AskVehiCareScreen] NitroSound startRecorder error:', error);
+      Alert.alert('Recording error', 'Unable to start audio recording. Please verify microphone access in App Settings.');
     }
   };
 
@@ -3355,6 +3278,13 @@ export default function AskVehiCareScreen({
         transparent
         animationType="fade"
         statusBarTranslucent
+        onDismiss={() => {
+          if (pendingMediaActionRef.current) {
+            const act = pendingMediaActionRef.current;
+            pendingMediaActionRef.current = null;
+            act();
+          }
+        }}
         onRequestClose={() => setShowMediaPickerModal(false)}
       >
         <View style={styles.mediaModalOverlay}>

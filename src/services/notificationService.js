@@ -1,24 +1,39 @@
 import apiClient from '../api/apiClient';
 import { DeviceEventEmitter } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getToken } from '../services/storageService';
 import { setDeviceBadgeCount } from './deviceBadgeService';
 
 export const NOTIFICATION_READ_STATE_CHANGED = 'notificationReadStateChanged';
 export const NEW_IN_APP_NOTIFICATION_EVENT = 'vehicareNewInAppNotification';
 
+const PREFS_STORAGE_KEY = '@vehicare_notification_preferences';
+
 let lastSynchronizedCount = null;
 let lastLatestUnread = null;
 let alertedToastIds = new Set();
+let cachedPreferences = null;
 
-const emitInAppNotificationIfNew = notification => {
-  if (!notification || notification.isRead) return;
-  const idKey = String(notification.id || `${notification.title || ''}:${notification.message || ''}`);
-  if (!idKey || alertedToastIds.has(idKey)) return;
-  alertedToastIds.add(idKey);
-  DeviceEventEmitter.emit(NEW_IN_APP_NOTIFICATION_EVENT, notification);
+export const DEFAULT_PREFERENCES = {
+  push_notifications: true,
+  in_app_notifications: true,
+  vehicle_updates: true,
+  vehicle_edit_requests: true,
+  diagnostic_results: true,
+  high_severity_alerts: true,
+  critical_alerts: true,
+  maintenance_reminders: true,
+  overdue_maintenance: true,
+  maintenance_schedule_updates: true,
+  professional_assistance: true,
+  nearby_repair_shops: true,
+  service_referrals: true,
+  quiet_hours_enabled: false,
+  quiet_hours_start: '22:00',
+  quiet_hours_end: '07:00',
 };
 
-const resolveCategory = (type, data = {}) => {
+export const resolveCategory = (type, data = {}) => {
   if (data?.category) {
     return data.category;
   }
@@ -44,23 +59,107 @@ const resolveCategory = (type, data = {}) => {
   return 'Vehicle';
 };
 
-export const DEFAULT_PREFERENCES = {
-  push_notifications: true,
-  in_app_notifications: true,
-  vehicle_updates: true,
-  vehicle_edit_requests: true,
-  diagnostic_results: true,
-  high_severity_alerts: true,
-  critical_alerts: true,
-  maintenance_reminders: true,
-  overdue_maintenance: true,
-  maintenance_schedule_updates: true,
-  professional_assistance: true,
-  nearby_repair_shops: true,
-  service_referrals: true,
-  quiet_hours_enabled: false,
-  quiet_hours_start: '22:00',
-  quiet_hours_end: '07:00',
+export const isWithinQuietHours = (startStr = '22:00', endStr = '07:00', date = new Date()) => {
+  try {
+    const parseTime = str => {
+      const [h, m] = String(str || '').split(':').map(n => parseInt(n, 10) || 0);
+      return h * 60 + m;
+    };
+    const currentMinutes = date.getHours() * 60 + date.getMinutes();
+    const startMinutes = parseTime(startStr);
+    const endMinutes = parseTime(endStr);
+
+    if (startMinutes === endMinutes) return false;
+
+    if (startMinutes < endMinutes) {
+      // Same-day window (e.g. 01:00 to 06:00)
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+      // Overnight window (e.g. 22:00 to 07:00)
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+  } catch (_) {
+    return false;
+  }
+};
+
+export const isCriticalNotification = notification => {
+  if (!notification) return false;
+  const t = String(notification.type || '').toLowerCase();
+  const severity = String(notification.data?.severity || '').toLowerCase();
+  const title = String(notification.title || '').toLowerCase();
+  return (
+    severity === 'critical' ||
+    severity === 'high' ||
+    t.includes('critical') ||
+    t.includes('emergency') ||
+    t.includes('warning') ||
+    title.includes('critical') ||
+    title.includes('emergency')
+  );
+};
+
+export const isCategoryEnabled = (notification, prefs) => {
+  if (!notification || !prefs) return true;
+  const category = notification.category || resolveCategory(notification.type, notification.data);
+  const t = String(notification.type || '').toLowerCase();
+
+  if (category === 'Diagnostics' || t.includes('diag') || t.includes('health') || t.includes('symptom')) {
+    if (prefs.diagnostic_results === false) return false;
+  }
+  if (category === 'Maintenance' || t.includes('maint') || t.includes('service') || t.includes('oil')) {
+    if (prefs.maintenance_reminders === false) return false;
+  }
+  if (category === 'Vehicle' || t.includes('vehicle') || t.includes('edit')) {
+    if (prefs.vehicle_updates === false) return false;
+  }
+  if (t.includes('shop') || t.includes('repair')) {
+    if (prefs.nearby_repair_shops === false) return false;
+  }
+  return true;
+};
+
+export const shouldShowPushNotification = (notification, prefs = null) => {
+  const p = prefs || cachedPreferences || DEFAULT_PREFERENCES;
+  if (p.push_notifications === false) {
+    return false;
+  }
+  if (!notification) return true;
+
+  if (p.quiet_hours_enabled && isWithinQuietHours(p.quiet_hours_start, p.quiet_hours_end)) {
+    if (isCriticalNotification(notification)) {
+      return p.critical_alerts !== false;
+    }
+    return false;
+  }
+
+  return isCategoryEnabled(notification, p);
+};
+
+export const shouldShowInAppNotification = (notification, prefs = null) => {
+  const p = prefs || cachedPreferences || DEFAULT_PREFERENCES;
+  if (p.in_app_notifications === false) {
+    return false;
+  }
+  if (!notification) return true;
+
+  if (p.quiet_hours_enabled && isWithinQuietHours(p.quiet_hours_start, p.quiet_hours_end)) {
+    if (isCriticalNotification(notification)) {
+      return p.critical_alerts !== false;
+    }
+    return false;
+  }
+
+  return isCategoryEnabled(notification, p);
+};
+
+const emitInAppNotificationIfNew = notification => {
+  if (!notification || notification.isRead) return;
+  if (!shouldShowInAppNotification(notification)) return;
+  const idKey = String(notification.id || `${notification.title || ''}:${notification.message || ''}`);
+  if (!idKey || alertedToastIds.has(idKey)) return;
+  alertedToastIds.add(idKey);
+  DeviceEventEmitter.emit(NEW_IN_APP_NOTIFICATION_EVENT, notification);
 };
 
 export const fetchNotifications = async () => {
@@ -96,7 +195,11 @@ export const fetchNotifications = async () => {
     if (newestUnread) {
       lastLatestUnread = newestUnread;
       lastSynchronizedCount = unreadItems.length;
-      setDeviceBadgeCount(unreadItems.length, newestUnread).catch(() => {});
+      if (shouldShowPushNotification(newestUnread)) {
+        setDeviceBadgeCount(unreadItems.length, newestUnread).catch(() => {});
+      } else {
+        setDeviceBadgeCount(0).catch(() => {});
+      }
       emitInAppNotificationIfNew(newestUnread);
     } else if (mapped.length > 0 && unreadItems.length === 0) {
       lastLatestUnread = null;
@@ -125,6 +228,7 @@ export const resetNotificationSyncState = () => {
   lastSynchronizedCount = null;
   lastLatestUnread = null;
   alertedToastIds.clear();
+  cachedPreferences = null;
 };
 
 export const getLatestUnreadNotification = () => lastLatestUnread;
@@ -170,10 +274,14 @@ export const getUnreadCount = async () => {
     if (Number.isInteger(count) && count >= 0) {
       if (count !== lastSynchronizedCount) {
         lastSynchronizedCount = count;
-        if (rawLatest && lastLatestUnread) {
-          setDeviceBadgeCount(count, lastLatestUnread).catch(() => {});
+        if (count > 0 && shouldShowPushNotification(lastLatestUnread)) {
+          if (rawLatest && lastLatestUnread) {
+            setDeviceBadgeCount(count, lastLatestUnread).catch(() => {});
+          } else {
+            setDeviceBadgeCount(count).catch(() => {});
+          }
         } else {
-          setDeviceBadgeCount(count).catch(() => {});
+          setDeviceBadgeCount(0).catch(() => {});
         }
       }
       return count;
@@ -216,33 +324,67 @@ export const markAllAsRead = async () => {
   }
 };
 
+export const getCachedNotificationPreferences = () => cachedPreferences || DEFAULT_PREFERENCES;
+
 export const getNotificationPreferences = async () => {
+  if (!cachedPreferences) {
+    try {
+      const stored = await AsyncStorage.getItem(PREFS_STORAGE_KEY);
+      if (stored) {
+        cachedPreferences = { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+      }
+    } catch (_) {}
+  }
+
   try {
     const token = await getToken();
     if (!token || String(token).startsWith('guest')) {
-      return DEFAULT_PREFERENCES;
+      return cachedPreferences || DEFAULT_PREFERENCES;
     }
 
     const response = await apiClient.get('/user/notification-preferences');
-    return response?.data?.data || DEFAULT_PREFERENCES;
+    const data = response?.data?.data || DEFAULT_PREFERENCES;
+    cachedPreferences = { ...DEFAULT_PREFERENCES, ...data };
+    try {
+      await AsyncStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(cachedPreferences));
+    } catch (_) {}
+    return cachedPreferences;
   } catch (err) {
     console.warn('[notificationService] Failed to fetch preferences:', err?.message);
-    return DEFAULT_PREFERENCES;
+    return cachedPreferences || DEFAULT_PREFERENCES;
   }
 };
 
 export const updateNotificationPreferences = async data => {
+  const previous = cachedPreferences || DEFAULT_PREFERENCES;
+  const merged = { ...previous, ...data };
+  cachedPreferences = merged;
+
+  try {
+    await AsyncStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(merged));
+  } catch (_) {}
+
+  // If push notifications disabled, immediately cancel device badge / notification
+  if (data?.push_notifications === false) {
+    setDeviceBadgeCount(0).catch(() => {});
+  }
+
   try {
     const token = await getToken();
     if (!token || String(token).startsWith('guest')) {
-      return data;
+      return merged;
     }
 
     const response = await apiClient.put('/user/notification-preferences', data);
-    return response?.data?.data || data;
+    const updated = response?.data?.data || merged;
+    cachedPreferences = { ...DEFAULT_PREFERENCES, ...updated };
+    try {
+      await AsyncStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(cachedPreferences));
+    } catch (_) {}
+    return cachedPreferences;
   } catch (err) {
-    console.warn('[notificationService] Failed to update preferences:', err?.message);
-    throw err;
+    console.warn('[notificationService] Failed to update preferences on server:', err?.message);
+    return merged;
   }
 };
 
@@ -255,6 +397,13 @@ export default {
   resetNotificationSyncState,
   markAsRead,
   markAllAsRead,
+  getCachedNotificationPreferences,
   getNotificationPreferences,
   updateNotificationPreferences,
+  shouldShowPushNotification,
+  shouldShowInAppNotification,
+  isWithinQuietHours,
+  isCriticalNotification,
+  isCategoryEnabled,
+  resolveCategory,
 };

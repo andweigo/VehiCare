@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import { consumePendingPushNotification } from '../services/deviceBadgeService';
+import { requestNotificationPermission } from '../services/permissionService';
 import notificationService, {
   NEW_IN_APP_NOTIFICATION_EVENT,
   NOTIFICATION_READ_STATE_CHANGED,
@@ -128,10 +129,13 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
 
   useEffect(() => {
     mountedRef.current = true;
+    if (user?.id) {
+      requestNotificationPermission({ showSettingsDialog: false }).catch(() => {});
+    }
     return () => {
       mountedRef.current = false;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     loadUnread();

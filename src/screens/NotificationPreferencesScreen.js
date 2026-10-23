@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import CustomToast from '../components/CustomToast';
 import { DEFAULT_PREFERENCES, getNotificationPreferences, updateNotificationPreferences } from '../services/notificationService';
+import { requestNotificationPermission } from '../services/permissionService';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -68,57 +69,12 @@ const NotificationPreferencesScreen = ({ navigation }) => {
     loadPreferences();
   }, [loadPreferences]);
 
-  const requestNotificationPermission = async () => {
-    if (Platform.OS !== 'android' || Platform.Version < 33) {
-      return true;
-    }
-
-    try {
-      const isAlreadyGranted = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      );
-      if (isAlreadyGranted) {
-        return true;
-      }
-
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-        {
-          title: 'Notification Permission Required',
-          message: 'VehiCare needs permission to send you vehicle safety alerts, maintenance reminders, and diagnostic updates.',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Deny',
-        },
-      );
-
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        return true;
-      }
-
-      Alert.alert(
-        'Notification Access Required',
-        'VehiCare needs notification permission to send safety alerts and updates. Please allow notifications in App Info settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => Linking.openSettings(),
-          },
-        ],
-      );
-      return false;
-    } catch (err) {
-      console.warn('Notification permission error:', err);
-      return false;
-    }
-  };
-
   const handleToggle = async (key, forcedValue = null) => {
     const newValue = forcedValue !== null ? forcedValue : !prefs[key];
 
     if (key === 'push_notifications' && newValue === true) {
-      const hasPermission = await requestNotificationPermission();
-      if (!hasPermission) {
+      const permResult = await requestNotificationPermission({ showSettingsDialog: true });
+      if (!permResult.isGranted) {
         return;
       }
     }
