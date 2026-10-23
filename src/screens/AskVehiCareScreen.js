@@ -188,7 +188,25 @@ export const getRandomOpener = () => {
   return FRIENDLY_OPENERS[idx];
 };
 
+const stripMarkdownSymbols = (text) => {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^\s*[*-]\s+/gm, '• ')
+    .replace(/(^|[\s(])\*(\S[^*\n]*?)\*(?=[\s).,!?:]|$)/g, '$1$2')
+    .replace(/`+/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 export const formatAiResponseText = (data) => {
+  const result = formatAiResponseTextRaw(data);
+  return typeof result === 'string' ? stripMarkdownSymbols(result) : result;
+};
+
+const formatAiResponseTextRaw = (data) => {
   if (!data) {
     return 'VehiCare AI was unable to generate a response. Please try again.';
   }

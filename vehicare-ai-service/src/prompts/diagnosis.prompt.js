@@ -137,7 +137,7 @@ JSON RESPONSE FORMAT:
 {
   "type": "conversation",
   "status": "conversation",
-  "response": "Your structured, helpful response here formatted with clean markdown."
+  "response": "Your structured, helpful response here in plain text only (no markdown symbols such as #, *, or backticks). Use short labeled lines like 'Tools needed:' and numbered steps like '1.' separated by line breaks."
 }`;
 };
 
@@ -465,7 +465,7 @@ DOMAIN & SAFETY RULES (APPLIES STRICTLY TO ALL TIERS):
        {
          "type": "conversation",
          "status": "conversation",
-         "response": "Your structured, step-by-step guide formatted with clean markdown headings and bullet points."
+         "response": "Your structured, step-by-step guide in plain text only (no markdown symbols such as #, *, or backticks). Use short labeled lines like 'Tools needed:' and numbered steps like '1.' separated by line breaks."
        }
   3. GENERAL CONVERSATION & GREETINGS (type="conversation"):
      * Greetings, appreciation, general vehicle questions, specifications, or automotive advice without defects.
