@@ -699,7 +699,7 @@ export const ChatProvider = ({ children }) => {
         },
       }));
       requestPayloadsRef.current.delete(key);
-      console.error('[ChatContext] Failed to format diagnostic response:', error?.message);
+      console.warn('[ChatContext] Failed to format diagnostic response:', error?.message);
       return { processingError: error };
     } finally {
       inFlightRequestsRef.current.delete(sessionId);

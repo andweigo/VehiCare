@@ -156,9 +156,19 @@ export const getModelCooldownExpiry = (modelName) => {
 };
 
 export const triggerModelCooldown = (modelName, requestId, reason = 'TRANSIENT', customDurationMs = null) => {
-  const durationMs = customDurationMs
-    ? Math.min(customDurationMs, 300000)
-    : (config.cooldownMs || 15000);
+  let durationMs;
+  if (reason === 'QUOTA_EXHAUSTED') {
+    // Respect provider retry delay up to 24h; default to 10 minutes if provider didn't specify delay
+    const defaultQuotaCooldown = Math.max(config.cooldownMs || 15000, 600000);
+    durationMs = typeof customDurationMs === 'number'
+      ? Math.min(customDurationMs, 86400000)
+      : defaultQuotaCooldown;
+  } else {
+    // For transient timeouts/overload, cap cooldown at 5 minutes
+    durationMs = typeof customDurationMs === 'number'
+      ? Math.min(customDurationMs, 300000)
+      : (config.cooldownMs || 15000);
+  }
   modelCooldowns.set(modelName, Date.now() + durationMs);
   logger.warn('AI_MODEL_COOLDOWN', requestId, { model: modelName, reason, cooldownMs: durationMs });
 };
@@ -543,10 +553,10 @@ export const callGemini = async (params, client = null) => {
   const totalBudgetMs = explicitBudgetMs || resolveTotalBudgetMs(inputType, Boolean(mediaBase64));
   const ai = client || getGeminiClient();
   const isConversation = requestType === 'conversation' || requestType === 'general';
-  const primaryModel = isConversation
+  const primaryModel = (isConversation && process.env.GEMINI_CONVERSATION_MODEL)
     ? config.gemini.conversationModel
     : config.gemini.model;
-  const fallbackModel = isConversation
+  const fallbackModel = (primaryModel === config.gemini.fallbackModel)
     ? config.gemini.model
     : config.gemini.fallbackModel;
 
@@ -921,7 +931,9 @@ export const callGemini = async (params, client = null) => {
             }
           }
 
-          if (errInfo.isTransient) {
+          if (errInfo.isRateLimit) {
+            triggerModelCooldown(modelName, requestId, 'QUOTA_EXHAUSTED', errInfo.retryDelayMs);
+          } else if (errInfo.isTransient) {
             triggerModelCooldown(modelName, requestId, 'TRANSIENT_FAILURE');
           }
           break;
@@ -942,15 +954,28 @@ export const callGemini = async (params, client = null) => {
       }
     }
 
-    logger.error('AI_GEMINI_ALL_MODELS_FAILED', requestId, {
-      attemptedModels: candidateModels,
-      inputType,
-      hasMedia: Boolean(media),
-      failureCategory: lastFailureCategory,
-      totalElapsedMs: Date.now() - startTime,
-      remainingBudgetMs: requestDeadline - Date.now(),
-      errorCode: lastError?.code || 'GEMINI_UNAVAILABLE',
-    });
+    const isOperationalAllFailed = ['quota', 'timeout', 'overload', 'transient'].includes(lastFailureCategory);
+    if (isOperationalAllFailed) {
+      logger.warn('AI_GEMINI_ALL_MODELS_FAILED', requestId, {
+        attemptedModels: candidateModels,
+        inputType,
+        hasMedia: Boolean(media),
+        failureCategory: lastFailureCategory,
+        totalElapsedMs: Date.now() - startTime,
+        remainingBudgetMs: requestDeadline - Date.now(),
+        errorCode: lastError?.code || 'GEMINI_UNAVAILABLE',
+      });
+    } else {
+      logger.error('AI_GEMINI_ALL_MODELS_FAILED', requestId, {
+        attemptedModels: candidateModels,
+        inputType,
+        hasMedia: Boolean(media),
+        failureCategory: lastFailureCategory,
+        totalElapsedMs: Date.now() - startTime,
+        remainingBudgetMs: requestDeadline - Date.now(),
+        errorCode: lastError?.code || 'GEMINI_UNAVAILABLE',
+      });
+    }
     throw lastError || makeError('GEMINI_UNAVAILABLE', 'Diagnostic service could not complete the request. Please try again.', 503, true);
   } catch (error) {
     if (error?.code && error?.statusCode) throw error;

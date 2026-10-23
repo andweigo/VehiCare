@@ -29,7 +29,7 @@ export const config = {
     apiKey: process.env.GEMINI_API_KEY.trim(),
     model: (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim(),
     fallbackModel: (process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite').trim(),
-    conversationModel: (process.env.GEMINI_CONVERSATION_MODEL || process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite').trim(),
+    conversationModel: (process.env.GEMINI_CONVERSATION_MODEL || process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim(),
     timeoutMs: readInteger('GEMINI_TIMEOUT_MS', 28000),
     totalTimeoutMs: readInteger('AI_TOTAL_TIMEOUT_MS', readInteger('GEMINI_TIMEOUT_MS', 28000)),
     totalTimeouts: {

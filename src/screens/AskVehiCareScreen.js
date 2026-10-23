@@ -1446,7 +1446,7 @@ export default function AskVehiCareScreen({
         await handleDiagnosticResponse(outcome.data);
       }
     } catch (err) {
-      console.error('[AskVehiCareScreen] AI Request Failed:', {
+      console.warn('[AskVehiCareScreen] AI Request Failed:', {
         axiosMessage: err?.message,
         httpStatus: err?.response?.status,
       });
@@ -1478,7 +1478,7 @@ export default function AskVehiCareScreen({
         await handleDiagnosticResponse(outcome.data);
       }
     } catch (error) {
-      console.error('[AskVehiCareScreen] Failed to retry AI request:', error?.message);
+      console.warn('[AskVehiCareScreen] Failed to retry AI request:', error?.message);
     } finally {
       if (screenMountedRef.current) {
         setIsSendingLocally(false);

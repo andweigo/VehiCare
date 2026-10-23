@@ -57,14 +57,25 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
     .replace(/key=[^&\s]+/gi, 'key=[REDACTED]')
     .replace(/Gemini/gi, 'VehiCare AI');
 
-  logger.error('UNHANDLED_EXCEPTION', requestId, {
-    errorCode,
-    errorMessage: err.message || String(err),
-    statusCode,
-    retryable,
-    exception: err.constructor?.name || 'Error',
-    stack: err.stack,
-  });
+  const isOperational = statusCode < 500 || Boolean(err.statusCode && err.code);
+
+  if (isOperational) {
+    logger.warn('AI_HTTP_ERROR', requestId, {
+      errorCode,
+      errorMessage: err.message || String(err),
+      statusCode,
+      retryable,
+    });
+  } else {
+    logger.error('UNHANDLED_EXCEPTION', requestId, {
+      errorCode,
+      errorMessage: err.message || String(err),
+      statusCode,
+      retryable,
+      exception: err.constructor?.name || 'Error',
+      stack: err.stack,
+    });
+  }
 
   res.status(statusCode).json({
     success: false,

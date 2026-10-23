@@ -688,15 +688,29 @@ export const processDiagnosisRequest = async (payload) => {
 
       const isRange = err instanceof RangeError;
       const errorCode = err.code || (isRange ? 'INVALID_MEDIA' : 'AI_SERVICE_UNAVAILABLE');
-      logger.error('AI_PIPELINE_ERROR', requestId, {
-        requestType,
-        inputType,
-        hasMedia: Boolean(mediaBase64),
-        errorCode,
-        errorMessage: err.message || String(err),
-        stack: err.stack,
-        totalDurationMs: Date.now() - startTime,
-      });
+      const isOperational = (err?.statusCode && err.statusCode < 500) ||
+        ['GEMINI_RATE_LIMIT', 'GEMINI_OVERLOADED', 'GEMINI_TIMEOUT', 'GEMINI_UNAVAILABLE', 'INVALID_AI_RESPONSE'].includes(errorCode);
+
+      if (isOperational) {
+        logger.warn('AI_PIPELINE_ERROR', requestId, {
+          requestType,
+          inputType,
+          hasMedia: Boolean(mediaBase64),
+          errorCode,
+          errorMessage: err.message || String(err),
+          totalDurationMs: Date.now() - startTime,
+        });
+      } else {
+        logger.error('AI_PIPELINE_ERROR', requestId, {
+          requestType,
+          inputType,
+          hasMedia: Boolean(mediaBase64),
+          errorCode,
+          errorMessage: err.message || String(err),
+          stack: err.stack,
+          totalDurationMs: Date.now() - startTime,
+        });
+      }
       throw err;
     }
   }, requestId);

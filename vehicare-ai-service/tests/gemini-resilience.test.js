@@ -5,6 +5,7 @@ import {
   extractGeminiErrorInfo,
   sanitizeErrorMessage,
   isModelInCooldown,
+  getModelCooldownExpiry,
   triggerModelCooldown,
   clearModelCooldown,
   clearAllModelCooldowns,
@@ -767,6 +768,217 @@ await test('Primary timeout followed by fallback timeout returns clean 504 GEMIN
   assert.strictEqual(caught.retryable, true, 'Timeout must be retryable');
   assert.strictEqual(client.callCounts[primary], 1);
   assert.strictEqual(client.callCounts[fallback], 1);
+});
+
+// 20. Model ordering is preserved for both diagnostic and conversation requests (never reversed)
+await test('Model ordering is preserved for both diagnostic and conversational requests', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const clientDiag = createMockClient({
+    [primary]: () => ({ text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Diag primary ok' }) }),
+    [fallback]: () => { throw new Error('Fallback should not be called'); },
+  });
+
+  const resDiag = await callGemini({
+    prompt: 'Brake inspection',
+    requestId: 'req_order_diag',
+    requestType: 'diagnostic',
+    inputType: 'text',
+  }, clientDiag);
+
+  assert.strictEqual(clientDiag.callCounts[primary], 1, 'Diagnostic request must use primary model first');
+  assert.strictEqual(clientDiag.callCounts[fallback] || 0, 0);
+  assert.strictEqual(resDiag.modelUsed, primary);
+
+  const clientConv = createMockClient({
+    [primary]: () => ({ text: JSON.stringify({ type: 'conversation', response: 'Conv primary ok' }) }),
+    [fallback]: () => { throw new Error('Fallback should not be called'); },
+  });
+
+  const resConv = await callGemini({
+    prompt: 'How to change lights',
+    requestId: 'req_order_conv',
+    requestType: 'conversation',
+    inputType: 'text',
+  }, clientConv);
+
+  assert.strictEqual(clientConv.callCounts[primary], 1, 'Conversational request must use primary model first by default');
+  assert.strictEqual(clientConv.callCounts[fallback] || 0, 0);
+  assert.strictEqual(resConv.modelUsed, primary);
+});
+
+// 21. Quota exhausted cooldown preserves long provider retry delay (45,038s = 45,038,000ms)
+await test('Quota exhausted cooldown preserves long provider retry delay (e.g. 45,038s) and is not capped at 5 minutes', async () => {
+  const primary = config.gemini.model;
+  const providerRetryDelayMs = 45038000; // 45,038 seconds reported by Google provider
+
+  triggerModelCooldown(primary, 'req_quota_delay_test', 'QUOTA_EXHAUSTED', providerRetryDelayMs);
+  assert.strictEqual(isModelInCooldown(primary), true, 'Model must be in cooldown');
+
+  const expiry = getModelCooldownExpiry(primary);
+  const remainingCooldownMs = expiry - Date.now();
+  assert.ok(
+    remainingCooldownMs > 40000000,
+    `Cooldown must preserve long delay (expected > 40M ms, got ${remainingCooldownMs} ms)`
+  );
+  assert.ok(
+    remainingCooldownMs <= 86400000,
+    'Cooldown must not exceed 24 hours'
+  );
+});
+
+// 22. While primary is quota-exhausted with long delay, subsequent requests use fallback directly
+await test('While primary is quota-exhausted, subsequent requests immediately use fallback without calling primary', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  triggerModelCooldown(primary, 'req_quota_skip_test', 'QUOTA_EXHAUSTED', 45038000);
+
+  const client = createMockClient({
+    [primary]: () => { throw new Error('Primary is quota-exhausted and must NOT be called'); },
+    [fallback]: () => ({ text: JSON.stringify({ type: 'conversation', response: 'Fallback answered' }) }),
+  });
+
+  const result = await callGemini({
+    prompt: 'Check brake pads',
+    requestId: 'req_quota_fallback_exec',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary] || 0, 0, 'Quota-exhausted primary must not be called');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback must be called directly');
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+});
+
+// 23. Primary timeout followed by fallback 429 quota exhaustion propagates 429 and puts fallback in cooldown
+await test('Primary timeout followed by fallback 429 propagates 429 and triggers long quota cooldown', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error('Primary timeout');
+      err.status = 504;
+      err.code = 'DEADLINE_EXCEEDED';
+      throw err;
+    },
+    [fallback]: () => {
+      const err = new Error(JSON.stringify({
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded for this model.',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '45038s' }],
+        },
+      }));
+      err.status = 429;
+      throw err;
+    },
+  });
+
+  let caught = null;
+  try {
+    await callGemini({
+      prompt: 'Check strange rattle',
+      requestId: 'req_timeout_then_429',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now(),
+      totalBudgetMs: 20000,
+    }, client);
+  } catch (err) {
+    caught = err;
+  }
+
+  assert.ok(caught);
+  assert.strictEqual(caught.statusCode, 429, 'Must propagate 429 status code');
+  assert.strictEqual(caught.code, 'GEMINI_RATE_LIMIT');
+  assert.strictEqual(isModelInCooldown(fallback), true, 'Fallback model must be placed in cooldown');
+  const fallbackExpiry = getModelCooldownExpiry(fallback) - Date.now();
+  assert.ok(fallbackExpiry > 40000000, 'Fallback cooldown must preserve provider retry delay');
+});
+
+// 24. Operational errors (429, 503, 504, 400) do NOT emit UNHANDLED_EXCEPTION in error middleware
+await test('Operational errors (429, 503, 504, 400) do not emit UNHANDLED_EXCEPTION in error middleware', async () => {
+  let loggedEvent = null;
+  let loggedLevel = null;
+
+  const originalWarn = console.warn;
+  const originalError = console.error;
+
+  console.warn = (msg) => {
+    if (typeof msg === 'string') {
+      if (msg.includes('AI_HTTP_ERROR')) {
+        loggedEvent = 'AI_HTTP_ERROR';
+        loggedLevel = 'WARN';
+      }
+    }
+  };
+
+  console.error = (msg) => {
+    if (typeof msg === 'string') {
+      if (msg.includes('UNHANDLED_EXCEPTION')) {
+        loggedEvent = 'UNHANDLED_EXCEPTION';
+        loggedLevel = 'ERROR';
+      }
+    }
+  };
+
+  try {
+    const operationalErrors = [
+      normalizeGeminiError(Object.assign(new Error('Rate limited'), { status: 429, code: 'RESOURCE_EXHAUSTED' })),
+      normalizeGeminiError(Object.assign(new Error('High demand'), { status: 503, code: 'UNAVAILABLE' })),
+      normalizeGeminiError(Object.assign(new Error('Deadline exceeded'), { status: 504, code: 'DEADLINE_EXCEEDED' })),
+      Object.assign(new Error('Invalid JSON schema'), { statusCode: 400, code: 'INVALID_REQUEST_SCHEMA' }),
+    ];
+
+    for (const opErr of operationalErrors) {
+      loggedEvent = null;
+      loggedLevel = null;
+      let sentStatus = null;
+      let sentJson = null;
+
+      const mockRes = {
+        status: (s) => { sentStatus = s; return mockRes; },
+        json: (d) => { sentJson = d; return mockRes; },
+      };
+
+      errorHandlerMiddleware(opErr, { headers: { 'x-request-id': 'req_op_test' } }, mockRes, () => {});
+
+      assert.strictEqual(sentStatus, opErr.statusCode || 400);
+      assert.strictEqual(sentJson.success, false);
+      assert.strictEqual(
+        loggedEvent,
+        'AI_HTTP_ERROR',
+        `Operational error (${opErr.statusCode}) must be logged as AI_HTTP_ERROR, not UNHANDLED_EXCEPTION`
+      );
+      assert.strictEqual(
+        loggedLevel,
+        'WARN',
+        `Operational error (${opErr.statusCode}) must be logged at WARN level, not ERROR`
+      );
+    }
+
+    // Now test that a genuine unexpected error DOES log UNHANDLED_EXCEPTION
+    loggedEvent = null;
+    loggedLevel = null;
+    const unexpectedErr = new Error('Unexpected null pointer dereference');
+    const mockRes2 = {
+      status: () => mockRes2,
+      json: () => mockRes2,
+    };
+    errorHandlerMiddleware(unexpectedErr, { headers: { 'x-request-id': 'req_crash_test' } }, mockRes2, () => {});
+    assert.strictEqual(loggedEvent, 'UNHANDLED_EXCEPTION', 'Unexpected crash must log UNHANDLED_EXCEPTION');
+    assert.strictEqual(loggedLevel, 'ERROR', 'Unexpected crash must log at ERROR level');
+  } finally {
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
 });
 
 console.log('================================================================');
