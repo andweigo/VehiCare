@@ -13,8 +13,12 @@ import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import { consumePendingPushNotification } from '../services/deviceBadgeService';
-import notificationService, { NOTIFICATION_READ_STATE_CHANGED } from '../services/notificationService';
+import notificationService, {
+  NEW_IN_APP_NOTIFICATION_EVENT,
+  NOTIFICATION_READ_STATE_CHANGED,
+} from '../services/notificationService';
 import { useTheme } from '../theme/ThemeContext';
+import CustomToast from './CustomToast';
 
 // ─── Tab definitions ────────────────────────────────────────────────────────
 
@@ -63,10 +67,12 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
   const { user } = useAuth();
   const { activeScreen, isOpen: sidebarOpen } = useSidebar();
   const [unread, setUnread] = useState(0);
+  const [inAppToast, setInAppToast] = useState(null);
   const mountedRef = useRef(false);
   const currentUserIdRef = useRef(user?.id);
   const inFlightRef = useRef(null);
   const loadUnreadRef = useRef(null);
+  const handlePushOpenRef = useRef(null);
   currentUserIdRef.current = user?.id;
 
   // Derive which tab is active from the current route name
@@ -79,7 +85,10 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
   const loadUnread = useCallback(async () => {
     const userId = user?.id;
     if (!userId) {
-      if (mountedRef.current) setUnread(0);
+      if (mountedRef.current) {
+        setUnread(0);
+        setInAppToast(null);
+      }
       return;
     }
 
@@ -102,6 +111,9 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
       const count = await request;
       if (mountedRef.current && currentUserIdRef.current === userId && count !== null) {
         setUnread(count);
+        if (count > 0 && !notificationService.getLatestUnreadNotification?.()) {
+          notificationService.fetchNotifications().catch(() => {});
+        }
       }
     } finally {
       if (inFlightRef.current === entry) {
@@ -126,6 +138,7 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
     const timer = setInterval(loadUnread, 10000);
 
     const handlePushOpen = async payload => {
+      setInAppToast(null);
       const fallback = notificationService.getLatestUnreadNotification?.() || null;
       const resolved = payload && (payload.id || payload.title || payload.message) ? payload : fallback;
       if (!resolved) return;
@@ -153,6 +166,7 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
       };
       tryNavigate();
     };
+    handlePushOpenRef.current = handlePushOpen;
 
     const checkPendingPush = async () => {
       const pending = await consumePendingPushNotification();
@@ -176,17 +190,44 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
       'vehicarePushNotificationClicked',
       handlePushOpen,
     );
+    const inAppNotifSubscription = DeviceEventEmitter.addListener(
+      NEW_IN_APP_NOTIFICATION_EVENT,
+      notification => {
+        if (mountedRef.current && notification && (notification.title || notification.message)) {
+          setInAppToast({
+            ...notification,
+            visible: true,
+            type: 'notification',
+            duration: 5000,
+          });
+        }
+      },
+    );
 
     return () => {
       clearInterval(timer);
       appStateSubscription.remove();
       readStateSubscription.remove();
       pushClickSubscription.remove();
+      inAppNotifSubscription.remove();
     };
   }, [loadUnread, navigationRef]);
 
   useRealtimeUpdates(user?.id, {
-    'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated': loadUnread,
+    'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated': broadcastData => {
+      if (broadcastData && (broadcastData.title || broadcastData.message) && mountedRef.current) {
+        setInAppToast({
+          id: broadcastData.id || broadcastData.announcement_id || null,
+          title: broadcastData.title || 'New Notification',
+          message: broadcastData.message || '',
+          type: 'notification',
+          notificationType: broadcastData.type || 'announcement',
+          visible: true,
+          duration: 5000,
+        });
+      }
+      loadUnread();
+    },
     'payment.updated': loadUnread,
   });
 
@@ -201,13 +242,26 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
     if (tabKey === 'Profile')       return navigationRef.navigate('Profile');
   };
 
-  if (!isVisible || sidebarOpen) return null;
-
   return (
-    <View
-      style={styles.wrapper}
-      pointerEvents="box-none"
-    >
+    <>
+      <CustomToast
+        visible={Boolean(inAppToast?.visible)}
+        type="notification"
+        title={inAppToast?.title || 'Notification'}
+        message={inAppToast?.message || ''}
+        duration={5000}
+        onHide={() => setInAppToast(null)}
+        onPress={() => {
+          if (inAppToast) {
+            handlePushOpenRef.current?.(inAppToast);
+          }
+        }}
+      />
+      {!isVisible || sidebarOpen ? null : (
+        <View
+          style={styles.wrapper}
+          pointerEvents="box-none"
+        >
       <View
         style={[
           styles.container,
@@ -263,6 +317,8 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
         })}
       </View>
     </View>
+      )}
+    </>
   );
 };
 

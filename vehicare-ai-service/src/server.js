@@ -10,6 +10,10 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[VehiCare AI Service] Environment: ${config.nodeEnv}`);
 });
 
+server.timeout = 88000;
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
 server.on('error', (err) => {
   console.error('[FATAL ERROR] Server failed to start:', err?.message || err);
   process.exit(1);

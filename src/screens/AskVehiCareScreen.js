@@ -547,19 +547,16 @@ export default function AskVehiCareScreen({
 
     if (screenMountedRef.current) {
       setCopiedMessageId(item.id);
-      const copiedNotice = t('messageCopied', '✓ Message copied to clipboard');
-      setFreshChatNotice(copiedNotice);
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
       }
       copyTimeoutRef.current = setTimeout(() => {
         if (screenMountedRef.current) {
           setCopiedMessageId(prev => (prev === item.id ? null : prev));
-          setFreshChatNotice(prev => (prev === copiedNotice ? null : prev));
         }
       }, 2200);
     }
-  }, [t]);
+  }, []);
 
   /*
   |--------------------------------------------------------------------------
@@ -667,13 +664,6 @@ export default function AskVehiCareScreen({
       },
     ]);
 
-    setFreshChatNotice(t('freshChatStarted', '✨ Fresh consultation started'));
-    setTimeout(() => {
-      if (screenMountedRef.current) {
-        setFreshChatNotice(null);
-      }
-    }, 3500);
-
     setTimeout(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     }, 80);
@@ -685,7 +675,6 @@ export default function AskVehiCareScreen({
     setAttachedImage,
     setAttachedVideo,
     setAttachedAudio,
-    t,
   ]);
 
   const handleNewChatPress = useCallback(() => {
@@ -2039,7 +2028,7 @@ export default function AskVehiCareScreen({
       </View>
 
       {/* AI CONSULTATION FEEDBACK BANNER */}
-      {(feedbackNotice || freshChatNotice) && (
+      {feedbackNotice && (
         <View
           testID="ai-consultation-feedback-banner"
           style={[
@@ -2052,7 +2041,7 @@ export default function AskVehiCareScreen({
         >
           <Feather name="check-circle" size={14} color={theme.accent || '#F63B05'} />
           <Text style={[styles.feedbackBannerText, { color: theme.accent || '#F63B05' }]}>
-            {freshChatNotice || feedbackNotice}
+            {feedbackNotice}
           </Text>
         </View>
       )}

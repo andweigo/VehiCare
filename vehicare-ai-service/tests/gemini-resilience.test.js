@@ -9,6 +9,9 @@ import {
   clearModelCooldown,
   clearAllModelCooldowns,
   normalizeGeminiError,
+  resolveTotalBudgetMs,
+  __setMockCallGemini,
+  __resetMockCallGemini,
 } from '../src/services/gemini.service.js';
 import { errorHandlerMiddleware } from '../src/middleware/error.middleware.js';
 
@@ -421,6 +424,200 @@ await test('Cooldown on primary model allows subsequent requests to immediately 
   assert.strictEqual(client.callCounts[primary] || 0, 0, 'Primary model in cooldown must be skipped');
   assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must be used directly');
   assert.strictEqual(result.fallbackUsed, true);
+});
+
+// 11. Primary model succeeds cleanly on first attempt without invoking fallback
+await test('Primary model succeeds cleanly on first attempt when healthy', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => ({
+      text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Primary model succeeded' }),
+    }),
+    [fallback]: () => {
+      throw new Error('Fallback should not be called when primary succeeds');
+    },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check engine oil level',
+    requestId: 'req_primary_success',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 1);
+  assert.strictEqual(client.callCounts[fallback] || 0, 0);
+  assert.strictEqual(result.fallbackUsed, false);
+  assert.strictEqual(result.modelUsed, primary);
+});
+
+// 12. Real timeout via AbortController cancels primary without retrying primary and prevents duplicate response
+await test('Primary timeout aborts via AbortSignal, skips primary retry, succeeds on fallback, and ignores late primary resolution', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+  let primaryAbortFired = false;
+  let latePrimaryResolved = false;
+
+  const client = createMockClient({
+    [primary]: (_attempt, genConfig) => new Promise((resolve) => {
+      if (genConfig?.abortSignal) {
+        genConfig.abortSignal.addEventListener('abort', () => {
+          primaryAbortFired = true;
+        });
+      }
+      // Resolve after primary timeout has already fired
+      setTimeout(() => {
+        latePrimaryResolved = true;
+        resolve({ text: JSON.stringify({ type: 'diagnostic', summary: 'Stale late primary response' }) });
+      }, 2800);
+    }),
+    [fallback]: () => ({
+      text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Clean fallback response' }),
+    }),
+  });
+
+  // Give 6500ms budget so primary gets ~2500ms (with 4000ms reserved for fallback), times out at 2500ms, and fallback succeeds immediately
+  const result = await callGemini({
+    prompt: 'Check alternator charging voltage',
+    requestId: 'req_abort_timeout_test',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 6500,
+  }, client);
+
+  assert.strictEqual(primaryAbortFired, true, 'AbortSignal must fire when primary attempt times out');
+  assert.strictEqual(client.callCounts[primary], 1, 'Timed-out primary model must NOT be retried');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must be called once after primary timeout');
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+  assert.ok(result.text.includes('Clean fallback response'), 'Must return fallback response, not late primary response');
+  assert.strictEqual(latePrimaryResolved, false, 'Fallback should complete without waiting for stale primary timer');
+  assert.strictEqual(isModelInCooldown(primary), true, 'Timed-out primary model must be placed in cooldown');
+});
+
+// 13. Tight remaining budget (< 6s) skips primary model and routes directly to fallback
+await test('Tight remaining budget (< 6s) skips primary model safely and uses fallback model', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      throw new Error('Primary should be skipped when < 6s remains');
+    },
+    [fallback]: () => ({
+      text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Fast fallback under tight budget' }),
+    }),
+  });
+
+  const result = await callGemini({
+    prompt: 'Check radiator fan',
+    requestId: 'req_tight_budget_fallback',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now() - 20500,
+    totalBudgetMs: 25000, // 4500ms remaining
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary] || 0, 0, 'Primary model must be skipped when < 6s remains');
+  assert.strictEqual(client.callCounts[fallback], 1, 'Fallback model must execute with remaining budget');
+  assert.strictEqual(result.fallbackUsed, true);
+  assert.strictEqual(result.modelUsed, fallback);
+});
+
+// 14. Audio/video Files API upload cleanup runs on both success and failure, and media budgets scale by inputType
+await test('Media Files API uploads are cleaned up after both success and failure', async () => {
+  assert.ok(resolveTotalBudgetMs('video', true) > resolveTotalBudgetMs('text', false), 'Video budget must exceed text budget');
+  assert.ok(resolveTotalBudgetMs('audio', true) > resolveTotalBudgetMs('text', false), 'Audio budget must exceed text budget');
+  assert.ok(resolveTotalBudgetMs('image', true) > resolveTotalBudgetMs('text', false), 'Image budget must exceed text budget');
+
+  // Create valid MP4 header (ftyp box at offset 4..8)
+  const mp4Bytes = Buffer.alloc(32);
+  mp4Bytes.writeUInt32BE(32, 0);
+  mp4Bytes.write('ftypisom', 4, 'ascii');
+  const validMp4Base64 = mp4Bytes.toString('base64');
+
+  const deletedFiles = [];
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const successMediaClient = {
+    files: {
+      upload: async () => ({ name: 'files/audio_success_1', uri: 'https://generativelanguage.googleapis.com/v1beta/files/audio_success_1', state: 'ACTIVE', mimeType: 'audio/mp4' }),
+      get: async () => ({ name: 'files/audio_success_1', uri: 'https://generativelanguage.googleapis.com/v1beta/files/audio_success_1', state: 'ACTIVE', mimeType: 'audio/mp4' }),
+      delete: async ({ name }) => { deletedFiles.push(name); },
+    },
+    models: {
+      generateContent: async () => ({
+        text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Audio analyzed' }),
+      }),
+    },
+  };
+
+  const audioRes = await callGemini({
+    prompt: 'Analyze engine sound',
+    mediaBase64: validMp4Base64,
+    mediaMime: 'audio/mp4',
+    inputType: 'audio',
+    requestId: 'req_audio_cleanup_ok',
+  }, successMediaClient);
+
+  assert.ok(audioRes.text.includes('Audio analyzed'));
+  assert.ok(deletedFiles.includes('files/audio_success_1'), 'Uploaded file must be cleaned up after success');
+
+  const failMediaClient = {
+    files: {
+      upload: async () => ({ name: 'files/video_fail_1', uri: 'https://generativelanguage.googleapis.com/v1beta/files/video_fail_1', state: 'ACTIVE', mimeType: 'video/mp4' }),
+      get: async () => ({ name: 'files/video_fail_1', uri: 'https://generativelanguage.googleapis.com/v1beta/files/video_fail_1', state: 'ACTIVE', mimeType: 'video/mp4' }),
+      delete: async ({ name }) => { deletedFiles.push(name); },
+    },
+    models: {
+      generateContent: async () => {
+        const err = new Error('Model unavailable');
+        err.status = 503;
+        throw err;
+      },
+    },
+  };
+
+  clearAllModelCooldowns();
+  let videoFailed = false;
+  try {
+    await callGemini({
+      prompt: 'Analyze exhaust smoke video',
+      mediaBase64: validMp4Base64,
+      mediaMime: 'video/mp4',
+      inputType: 'video',
+      requestId: 'req_video_cleanup_fail',
+      totalBudgetMs: 15000,
+    }, failMediaClient);
+  } catch (_err) {
+    videoFailed = true;
+  }
+
+  assert.strictEqual(videoFailed, true);
+  assert.ok(deletedFiles.includes('files/video_fail_1'), 'Uploaded file must be cleaned up even when both primary and fallback models fail');
+});
+
+// 15. Mock Gemini handlers (__setMockCallGemini / __resetMockCallGemini) continue to work
+await test('Mock Gemini handlers (__setMockCallGemini / __resetMockCallGemini) work as expected', async () => {
+  __setMockCallGemini(async (params) => ({
+    text: JSON.stringify({ type: 'conversation', response: `Mocked for ${params.requestId}` }),
+    modelUsed: 'mock-gemini',
+    fallbackUsed: false,
+    durationMs: 5,
+  }));
+
+  try {
+    const res = await callGemini({ prompt: 'Hello', requestId: 'req_mock_handler' });
+    assert.strictEqual(res.modelUsed, 'mock-gemini');
+    assert.ok(res.text.includes('req_mock_handler'));
+  } finally {
+    __resetMockCallGemini();
+  }
 });
 
 console.log('================================================================');

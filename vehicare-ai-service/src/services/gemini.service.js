@@ -262,18 +262,31 @@ export const validateAndDecodeMedia = (mediaBase64, inputType, mediaMime) => {
 const withTimeout = async (operation, timeoutMs, code, message) => {
   const controller = new AbortController();
   let timedOut = false;
+  let settled = false;
   let timeoutId;
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
       timedOut = true;
       controller.abort();
       reject(makeError(code, message, 504, true));
     }, timeoutMs);
   });
 
+  const guardedOperation = Promise.resolve()
+    .then(() => operation(controller.signal))
+    .then((result) => {
+      if (settled || timedOut) {
+        throw makeError(code, message, 504, true);
+      }
+      settled = true;
+      return result;
+    });
+
   try {
-    return await Promise.race([operation(controller.signal), timeoutPromise]);
+    return await Promise.race([guardedOperation, timeoutPromise]);
   } catch (error) {
     if (timedOut) {
       throw makeError(code, message, 504, true, error);
@@ -284,9 +297,34 @@ const withTimeout = async (operation, timeoutMs, code, message) => {
   }
 };
 
-const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId }) => {
+export const resolveTotalBudgetMs = (inputType = 'text', hasMedia = false) => {
+  const normalizedType = String(inputType || 'text').toLowerCase();
+  const totalTimeouts = config.gemini.totalTimeouts || {};
+  if (hasMedia || ['image', 'voice', 'audio', 'video'].includes(normalizedType)) {
+    if (normalizedType === 'video') return totalTimeouts.video || 75000;
+    if (normalizedType === 'voice' || normalizedType === 'audio') return totalTimeouts.audio || 60000;
+    if (normalizedType === 'image') return totalTimeouts.image || 42000;
+  }
+  return totalTimeouts.text || config.gemini.totalTimeoutMs || 28000;
+};
+
+const classifyFailureCategory = (errInfo, normalizedError) => {
+  if (errInfo?.isTimeout || normalizedError?.code === 'GEMINI_TIMEOUT') return 'timeout';
+  if (errInfo?.isRateLimit || normalizedError?.code === 'GEMINI_RATE_LIMIT') return 'quota';
+  if (errInfo?.isOverloaded || normalizedError?.code === 'GEMINI_OVERLOADED') return 'overload';
+  if (errInfo?.isAuthOrClient || normalizedError?.code === 'GEMINI_AUTH_ERROR') return 'auth';
+  if (errInfo?.isInvalidArgument || normalizedError?.code === 'GEMINI_INVALID_ARGUMENT') return 'invalid_argument';
+  if (errInfo?.isModelNotFound || normalizedError?.code === 'GEMINI_MODEL_UNAVAILABLE') return 'model_not_found';
+  if (errInfo?.isTransient) return 'transient';
+  return 'unknown';
+};
+
+const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId, requestDeadline }) => {
   const uploadStartedAt = Date.now();
-  const uploadTimeoutMs = config.gemini.mediaProcessingTimeoutMs;
+  const remainingForMediaMs = requestDeadline
+    ? Math.max(5000, requestDeadline - Date.now() - 8000)
+    : config.gemini.mediaProcessingTimeoutMs;
+  const uploadTimeoutMs = Math.min(config.gemini.mediaProcessingTimeoutMs, remainingForMediaMs);
   const ext = mimeType.includes('/') ? mimeType.split('/')[1].replace(/[^a-zA-Z0-9]/g, '') : 'tmp';
   const tempFilePath = path.join(os.tmpdir(), `vehicare_${requestId || Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`);
 
@@ -331,7 +369,10 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId }) => {
   }
 
   try {
-    const processDeadline = Date.now() + config.gemini.mediaProcessingTimeoutMs;
+    const remainingProcessMs = requestDeadline
+      ? Math.max(3000, requestDeadline - Date.now() - 6000)
+      : config.gemini.mediaProcessingTimeoutMs;
+    const processDeadline = Date.now() + Math.min(config.gemini.mediaProcessingTimeoutMs, remainingProcessMs);
     let pollCount = 0;
 
     while (uploadedFile.state === 'PROCESSING' || uploadedFile.state === 'PENDING') {
@@ -487,8 +528,9 @@ export const callGemini = async (params, client = null) => {
     requestType = 'diagnostic',
     inputType = 'text',
     startTime = Date.now(),
-    totalBudgetMs = config.gemini.totalTimeoutMs || 24000,
+    totalBudgetMs: explicitBudgetMs,
   } = params || {};
+  const totalBudgetMs = explicitBudgetMs || resolveTotalBudgetMs(inputType, Boolean(mediaBase64));
   const ai = client || getGeminiClient();
   const isConversation = requestType === 'conversation' || requestType === 'general';
   const primaryModel = isConversation
@@ -524,6 +566,8 @@ export const callGemini = async (params, client = null) => {
     mimeType: media?.mimeType || null,
     mediaSizeBytes: media?.bytes?.length || 0,
     uploadMethod: isInlineCandidate ? 'inline_data' : media ? 'gemini_files_api' : 'none',
+    totalBudgetMs,
+    promptLength: prompt ? prompt.length : 0,
   });
 
   try {
@@ -541,6 +585,7 @@ export const callGemini = async (params, client = null) => {
         mimeType: media.mimeType,
         mediaType: media.mediaType,
         requestId,
+        requestDeadline,
       });
       parts.push({
         fileData: {
@@ -555,7 +600,10 @@ export const callGemini = async (params, client = null) => {
       if (modelName && !candidateModels.includes(modelName) && !isModelInCooldown(modelName)) {
         candidateModels.push(modelName);
       } else if (modelName && isModelInCooldown(modelName)) {
-        logger.info('AI_SKIPPING_COOLDOWN_MODEL', requestId, { model: modelName });
+        logger.info('AI_SKIPPING_COOLDOWN_MODEL', requestId, {
+          model: modelName,
+          remainingBudgetMs: requestDeadline - Date.now(),
+        });
       }
     }
     if (candidateModels.length === 0) {
@@ -563,6 +611,8 @@ export const callGemini = async (params, client = null) => {
     }
 
     let lastError = null;
+    let lastFailureCategory = null;
+    const MIN_VIABLE_ATTEMPT_MS = 2000;
 
     for (let modelIndex = 0; modelIndex < candidateModels.length; modelIndex++) {
       const modelName = candidateModels[modelIndex];
@@ -570,75 +620,91 @@ export const callGemini = async (params, client = null) => {
       const hasNextModel = modelIndex < candidateModels.length - 1;
 
       const remainingOverallMs = requestDeadline - Date.now();
-      if (remainingOverallMs < 2000) {
+      if (remainingOverallMs < MIN_VIABLE_ATTEMPT_MS) {
         logger.warn('AI_REQUEST_DEADLINE_APPROACHING', requestId, {
           remainingMs: remainingOverallMs,
           model: modelName,
+          fallbackUsed,
         });
         break;
       }
 
       const mediaType = media?.mediaType;
+      const fallbackMediaTimeoutKey = mediaType
+        ? `fallback${mediaType.charAt(0).toUpperCase()}${mediaType.slice(1)}`
+        : null;
       const defaultTimeout = fallbackUsed
-        ? (mediaType && config.gemini.timeouts[mediaType]
-            ? config.gemini.timeouts[mediaType]
-            : (config.gemini.timeouts.fallbackText || 10500))
+        ? (
+            (fallbackMediaTimeoutKey && config.gemini.timeouts[fallbackMediaTimeoutKey])
+            || (mediaType && config.gemini.timeouts[mediaType])
+            || config.gemini.timeouts.fallbackText
+            || 10500
+          )
         : (
             config.gemini.timeouts[mediaType || 'text']
             || config.gemini.timeouts.text
             || 13500
           );
 
-      // To attempt this model when a fallback exists, we must preserve at least 10s for the fallback.
-      // If we cannot guarantee at least 10s for both, skip directly to the fallback.
-      if (hasNextModel && remainingOverallMs < 19500) {
+      // When a fallback model is available, require at least enough time to attempt both
+      // models safely (6000ms minimum), otherwise skip straight to the faster fallback model.
+      if (hasNextModel && remainingOverallMs < 6000) {
         logger.warn('AI_MODEL_SKIPPED_INSUFFICIENT_BUDGET', requestId, {
           model: modelName,
           remainingBudgetMs: remainingOverallMs,
-          requiredBudgetForBothMs: 19500,
+          requiredBudgetForBothMs: 6000,
           action: 'skipping_to_fallback',
         });
         continue;
       }
 
-      // For the final (or only) model, we need at least 10s to meet Google's minimum deadline.
-      const reserveForProcessingMs = 500;
-      const availableTimeoutMs = remainingOverallMs - (hasNextModel ? 10000 : reserveForProcessingMs);
-
-      if (availableTimeoutMs < 9500) {
-        logger.warn('AI_MODEL_SKIPPED_INSUFFICIENT_BUDGET', requestId, {
-          model: modelName,
-          remainingBudgetMs: remainingOverallMs,
-          availableTimeoutMs,
-          minimumDeadlineMs: 10000,
-        });
-        continue;
-      }
-
-      const timeoutMs = Math.max(10000, Math.min(defaultTimeout, availableTimeoutMs));
+      // Reserve proportional budget for the fallback model so primary never starves fallback.
+      const fallbackReserveMs = hasNextModel
+        ? Math.min(
+            config.gemini.timeouts.fallbackText || 10500,
+            Math.max(4000, Math.floor(remainingOverallMs * 0.4)),
+          )
+        : 200;
 
       const isLongMediaRequest =
         media?.mediaType === 'audio' || media?.mediaType === 'video';
 
       let maxAttempts;
-
       if (isLongMediaRequest) {
         maxAttempts = 1;
       } else if (fallbackUsed) {
-        // Allow a second fallback attempt only when enough total
-        // time remains for two requests and retry backoff.
-        const remainingMs = requestDeadline - Date.now();
-        maxAttempts = remainingMs >= 22000 ? 2 : 1;
+        maxAttempts = remainingOverallMs >= 16000 ? Math.min(2, MAX_RETRIES + 1) : 1;
       } else {
         maxAttempts = MAX_RETRIES + 1;
       }
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const remainingBeforeAttemptMs = requestDeadline - Date.now();
+        if (remainingBeforeAttemptMs < MIN_VIABLE_ATTEMPT_MS) {
+          logger.warn('AI_REQUEST_DEADLINE_APPROACHING', requestId, {
+            remainingMs: remainingBeforeAttemptMs,
+            model: modelName,
+            attempt,
+          });
+          break;
+        }
+
+        const availableForThisAttemptMs = hasNextModel
+          ? Math.max(MIN_VIABLE_ATTEMPT_MS, remainingBeforeAttemptMs - fallbackReserveMs)
+          : Math.max(MIN_VIABLE_ATTEMPT_MS, remainingBeforeAttemptMs - 150);
+
+        const timeoutMs = Math.max(
+          MIN_VIABLE_ATTEMPT_MS,
+          Math.min(defaultTimeout, availableForThisAttemptMs),
+        );
+
         const generationStartedAt = Date.now();
 
         logger.info('AI_GEMINI_REQUEST_STARTED', requestId, {
           model: modelName,
+          isPrimary: !fallbackUsed,
           attempt,
+          maxAttempts,
           promptLength: prompt.length,
           requestType,
           inputType,
@@ -646,12 +712,12 @@ export const callGemini = async (params, client = null) => {
           mediaMime: media?.mimeType || null,
           mediaSizeBytes: media?.bytes?.length || 0,
           generationTimeoutMs: timeoutMs,
-          remainingBudgetMs: requestDeadline - Date.now(),
+          remainingBudgetMs: remainingBeforeAttemptMs,
+          fallbackReserveMs: hasNextModel ? fallbackReserveMs : 0,
           fallbackUsed,
         });
 
         try {
-          const googleDeadlineMs = Math.max(10000, timeoutMs);
           const response = await withTimeout(
             (abortSignal) => ai.models.generateContent({
               model: modelName,
@@ -660,7 +726,7 @@ export const callGemini = async (params, client = null) => {
                 responseMimeType: 'application/json',
                 maxOutputTokens,
                 abortSignal,
-                httpOptions: { timeout: googleDeadlineMs },
+                httpOptions: { timeout: timeoutMs },
               },
             }),
             timeoutMs,
@@ -673,11 +739,16 @@ export const callGemini = async (params, client = null) => {
             throw makeError('INVALID_AI_RESPONSE', 'Could not generate a response for this vehicle issue. Please try again.', 502, false);
           }
 
+          const generationDurationMs = Date.now() - generationStartedAt;
+          const totalElapsedMs = Date.now() - startTime;
           clearModelCooldown(modelName);
           logger.info('AI_GEMINI_REQUEST_COMPLETED', requestId, {
             model: modelName,
+            isPrimary: !fallbackUsed,
             attempt,
-            generationDurationMs: Date.now() - generationStartedAt,
+            generationDurationMs,
+            totalElapsedMs,
+            remainingBudgetMs: requestDeadline - Date.now(),
             outputLength: textOutput.length,
             fallbackUsed,
           });
@@ -686,19 +757,29 @@ export const callGemini = async (params, client = null) => {
             text: textOutput,
             modelUsed: modelName,
             fallbackUsed,
-            durationMs: Date.now() - generationStartedAt,
+            durationMs: generationDurationMs,
+            totalElapsedMs,
           };
         } catch (error) {
           const errInfo = extractGeminiErrorInfo(error);
           const normalizedError = normalizeGeminiError(error);
+          const failureCategory = classifyFailureCategory(errInfo, normalizedError);
           lastError = normalizedError;
+          lastFailureCategory = failureCategory;
+          const generationDurationMs = Date.now() - generationStartedAt;
+          const remainingAfterFailureMs = requestDeadline - Date.now();
 
           logger.warn('AI_GEMINI_REQUEST_FAILED', requestId, {
             model: modelName,
+            isPrimary: !fallbackUsed,
             attempt,
-            generationDurationMs: Date.now() - generationStartedAt,
+            maxAttempts,
+            generationDurationMs,
+            remainingBudgetMs: remainingAfterFailureMs,
+            totalElapsedMs: Date.now() - startTime,
             inputType,
             hasMedia: Boolean(media),
+            failureCategory,
             errorCode: normalizedError.code,
             upstreamStatus: errInfo.status,
             geminiCode: errInfo.code,
@@ -706,11 +787,9 @@ export const callGemini = async (params, client = null) => {
             errorMessage: errInfo.message,
           });
 
-          if (errInfo.isAuthOrClient) {
-            if (errInfo.code === 'API_KEY_INVALID' || errInfo.message.toLowerCase().includes('api key')) {
-              throw normalizedError;
-            }
-            break;
+          // Never retry or fall back on invalid API keys or invalid arguments
+          if (errInfo.isAuthOrClient || errInfo.isInvalidArgument) {
+            throw normalizedError;
           }
 
           if (errInfo.isModelNotFound) {
@@ -718,28 +797,61 @@ export const callGemini = async (params, client = null) => {
             break;
           }
 
-          if (errInfo.isRateLimit && errInfo.retryDelayMs && errInfo.retryDelayMs > 4000) {
-            triggerModelCooldown(modelName, requestId, 'QUOTA_EXHAUSTED', errInfo.retryDelayMs);
+          // Never retry the same model after a generation timeout — immediately advance to fallback
+          if (errInfo.isTimeout || normalizedError.code === 'GEMINI_TIMEOUT') {
+            triggerModelCooldown(modelName, requestId, 'MODEL_TIMEOUT');
+            logger.info('AI_GEMINI_RETRY_SKIPPED_ON_TIMEOUT', requestId, {
+              model: modelName,
+              attempt,
+              generationDurationMs,
+              remainingBudgetMs: remainingAfterFailureMs,
+              willFallback: hasNextModel,
+            });
             break;
           }
 
-          const canRetry = (attempt < maxAttempts) && (errInfo.isTransient || error?.retryable === true);
+          // Respect long retry delays (> 4s) or quota exhaustion without short retry delay when fallback is available
+          if (errInfo.isRateLimit && (
+            (errInfo.retryDelayMs && errInfo.retryDelayMs > 4000) ||
+            (!errInfo.retryDelayMs && hasNextModel)
+          )) {
+            triggerModelCooldown(modelName, requestId, 'QUOTA_EXHAUSTED', errInfo.retryDelayMs || config.cooldownMs);
+            break;
+          }
+
+          // When primary model is overloaded (503) and a fallback model is available, move directly to fallback
+          // unless plenty of budget remains for both a primary retry and the fallback.
+          if (errInfo.isOverloaded && hasNextModel && remainingAfterFailureMs < (defaultTimeout + fallbackReserveMs + 4000)) {
+            triggerModelCooldown(modelName, requestId, 'MODEL_OVERLOADED');
+            break;
+          }
+
+          const canRetry = (attempt < maxAttempts) &&
+            !errInfo.isTimeout &&
+            (errInfo.isTransient || error?.retryable === true);
+
           if (canRetry) {
             let backoffMs;
             if (errInfo.retryDelayMs && errInfo.retryDelayMs <= 4000) {
-              backoffMs = errInfo.retryDelayMs + Math.floor(Math.random() * 200);
+              backoffMs = errInfo.retryDelayMs + Math.floor(Math.random() * 150);
             } else {
-              const exp = Math.min(800 * (2 ** (attempt - 1)), 2500);
-              const jitter = Math.floor(Math.random() * 300);
+              const exp = Math.min(600 * (2 ** (attempt - 1)), 2000);
+              const jitter = Math.floor(Math.random() * 250);
               backoffMs = exp + jitter;
             }
 
-            if (Date.now() + backoffMs + 3000 < requestDeadline) {
+            const minRequiredAfterBackoffMs = hasNextModel
+              ? (fallbackReserveMs + MIN_VIABLE_ATTEMPT_MS)
+              : MIN_VIABLE_ATTEMPT_MS;
+
+            if (Date.now() + backoffMs + minRequiredAfterBackoffMs < requestDeadline) {
               logger.info('AI_GEMINI_RETRY_BACKOFF', requestId, {
                 model: modelName,
                 attempt,
                 nextAttempt: attempt + 1,
                 backoffMs,
+                remainingBudgetMs: requestDeadline - Date.now(),
+                failureCategory,
                 errorCode: normalizedError.code,
               });
               await delay(backoffMs);
@@ -750,6 +862,7 @@ export const callGemini = async (params, client = null) => {
                 attempt,
                 backoffMs,
                 remainingBudgetMs: requestDeadline - Date.now(),
+                minRequiredAfterBackoffMs,
               });
             }
           }
@@ -764,7 +877,11 @@ export const callGemini = async (params, client = null) => {
       if (modelIndex < candidateModels.length - 1) {
         logger.info('AI_MODEL_FALLBACK', requestId, {
           failedModel: modelName,
+          selectedFallbackModel: candidateModels[modelIndex + 1],
           nextModel: candidateModels[modelIndex + 1],
+          fallbackReason: lastError?.code || 'PRIMARY_FAILED',
+          failureCategory: lastFailureCategory,
+          remainingBudgetMs: requestDeadline - Date.now(),
           errorCode: lastError?.code,
           errorMessage: lastError?.message,
         });
@@ -775,6 +892,9 @@ export const callGemini = async (params, client = null) => {
       attemptedModels: candidateModels,
       inputType,
       hasMedia: Boolean(media),
+      failureCategory: lastFailureCategory,
+      totalElapsedMs: Date.now() - startTime,
+      remainingBudgetMs: requestDeadline - Date.now(),
       errorCode: lastError?.code || 'GEMINI_UNAVAILABLE',
     });
     throw lastError || makeError('GEMINI_UNAVAILABLE', 'Diagnostic service could not complete the request. Please try again.', 503, true);

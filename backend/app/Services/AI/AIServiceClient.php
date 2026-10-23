@@ -89,10 +89,23 @@ class AIServiceClient
         ]);
 
         try {
-            $response = Http::timeout((int) config('services.ai_service.timeout', 360))
-                ->connectTimeout((int) config('services.ai_service.connect_timeout', 30))
-                ->retry(2, 2000, function ($exception, $request) {
-                    return $exception instanceof \Illuminate\Http\Client\ConnectionException;
+            $hasMedia = !empty($mediaBase64);
+            $outboundTimeout = $hasMedia
+                ? (int) config('services.ai_service.media_timeout', 85)
+                : (int) config('services.ai_service.timeout', 55);
+            $connectTimeout = (int) config('services.ai_service.connect_timeout', 15);
+            $requestStartedAt = microtime(true);
+
+            $response = Http::timeout($outboundTimeout)
+                ->connectTimeout($connectTimeout)
+                ->retry(2, 1500, function ($exception, $request) use ($requestStartedAt, $connectTimeout) {
+                    if (!($exception instanceof \Illuminate\Http\Client\ConnectionException)) {
+                        return false;
+                    }
+                    // Only retry fast connection establishment failures (e.g. cold start wakeup),
+                    // never retry after a read timeout to prevent duplicate generation requests.
+                    $elapsedSec = microtime(true) - $requestStartedAt;
+                    return $elapsedSec < ($connectTimeout + 3);
                 }, throw: false)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
@@ -179,11 +192,11 @@ class AIServiceClient
 
             $sanitized[] = [
                 'role' => $role,
-                'content' => function_exists('mb_substr') ? mb_substr($content, 0, 4000) : substr($content, 0, 4000),
+                'content' => function_exists('mb_substr') ? mb_substr($content, 0, 800) : substr($content, 0, 800),
             ];
         }
 
-        return array_slice($sanitized, -20);
+        return array_slice($sanitized, -6);
     }
 
     protected function safeStr($val, string $default = ''): string

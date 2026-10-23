@@ -30,6 +30,7 @@ async function runTests() {
     cacheService.clear();
     dedupService.clear();
     queueService.clear();
+    await queueService.waitForIdle();
     try {
       await fn();
       console.log(`[PASS] Test ${totalCount}: ${name}`);
@@ -37,6 +38,9 @@ async function runTests() {
     } catch (err) {
       console.error(`[FAIL] Test ${totalCount}: ${name}`);
       console.error(`       Error: ${err.message}`);
+    } finally {
+      queueService.clear();
+      await queueService.waitForIdle();
     }
   }
 
@@ -134,48 +138,61 @@ async function runTests() {
     queueService.maxQueueSize = 2;
     queueService.maxConcurrent = 1;
 
-    const slowTask = () => new Promise((resolve) => setTimeout(resolve, 200));
+    let releaseTasks;
+    const taskPromise = new Promise((resolve) => { releaseTasks = resolve; });
+    const controlledTask = () => taskPromise;
 
-    queueService.enqueue(slowTask, 'req_active', 'diagnostic').catch(() => {});
-    queueService.enqueue(slowTask, 'req_q1', 'diagnostic').catch(() => {});
-    queueService.enqueue(slowTask, 'req_q2', 'diagnostic').catch(() => {});
+    const pActive = queueService.enqueue(controlledTask, 'req_active', 'diagnostic').catch(() => {});
+    const pQ1 = queueService.enqueue(controlledTask, 'req_q1', 'diagnostic').catch(() => {});
+    const pQ2 = queueService.enqueue(controlledTask, 'req_q2', 'diagnostic').catch(() => {});
 
-    let queueFullThrown = false;
     try {
-      await queueService.enqueue(slowTask, 'req_overflow', 'diagnostic');
-    } catch (err) {
-      if (err.code === 'QUEUE_FULL') {
-        queueFullThrown = true;
+      let queueFullThrown = false;
+      try {
+        await queueService.enqueue(controlledTask, 'req_overflow', 'diagnostic');
+      } catch (err) {
+        if (err.code === 'QUEUE_FULL') {
+          queueFullThrown = true;
+        }
       }
+
+      assert.strictEqual(queueFullThrown, true, 'Expected QUEUE_FULL error for overflow request');
+    } finally {
+      releaseTasks();
+      await Promise.allSettled([pActive, pQ1, pQ2]);
+      queueService.maxQueueSize = config.concurrency.maxQueueSize;
+      queueService.maxConcurrent = config.concurrency.maxConcurrent;
     }
-
-    assert.strictEqual(queueFullThrown, true, 'Expected QUEUE_FULL error for overflow request');
-
-    queueService.maxQueueSize = config.concurrency.maxQueueSize;
-    queueService.maxConcurrent = config.concurrency.maxConcurrent;
   });
 
   // TEST 6: Queue Timeout
   await test('Request in queue times out if wait time exceeds maxQueueWaitMs', async () => {
-    queueService.maxQueueWaitMs = 100;
+    queueService.maxQueueWaitMs = 50;
     queueService.maxConcurrent = 1;
 
-    const blockingTask = () => new Promise((resolve) => setTimeout(resolve, 300));
-    queueService.enqueue(blockingTask, 'req_blocker', 'diagnostic').catch(() => {});
+    let releaseBlocker;
+    const blockerPromise = new Promise((resolve) => { releaseBlocker = resolve; });
+    const blockingTask = () => blockerPromise;
 
-    let timeoutThrown = false;
+    const pBlocker = queueService.enqueue(blockingTask, 'req_blocker', 'diagnostic').catch(() => {});
+
     try {
-      await queueService.enqueue(() => Promise.resolve('ok'), 'req_waiting', 'diagnostic');
-    } catch (err) {
-      if (err.code === 'QUEUE_TIMEOUT') {
-        timeoutThrown = true;
+      let timeoutThrown = false;
+      try {
+        await queueService.enqueue(() => Promise.resolve('ok'), 'req_waiting', 'diagnostic');
+      } catch (err) {
+        if (err.code === 'QUEUE_TIMEOUT') {
+          timeoutThrown = true;
+        }
       }
+
+      assert.strictEqual(timeoutThrown, true, 'Expected QUEUE_TIMEOUT error');
+    } finally {
+      releaseBlocker();
+      await pBlocker.catch(() => {});
+      queueService.maxQueueWaitMs = config.concurrency.maxQueueWaitMs;
+      queueService.maxConcurrent = config.concurrency.maxConcurrent;
     }
-
-    assert.strictEqual(timeoutThrown, true, 'Expected QUEUE_TIMEOUT error');
-
-    queueService.maxQueueWaitMs = config.concurrency.maxQueueWaitMs;
-    queueService.maxConcurrent = config.concurrency.maxConcurrent;
   });
 
   // TEST 7: LRU Cache Eviction
@@ -560,6 +577,7 @@ async function runTests() {
       cacheService.clear();
       dedupService.clear();
       queueService.clear();
+      await queueService.waitForIdle();
 
       let currentActiveGemini = 0;
       let batchMaxActiveGemini = 0;
@@ -586,7 +604,8 @@ async function runTests() {
       let inFlightHits = 0;
 
       const requests = Array.from({ length: batchSize }, (_, i) => {
-        const isDuplicate = i > 0 && Math.random() < duplicateRatio;
+        // Deterministic duplicate distribution
+        const isDuplicate = i > 0 && ((i % 3) === 0);
         const symptoms = isDuplicate ? 'Symptom Question A' : `Unique Symptom Question ${i}`;
         const key = cacheService.generateKey({
           requestType: 'diagnostic',
@@ -611,8 +630,14 @@ async function runTests() {
       });
 
       const results = await Promise.all(requests);
-      await delay(100);
+      await queueService.waitForIdle();
       const totalTimeMs = Date.now() - startTime;
+
+      assert.strictEqual(
+        queueService.getStats().activeCount,
+        0,
+        `Batch size ${batchSize}: Expected queue activeCount to be 0 after batch completion`
+      );
 
       assert.ok(
         batchMaxActiveGemini <= config.concurrency.maxConcurrent,
@@ -642,6 +667,116 @@ async function runTests() {
     console.log(`   Completed in ${res20.totalTimeMs}ms | Cache Hits: ${res20.cacheHits} | In-Flight Hits: ${res20.inFlightHits} | Max Active: ${res20.batchMaxActiveGemini}`);
 
     console.log(`\n   Total Gemini Calls Made Across Batches: ${totalGeminiCalls}`);
+  });
+
+  // REGRESSION TEST 1: queueService.clear() does not falsely report 0 active tasks while tasks are executing
+  await test('Queue cleanup does not falsely report zero active tasks while operations are in flight', async () => {
+    let release;
+    const runningPromise = new Promise((r) => { release = r; });
+    const p1 = queueService.enqueue(() => runningPromise, 'req_in_flight', 'diagnostic').catch(() => {});
+
+    // Task is now active
+    assert.strictEqual(queueService.getStats().activeCount, 1, 'activeCount should be 1');
+
+    // Calling clear() while task is running must NOT falsely reset activeCount to 0
+    queueService.clear();
+    assert.strictEqual(
+      queueService.getStats().activeCount,
+      1,
+      'activeCount must accurately remain 1 even after clear() while task is running'
+    );
+
+    // Release task and wait for idle
+    release('done');
+    await p1;
+    await queueService.waitForIdle();
+    assert.strictEqual(queueService.getStats().activeCount, 0, 'activeCount should be 0 when task completes');
+  });
+
+  // REGRESSION TEST 2: Queued tasks start automatically as capacity becomes available
+  await test('Queued tasks start when capacity becomes available', async () => {
+    queueService.maxConcurrent = 1;
+    let release1;
+    const task1 = new Promise((r) => { release1 = r; });
+    let task2Started = false;
+
+    try {
+      const p1 = queueService.enqueue(() => task1, 'req_block', 'diagnostic');
+      const p2 = queueService.enqueue(async () => {
+        task2Started = true;
+        return 'task2_ok';
+      }, 'req_queued', 'diagnostic');
+
+      assert.strictEqual(task2Started, false, 'Queued task should not start until capacity is freed');
+      assert.strictEqual(queueService.getStats().queueSize, 1, 'queueSize should be 1');
+
+      // Free capacity
+      release1('task1_ok');
+      const res1 = await p1;
+      const res2 = await p2;
+
+      assert.strictEqual(res1, 'task1_ok');
+      assert.strictEqual(res2, 'task2_ok');
+      assert.strictEqual(task2Started, true, 'Queued task should have started and completed');
+    } finally {
+      queueService.maxConcurrent = config.concurrency.maxConcurrent;
+    }
+  });
+
+  // REGRESSION TEST 3: Rejected or timed-out tasks do not permanently block queue
+  await test('Rejected and timed-out tasks do not permanently block queue capacity', async () => {
+    let rejectedFailed = false;
+    try {
+      await queueService.enqueue(async () => {
+        throw new Error('Simulated upstream failure');
+      }, 'req_throw', 'diagnostic');
+    } catch (err) {
+      if (err.message === 'Simulated upstream failure') {
+        rejectedFailed = true;
+      }
+    }
+    assert.strictEqual(rejectedFailed, true);
+    assert.strictEqual(queueService.getStats().activeCount, 0, 'activeCount must return to 0 after rejection');
+
+    // Next task can run without issue
+    const result = await queueService.enqueue(async () => 'recovered', 'req_next', 'diagnostic');
+    assert.strictEqual(result, 'recovered');
+    assert.strictEqual(queueService.getStats().activeCount, 0);
+  });
+
+  // REGRESSION TEST 4: Successive batches do not leak active tasks or state
+  await test('Successive batches do not leak active tasks or state', async () => {
+    let activeInBatch = 0;
+    let maxConcurrentObserved = 0;
+
+    const runBatch = async (batchId, count) => {
+      return Promise.all(
+        Array.from({ length: count }, (_, i) =>
+          queueService.enqueue(async () => {
+            activeInBatch++;
+            if (activeInBatch > maxConcurrentObserved) maxConcurrentObserved = activeInBatch;
+            await delay(30);
+            activeInBatch--;
+            return `${batchId}_${i}`;
+          }, `${batchId}_${i}`, 'diagnostic')
+        )
+      );
+    };
+
+    // Run batch 1
+    const results1 = await runBatch('b1', 6);
+    assert.strictEqual(results1.length, 6);
+    assert.strictEqual(queueService.getStats().activeCount, 0);
+
+    // Immediately run batch 2
+    const results2 = await runBatch('b2', 6);
+    assert.strictEqual(results2.length, 6);
+    assert.strictEqual(queueService.getStats().activeCount, 0);
+
+    assert.ok(
+      maxConcurrentObserved <= config.concurrency.maxConcurrent,
+      `Observed ${maxConcurrentObserved} concurrent calls, expected <= ${config.concurrency.maxConcurrent}`
+    );
   });
 
   console.log('==================================================');

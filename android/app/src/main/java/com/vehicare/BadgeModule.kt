@@ -37,9 +37,17 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
 
         private const val PREFS_NAME = "VehiCareNotificationPrefs"
         private const val KEY_LAST_ALERTED_COUNT = "last_alerted_count"
+        private const val KEY_LAST_ALERTED_NOTIF_ID = "last_alerted_notif_id"
+        private const val KEY_LAST_ALERTED_HAS_CONTENT = "last_alerted_has_content"
 
         @Volatile
         private var staticLastAlertedCount: Int = -1
+
+        @Volatile
+        private var staticLastAlertedNotifId: String? = null
+
+        @Volatile
+        private var staticLastAlertedHasContent: Boolean = false
 
         @Volatile
         private var activeReactContext: ReactApplicationContext? = null
@@ -97,11 +105,55 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
         return count
     }
 
+    private fun getPersistedAlertedNotifId(): String? {
+        if (staticLastAlertedNotifId != null) {
+            return staticLastAlertedNotifId
+        }
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val id = prefs.getString(KEY_LAST_ALERTED_NOTIF_ID, null)
+        staticLastAlertedNotifId = id
+        return id
+    }
+
+    private fun getPersistedAlertedHasContent(): Boolean {
+        if (staticLastAlertedHasContent) {
+            return true
+        }
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val hasContent = prefs.getBoolean(KEY_LAST_ALERTED_HAS_CONTENT, false)
+        staticLastAlertedHasContent = hasContent
+        return hasContent
+    }
+
     private fun setPersistedAlertedCount(count: Int) {
         val safe = if (count < 0) 0 else count
         staticLastAlertedCount = safe
+        if (safe == 0) {
+            staticLastAlertedNotifId = null
+            staticLastAlertedHasContent = false
+        }
         val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putInt(KEY_LAST_ALERTED_COUNT, safe).apply()
+        val editor = prefs.edit().putInt(KEY_LAST_ALERTED_COUNT, safe)
+        if (safe == 0) {
+            editor.remove(KEY_LAST_ALERTED_NOTIF_ID)
+            editor.putBoolean(KEY_LAST_ALERTED_HAS_CONTENT, false)
+        }
+        editor.apply()
+    }
+
+    private fun setPersistedAlertedState(count: Int, notifId: String?, hasContent: Boolean) {
+        val safe = if (count < 0) 0 else count
+        staticLastAlertedCount = safe
+        staticLastAlertedNotifId = notifId
+        staticLastAlertedHasContent = hasContent
+        val prefs = reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+            .putInt(KEY_LAST_ALERTED_COUNT, safe)
+            .putBoolean(KEY_LAST_ALERTED_HAS_CONTENT, hasContent)
+        if (!notifId.isNullOrBlank()) {
+            editor.putString(KEY_LAST_ALERTED_NOTIF_ID, notifId)
+        }
+        editor.apply()
     }
 
     private fun createNotificationChannel() {
@@ -139,26 +191,25 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
             }
 
             val persisted = getPersistedAlertedCount()
+            val persistedNotifId = getPersistedAlertedNotifId()
+            val persistedHasContent = getPersistedAlertedHasContent()
+            val hasCustomContent = !customTitle.isNullOrBlank() || !customMessage.isNullOrBlank()
+            val isNewNotifId = !notificationId.isNullOrBlank() && notificationId != persistedNotifId
+            val isContentUpgrade = hasCustomContent && !persistedHasContent
 
-            // If the count has not increased, DO NOT re-alert.
-            // This prevents repeating push vibrations/sounds on 10s polling or app resume.
-            if (count <= persisted) {
+            // If count has not increased, notification ID has not changed, and we aren't upgrading
+            // a generic badge count notification with its actual title/content, do not re-alert.
+            if (count <= persisted && !isNewNotifId && !isContentUpgrade) {
                 promise.resolve(true)
                 return
             }
 
-            // On Android M+, check if notification is already actively visible in the drawer
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val activeNotifications = notificationManager.activeNotifications
-                val isAlreadyActive = activeNotifications.any { it.id == NOTIFICATION_ID }
-                if (isAlreadyActive && count <= persisted) {
-                    promise.resolve(true)
-                    return
-                }
-            }
-
-            // Genuine new notification arrived (count > persisted). Alert once!
-            setPersistedAlertedCount(count)
+            // Record updated state
+            setPersistedAlertedState(
+                count,
+                if (!notificationId.isNullOrBlank()) notificationId else persistedNotifId,
+                hasCustomContent || persistedHasContent
+            )
 
             createNotificationChannel()
 
@@ -185,7 +236,11 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(displayTitle)
                 .setContentText(displayMessage)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(displayMessage))
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .setBigContentTitle(displayTitle)
+                        .bigText(displayMessage)
+                )
                 .setNumber(count)
                 .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
                 .setAutoCancel(true)
@@ -193,6 +248,10 @@ class BadgeModule(private val reactContext: ReactApplicationContext) : ReactCont
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+            if (isContentUpgrade && count <= persisted && !isNewNotifId) {
+                builder.setSilent(true)
+            }
 
             if (count > 1 && !customMessage.isNullOrBlank()) {
                 builder.setSubText("$count unread notifications")

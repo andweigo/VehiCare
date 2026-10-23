@@ -9,7 +9,7 @@ import { conversationOutputSchema, diagnosticOutputSchema } from '../validators/
 import { filterAndSelectQuestions } from './question-dedup.js';
 import { cacheService } from './cache.service.js';
 import { dedupService } from './dedup.service.js';
-import { callGemini } from './gemini.service.js';
+import { callGemini, resolveTotalBudgetMs } from './gemini.service.js';
 import { queueService } from './queue.service.js';
 
 const PROMPT_POLICY_VERSION = 'diagnosis-v2';
@@ -186,7 +186,7 @@ export const processDiagnosisRequest = async (payload) => {
         let mediaErrorNotice = null;
 
         try {
-          // 7. Call Gemini API
+          // 7. Call Gemini API with media-aware total budget
           response = await callGemini({
             prompt,
             mediaBase64,
@@ -195,7 +195,7 @@ export const processDiagnosisRequest = async (payload) => {
             requestType,
             inputType,
             startTime,
-            totalBudgetMs: config.gemini.totalTimeoutMs || 24000,
+            totalBudgetMs: resolveTotalBudgetMs(inputType, Boolean(mediaBase64)),
           });
         } catch (geminiError) {
           const isMediaError = [
@@ -237,6 +237,11 @@ export const processDiagnosisRequest = async (payload) => {
               diagnosticState,
             });
 
+            const fallbackTextBudgetMs = Math.min(
+              resolveTotalBudgetMs('text', false),
+              Math.max(12000, (startTime + 80000) - Date.now()),
+            );
+
             response = await callGemini({
               prompt: fallbackPrompt,
               mediaBase64: null,
@@ -244,8 +249,8 @@ export const processDiagnosisRequest = async (payload) => {
               requestId: `${requestId}_fallback`,
               requestType,
               inputType: 'text',
-              startTime,
-              totalBudgetMs: config.gemini.totalTimeoutMs || 24000,
+              startTime: Date.now(),
+              totalBudgetMs: fallbackTextBudgetMs,
             });
           } else {
             if (isMediaError && !hasUsableSymptoms) {

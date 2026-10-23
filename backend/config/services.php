@@ -56,7 +56,9 @@ return [
     'ai_service' => [
         'url' => env('AI_SERVICE_URL', 'http://127.0.0.1:5000'),
         'secret' => env('AI_SERVICE_SECRET'),
-        'timeout' => (int) env('AI_SERVICE_TIMEOUT', 360),
+        'timeout' => (int) env('AI_SERVICE_TIMEOUT', 55),
+        'media_timeout' => (int) env('AI_SERVICE_MEDIA_TIMEOUT', 85),
+        'connect_timeout' => (int) env('AI_SERVICE_CONNECT_TIMEOUT', 15),
     ],
 
     'ai_limits' => [

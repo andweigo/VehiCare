@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, Modal, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sidebar from '../components/Sidebar';
 
@@ -76,19 +76,14 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
   }, [isOpen, closeSidebar]);
 
   return (
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        isOpen && styles.openOverlay,
-      ]}
-      pointerEvents={isOpen ? 'box-none' : 'none'}>
-      {/* BACKDROP - Tapping outside the sidebar dismisses it */}
-      <Pressable
-        style={styles.backdropPressable}
-        onPress={closeSidebar}
-        disabled={!isOpen}
-        accessibilityRole="button"
-        accessibilityLabel="Close Sidebar Menu">
+    <Modal
+      visible={isOpen}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={closeSidebar}>
+      <View style={styles.modalRoot}>
+        {/* BACKDROP VISUAL OVERLAY */}
         <Animated.View
           pointerEvents="none"
           style={[
@@ -96,51 +91,62 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
             { opacity: backdropOpacity },
           ]}
         />
-      </Pressable>
 
-      {/* SOLID OPAQUE SIDEBAR DRAWER */}
-      <Animated.View
-        pointerEvents={isOpen ? 'auto' : 'none'}
-        style={[
-          styles.sidebarWrapper,
-          {
-            transform: [{ translateX: sidebarX }],
-          },
-        ]}>
-        <Sidebar
-          navigation={navigationRef}
-          activeScreen={activeScreen}
-          onClose={closeSidebar}
-          topInset={insets.top}
-        />
-      </Animated.View>
-    </View>
+        {/* SOLID OPAQUE SIDEBAR DRAWER ON LEFT */}
+        <Animated.View
+          style={[
+            styles.sidebarWrapper,
+            {
+              transform: [{ translateX: sidebarX }],
+            },
+          ]}>
+          <Sidebar
+            navigation={navigationRef}
+            activeScreen={activeScreen}
+            onClose={closeSidebar}
+            topInset={insets.top}
+          />
+        </Animated.View>
+
+        {/* OUTSIDE CONTAINER TAP TARGET ON RIGHT - Tapping anywhere outside the 300px sidebar closes it */}
+        <TouchableOpacity
+          testID="sidebar-outside-dismiss"
+          style={styles.outsideDismissArea}
+          activeOpacity={1}
+          onPress={closeSidebar}
+          accessibilityRole="button"
+          accessibilityLabel="Close Sidebar Menu">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeSidebar}
+          />
+        </TouchableOpacity>
+      </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  backdropPressable: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
+  modalRoot: {
+    flex: 1,
+    flexDirection: 'row',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
   sidebarWrapper: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
     width: 300,
     maxWidth: '82%',
+    height: '100%',
     backgroundColor: '#0A0A0A',
-    elevation: 31,
+    elevation: 32,
     zIndex: 2,
   },
-  openOverlay: {
-    elevation: 30,
-    zIndex: 30,
+  outsideDismissArea: {
+    flex: 1,
+    height: '100%',
+    zIndex: 2,
   },
 });
 

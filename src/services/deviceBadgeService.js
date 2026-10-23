@@ -1,28 +1,41 @@
 import { NativeModules } from 'react-native';
 
 let lastNativeCount = null;
+let lastNativeNotifId = null;
+let lastNativeHadContent = false;
 
 /**
  * Update the app icon badge count and system notification on the user's mobile device.
- * Skips redundant updates when the positive count hasn't changed to prevent repeated alerting.
+ * Skips redundant updates when the positive count and notification ID haven't changed,
+ * while always allowing upgrades that supply the notification's title and content.
  * @param {number} count - Unread notification count. If 0, clears the badge and system alert.
  * @param {object|null} notification - Optional latest unread notification to display in the push notification.
  */
 export const setDeviceBadgeCount = async (count = 0, notification = null) => {
   const safeCount = Math.max(0, parseInt(count, 10) || 0);
+  const notifId = notification?.id ? String(notification.id) : null;
+  const hasContent = Boolean(notification && (notification.title || notification.message));
+  const isNewNotifId = Boolean(notifId && notifId !== lastNativeNotifId);
+  const isContentUpgrade = Boolean(hasContent && !lastNativeHadContent);
 
-  // If already at this unread count (> 0), skip native call completely to prevent repeated alert buzzing
-  if (safeCount > 0 && safeCount === lastNativeCount) {
+  if (safeCount > 0 && safeCount === lastNativeCount && !isNewNotifId && !isContentUpgrade) {
     return;
   }
 
   lastNativeCount = safeCount;
+  if (safeCount === 0) {
+    lastNativeNotifId = null;
+    lastNativeHadContent = false;
+  } else {
+    if (notifId) lastNativeNotifId = notifId;
+    if (hasContent) lastNativeHadContent = true;
+  }
+
   const badgeModule = NativeModules?.VehiCareBadge;
 
   if (
     safeCount > 0 &&
-    notification &&
-    (notification.title || notification.message) &&
+    hasContent &&
     typeof badgeModule?.setBadgeWithNotification === 'function'
   ) {
     try {
@@ -30,7 +43,7 @@ export const setDeviceBadgeCount = async (count = 0, notification = null) => {
         safeCount,
         String(notification.title || 'VehiCare'),
         String(notification.message || ''),
-        notification.id ? String(notification.id) : null,
+        notifId,
         notification.type ? String(notification.type) : null,
       );
       return;
@@ -68,6 +81,8 @@ export const consumePendingPushNotification = async () => {
  */
 export const clearDeviceBadge = async () => {
   lastNativeCount = 0;
+  lastNativeNotifId = null;
+  lastNativeHadContent = false;
   await setDeviceBadgeCount(0);
 };
 
@@ -76,6 +91,8 @@ export const clearDeviceBadge = async () => {
  */
 export const resetBadgeCache = () => {
   lastNativeCount = null;
+  lastNativeNotifId = null;
+  lastNativeHadContent = false;
 };
 
 export default {

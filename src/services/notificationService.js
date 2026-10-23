@@ -4,6 +4,19 @@ import { getToken } from '../services/storageService';
 import { setDeviceBadgeCount } from './deviceBadgeService';
 
 export const NOTIFICATION_READ_STATE_CHANGED = 'notificationReadStateChanged';
+export const NEW_IN_APP_NOTIFICATION_EVENT = 'vehicareNewInAppNotification';
+
+let lastSynchronizedCount = null;
+let lastLatestUnread = null;
+let alertedToastIds = new Set();
+
+const emitInAppNotificationIfNew = notification => {
+  if (!notification || notification.isRead) return;
+  const idKey = String(notification.id || `${notification.title || ''}:${notification.message || ''}`);
+  if (!idKey || alertedToastIds.has(idKey)) return;
+  alertedToastIds.add(idKey);
+  DeviceEventEmitter.emit(NEW_IN_APP_NOTIFICATION_EVENT, notification);
+};
 
 const resolveCategory = (type, data = {}) => {
   if (data?.category) {
@@ -60,7 +73,7 @@ export const fetchNotifications = async () => {
     const response = await apiClient.get('/notifications');
     const items = response?.data?.data || [];
 
-    return items.map(n => {
+    const mapped = items.map(n => {
       const dataPayload = n.data || {};
       const notificationType = n.type || dataPayload.type || 'system_notice';
       
@@ -77,6 +90,19 @@ export const fetchNotifications = async () => {
         requestId: dataPayload.request_id || n.request_id || null,
       };
     }).sort((a, b) => b.timestamp - a.timestamp);
+
+    const unreadItems = mapped.filter(n => !n.isRead);
+    const newestUnread = unreadItems[0] || null;
+    if (newestUnread) {
+      lastLatestUnread = newestUnread;
+      lastSynchronizedCount = unreadItems.length;
+      setDeviceBadgeCount(unreadItems.length, newestUnread).catch(() => {});
+      emitInAppNotificationIfNew(newestUnread);
+    } else if (mapped.length > 0 && unreadItems.length === 0) {
+      lastLatestUnread = null;
+    }
+
+    return mapped;
   } catch (err) {
     if (err?.response?.status === 401) {
       return [];
@@ -95,12 +121,10 @@ export const fetchNotifications = async () => {
   }
 };
 
-let lastSynchronizedCount = null;
-let lastLatestUnread = null;
-
 export const resetNotificationSyncState = () => {
   lastSynchronizedCount = null;
   lastLatestUnread = null;
+  alertedToastIds.clear();
 };
 
 export const getLatestUnreadNotification = () => lastLatestUnread;
@@ -138,6 +162,7 @@ export const getUnreadCount = async () => {
         vehicleId: dataPayload.vehicle_id || rawLatest.vehicle_id || null,
         requestId: dataPayload.request_id || rawLatest.request_id || null,
       };
+      emitInAppNotificationIfNew(lastLatestUnread);
     } else if (count === 0) {
       lastLatestUnread = null;
     }
