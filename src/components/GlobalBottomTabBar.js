@@ -129,13 +129,11 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
 
   useEffect(() => {
     mountedRef.current = true;
-    if (user?.id) {
-      requestNotificationPermission({ showSettingsDialog: false }).catch(() => {});
-    }
+    requestNotificationPermission({ showSettingsDialog: false }).catch(() => {});
     return () => {
       mountedRef.current = false;
     };
-  }, [user?.id]);
+  }, []);
 
   useEffect(() => {
     loadUnread();

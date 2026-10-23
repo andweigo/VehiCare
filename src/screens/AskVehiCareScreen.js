@@ -25,6 +25,7 @@ import {
   requestCameraPermission,
   requestMicrophonePermission,
   requestCameraAndAudioPermission,
+  showPermissionModal,
 } from '../services/permissionService';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -1011,17 +1012,15 @@ export default function AskVehiCareScreen({
       }
 
       if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-        Alert.alert(
-          'Media Library Access Permanently Denied',
-          `VehiCare needs permission to access your ${mediaType === 'video' ? 'videos' : 'photos'}. Please grant access in App Info settings.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Open Settings',
-              onPress: () => Linking.openSettings(),
-            },
-          ],
-        );
+        showPermissionModal({
+          badgeLabel: 'STORAGE & MEDIA',
+          icon: 'photo-library',
+          title: 'Media Library Access Needed',
+          message: `VehiCare needs permission to access your ${mediaType === 'video' ? 'videos' : 'photos'}. Please grant access in App Settings.`,
+          primaryLabel: 'Open Settings',
+          secondaryLabel: 'Cancel',
+          onConfirm: () => Linking.openSettings(),
+        });
       }
       return false;
     } catch (err) {
@@ -1525,10 +1524,15 @@ export default function AskVehiCareScreen({
         if (result.errorCode === 'camera_unavailable') {
           Alert.alert('Camera Unavailable', 'Camera hardware is not available on this device.');
         } else if (result.errorCode === 'permission') {
-          Alert.alert('Camera Permission Needed', 'Camera permission was not granted. Please allow camera access in App Info settings.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]);
+          showPermissionModal({
+            badgeLabel: 'CAMERA ACCESS',
+            icon: 'camera-alt',
+            title: 'Camera Access Needed',
+            message: 'Camera permission was not granted. Please allow camera access in App Settings.',
+            primaryLabel: 'Open Settings',
+            secondaryLabel: 'Cancel',
+            onConfirm: () => Linking.openSettings(),
+          });
         } else {
           Alert.alert('Camera Error', result.errorMessage || 'Unable to open camera.');
         }
@@ -1573,10 +1577,15 @@ export default function AskVehiCareScreen({
 
       if (result.errorCode) {
         if (result.errorCode === 'permission') {
-          Alert.alert('Photo Access Needed', 'Permission to access photos was not granted. Please allow access in App Info settings.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]);
+          showPermissionModal({
+            badgeLabel: 'STORAGE & MEDIA',
+            icon: 'photo-library',
+            title: 'Photo Access Needed',
+            message: 'Permission to access photos was not granted. Please allow access in App Settings.',
+            primaryLabel: 'Open Settings',
+            secondaryLabel: 'Cancel',
+            onConfirm: () => Linking.openSettings(),
+          });
         } else {
           Alert.alert('Gallery Error', result.errorMessage || 'Unable to open image gallery.');
         }

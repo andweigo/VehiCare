@@ -19,6 +19,7 @@ import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
 import useRepairShops, { LOCATION_PRESETS } from '../hooks/useRepairShops';
 import LocationService from '../services/locationService';
+import { showPermissionModal } from '../services/permissionService';
 import { useTheme } from '../theme/ThemeContext';
 
 const BRAND = '#F63B05';
@@ -566,14 +567,15 @@ const RepairShopsScreen = ({ navigation, route }) => {
                   setLocationModalVisible(false);
                   const fix = await useCurrentGpsLocation();
                   if (!fix) {
-                    Alert.alert(
-                      'GPS Location Access',
-                      'VehiCare needs device location to discover repair shops near you. Please enable location or grant permission in app settings.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Open Settings', onPress: () => LocationService.openSettings() },
-                      ]
-                    );
+                    showPermissionModal({
+                      badgeLabel: 'LOCATION ACCESS',
+                      icon: 'location-on',
+                      title: 'GPS Location Access',
+                      message: 'VehiCare needs device location to discover repair shops near you. Please enable location or grant permission in App Settings.',
+                      primaryLabel: 'Open Settings',
+                      secondaryLabel: 'Cancel',
+                      onConfirm: () => LocationService.openSettings(),
+                    });
                   }
                 }}
               >

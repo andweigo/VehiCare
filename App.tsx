@@ -18,6 +18,7 @@ import VehicleHealthProvider from './src/context/VehicleHealthContext';
 
 import AppNavigator from './src/navigation/AppNavigator';
 import GlobalBottomTabBar from './src/components/GlobalBottomTabBar';
+import GlobalPermissionModal from './src/components/GlobalPermissionModal';
 import { ThemeProvider } from './src/theme/ThemeContext';
 
 export const navigationRef = createNavigationContainerRef<any>();
@@ -81,6 +82,7 @@ const AppNavigatorWithSidebar = ({ onSyncReady }: { onSyncReady: (fn: (name: str
       <AppNavigator />
       <GlobalBottomTabBar navigationRef={navigationRef} />
       <SidebarDrawerOverlay navigationRef={navigationRef} />
+      <GlobalPermissionModal />
     </View>
   );
 };

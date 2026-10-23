@@ -21,6 +21,7 @@ import { useVehicle } from '../context/VehicleContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import notificationService from '../services/notificationService';
 import vehicleApi from '../api/vehicleApi';
+import { requestNotificationPermission } from '../services/permissionService';
 import { useTheme } from '../theme/ThemeContext';
 import CustomModal from '../components/CustomModal';
 
@@ -558,6 +559,7 @@ const NotificationsScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     mountedRef.current = true;
+    requestNotificationPermission({ showSettingsDialog: false }).catch(() => {});
     load();
 
     const timerId = setInterval(() => {

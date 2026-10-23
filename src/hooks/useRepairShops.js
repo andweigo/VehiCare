@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import MAP_CONFIG from '../config/mapConfig';
 import { fetchNearbyRepairShops, filterShopsByCategory } from '../services/repairShopApi';
 import LocationService, { getAccuracyStatus } from '../services/locationService';
+import { showPermissionModal } from '../services/permissionService';
 import { BRAND } from '../theme/colors';
 
 const SAVED_LOCATION_STORAGE_KEY = '@vehicare_last_location';
@@ -192,14 +193,15 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       } else {
         setPermissionState(perm.isPermanentlyDenied ? 'PERMANENTLY_DENIED' : 'DENIED');
         if (perm.isPermanentlyDenied) {
-          Alert.alert(
-            'Location Access Needed',
-            'VehiCare needs device location to find repair shops near your position. Please enable location permission in App Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => LocationService.openSettings() },
-            ],
-          );
+          showPermissionModal({
+            badgeLabel: 'LOCATION ACCESS',
+            icon: 'location-on',
+            title: 'Location Access Needed',
+            message: 'VehiCare needs device location to find repair shops near your position. Please enable location permission in App Settings.',
+            primaryLabel: 'Open Settings',
+            secondaryLabel: 'Cancel',
+            onConfirm: () => LocationService.openSettings(),
+          });
         }
         if (!selectedLocation) {
           setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);

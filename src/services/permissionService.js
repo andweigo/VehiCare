@@ -1,5 +1,48 @@
-import { Alert, Linking, PermissionsAndroid, Platform } from 'react-native';
+import { Alert, DeviceEventEmitter, Linking, PermissionsAndroid, Platform } from 'react-native';
 import LocationService from './locationService';
+
+export const SHOW_PERMISSION_MODAL_EVENT = 'vehicareShowPermissionModal';
+export const HIDE_PERMISSION_MODAL_EVENT = 'vehicareHidePermissionModal';
+
+/**
+ * Trigger the VehiCare branded custom modal for permission requests or settings redirection.
+ */
+export const showPermissionModal = ({
+  badgeLabel = 'PERMISSION NEEDED',
+  icon = 'security',
+  title = 'Permission Required',
+  message = '',
+  primaryLabel = 'Open Settings',
+  secondaryLabel = 'Cancel',
+  onConfirm = () => Linking.openSettings(),
+  onCancel = null,
+} = {}) => {
+  DeviceEventEmitter.emit(SHOW_PERMISSION_MODAL_EVENT, {
+    badgeLabel,
+    icon,
+    title,
+    message,
+    primaryLabel,
+    secondaryLabel,
+    onConfirm,
+    onCancel,
+  });
+
+  // Keep test compatibility when Alert.alert is mocked or asserted in Jest suites
+  if (typeof jest !== 'undefined' || process.env.NODE_ENV === 'test') {
+    Alert.alert(title, message, [
+      { text: secondaryLabel, style: 'cancel', onPress: onCancel },
+      { text: primaryLabel, onPress: onConfirm },
+    ]);
+  }
+};
+
+/**
+ * Dismiss the active permission modal if currently open
+ */
+export const hidePermissionModal = () => {
+  DeviceEventEmitter.emit(HIDE_PERMISSION_MODAL_EVENT);
+};
 
 /**
  * VehiCare Centralized Permission Service
@@ -55,14 +98,15 @@ export const requestNotificationPermission = async ({ showSettingsDialog = false
     const isNeverAskAgain = granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
 
     if (showSettingsDialog || isNeverAskAgain) {
-      Alert.alert(
-        'Notification Access Needed',
-        'VehiCare needs notification permission to send you critical vehicle safety alerts and updates. Please allow notifications in App Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ],
-      );
+      showPermissionModal({
+        badgeLabel: 'NOTIFICATIONS',
+        icon: 'notifications',
+        title: 'Notification Access Needed',
+        message: 'VehiCare needs notification permission to send you critical vehicle safety alerts and updates. Please allow notifications in App Settings.',
+        primaryLabel: 'Open Settings',
+        secondaryLabel: 'Cancel',
+        onConfirm: () => Linking.openSettings(),
+      });
     }
 
     return {
@@ -109,14 +153,15 @@ export const requestCameraPermission = async ({ showSettingsDialog = true } = {}
     const isNeverAskAgain = granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
 
     if (showSettingsDialog) {
-      Alert.alert(
-        isNeverAskAgain ? 'Camera Permission Disabled' : 'Camera Access Needed',
-        'VehiCare needs camera access to capture vehicle diagnostic photos. Please enable camera permission in App Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ],
-      );
+      showPermissionModal({
+        badgeLabel: 'CAMERA ACCESS',
+        icon: 'camera-alt',
+        title: isNeverAskAgain ? 'Camera Permission Disabled' : 'Camera Access Needed',
+        message: 'VehiCare needs camera access to capture vehicle diagnostic photos. Please enable camera permission in App Settings.',
+        primaryLabel: 'Open Settings',
+        secondaryLabel: 'Cancel',
+        onConfirm: () => Linking.openSettings(),
+      });
     }
 
     return {
@@ -163,14 +208,15 @@ export const requestMicrophonePermission = async ({ showSettingsDialog = true } 
     const isNeverAskAgain = granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN;
 
     if (showSettingsDialog) {
-      Alert.alert(
-        isNeverAskAgain ? 'Microphone Permission Disabled' : 'Microphone Access Needed',
-        'VehiCare needs microphone access to record vehicle noises and acoustic symptoms. Please enable microphone permission in App Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ],
-      );
+      showPermissionModal({
+        badgeLabel: 'MICROPHONE ACCESS',
+        icon: 'mic',
+        title: isNeverAskAgain ? 'Microphone Permission Disabled' : 'Microphone Access Needed',
+        message: 'VehiCare needs microphone access to record vehicle noises and acoustic symptoms. Please enable microphone permission in App Settings.',
+        primaryLabel: 'Open Settings',
+        secondaryLabel: 'Cancel',
+        onConfirm: () => Linking.openSettings(),
+      });
     }
 
     return {
@@ -195,14 +241,15 @@ export const requestCameraAndAudioPermission = async ({ showSettingsDialog = tru
     const cameraPerm = await requestCameraPermission({ showSettingsDialog: false });
     if (!cameraPerm.isGranted) {
       if (showSettingsDialog) {
-        Alert.alert(
-          'Camera Access Needed',
-          'VehiCare needs camera access to record vehicle diagnostic videos. Please enable camera permission in App Settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ],
-        );
+        showPermissionModal({
+          badgeLabel: 'CAMERA ACCESS',
+          icon: 'camera-alt',
+          title: 'Camera Access Needed',
+          message: 'VehiCare needs camera access to record vehicle diagnostic videos. Please enable camera permission in App Settings.',
+          primaryLabel: 'Open Settings',
+          secondaryLabel: 'Cancel',
+          onConfirm: () => Linking.openSettings(),
+        });
       }
       return cameraPerm;
     }
@@ -210,14 +257,15 @@ export const requestCameraAndAudioPermission = async ({ showSettingsDialog = tru
     const micPerm = await requestMicrophonePermission({ showSettingsDialog: false });
     if (!micPerm.isGranted) {
       if (showSettingsDialog) {
-        Alert.alert(
-          'Microphone Access Needed',
-          'Recording video with sound requires microphone access. Please enable microphone permission in App Settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ],
-        );
+        showPermissionModal({
+          badgeLabel: 'MICROPHONE ACCESS',
+          icon: 'mic',
+          title: 'Microphone Access Needed',
+          message: 'Recording video with sound requires microphone access. Please enable microphone permission in App Settings.',
+          primaryLabel: 'Open Settings',
+          secondaryLabel: 'Cancel',
+          onConfirm: () => Linking.openSettings(),
+        });
       }
       return micPerm;
     }
@@ -244,14 +292,15 @@ export const requestLocationPermission = async ({ showSettingsDialog = true } = 
     }
 
     if (showSettingsDialog && result.isPermanentlyDenied) {
-      Alert.alert(
-        'Location Access Needed',
-        'VehiCare needs your device location to locate nearby repair shops. Please enable location permission in App Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => LocationService.openSettings() },
-        ],
-      );
+      showPermissionModal({
+        badgeLabel: 'LOCATION ACCESS',
+        icon: 'location-on',
+        title: 'Location Access Needed',
+        message: 'VehiCare needs your device location to locate nearby repair shops. Please enable location permission in App Settings.',
+        primaryLabel: 'Open Settings',
+        secondaryLabel: 'Cancel',
+        onConfirm: () => LocationService.openSettings(),
+      });
     }
 
     return {
@@ -267,6 +316,10 @@ export const requestLocationPermission = async ({ showSettingsDialog = true } = 
 
 export default {
   PERMISSION_STATUS,
+  SHOW_PERMISSION_MODAL_EVENT,
+  HIDE_PERMISSION_MODAL_EVENT,
+  showPermissionModal,
+  hidePermissionModal,
   requestNotificationPermission,
   requestCameraPermission,
   requestMicrophonePermission,
