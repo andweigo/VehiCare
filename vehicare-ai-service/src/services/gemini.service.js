@@ -145,6 +145,16 @@ export const isModelInCooldown = (modelName) => {
   return true;
 };
 
+export const getModelCooldownExpiry = (modelName) => {
+  const expiry = modelCooldowns.get(modelName);
+  if (!expiry) return 0;
+  if (Date.now() > expiry) {
+    modelCooldowns.delete(modelName);
+    return 0;
+  }
+  return expiry;
+};
+
 export const triggerModelCooldown = (modelName, requestId, reason = 'TRANSIENT', customDurationMs = null) => {
   const durationMs = customDurationMs
     ? Math.min(customDurationMs, 300000)
@@ -606,8 +616,52 @@ export const callGemini = async (params, client = null) => {
         });
       }
     }
+
     if (candidateModels.length === 0) {
-      candidateModels.push(fallbackModel || primaryModel);
+      // Both models are in cooldown. Check if one expires imminently within our request budget.
+      const now = Date.now();
+      const remainingOverallMs = requestDeadline - now;
+      let earliestModel = null;
+      let minWaitMs = Infinity;
+
+      for (const m of [primaryModel, fallbackModel]) {
+        if (!m) continue;
+        const expiry = getModelCooldownExpiry(m);
+        const wait = expiry - now;
+        if (wait > 0 && wait < minWaitMs) {
+          minWaitMs = wait;
+          earliestModel = m;
+        }
+      }
+
+      // If cooldown expires very soon (<= 1500ms) AND we still have ample budget (>= 6000ms after waiting)
+      if (earliestModel && minWaitMs <= 1500 && (remainingOverallMs - minWaitMs) >= 6000) {
+        logger.info('AI_WAITING_FOR_COOLDOWN_EXPIRY', requestId, {
+          model: earliestModel,
+          waitMs: minWaitMs,
+          remainingBudgetMs: remainingOverallMs,
+        });
+        await delay(minWaitMs + 50);
+        if (!isModelInCooldown(earliestModel)) {
+          candidateModels.push(earliestModel);
+        }
+      }
+    }
+
+    if (candidateModels.length === 0) {
+      logger.warn('AI_ALL_MODELS_IN_COOLDOWN', requestId, {
+        primaryModel,
+        fallbackModel,
+        remainingBudgetMs: requestDeadline - Date.now(),
+      });
+      const unavailableError = makeError(
+        'GEMINI_OVERLOADED',
+        'All diagnostic AI models are temporarily in cooldown due to high demand. Please try again shortly.',
+        503,
+        true
+      );
+      unavailableError.userMessage = 'Our diagnostic service is experiencing high demand. Please try again in a few moments.';
+      throw unavailableError;
     }
 
     let lastError = null;

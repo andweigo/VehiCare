@@ -620,6 +620,155 @@ await test('Mock Gemini handlers (__setMockCallGemini / __resetMockCallGemini) w
   }
 });
 
+// 16. Fallback model in cooldown leaves primary model as the active candidate
+await test('Cooldown on fallback model allows primary model to execute normally', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  triggerModelCooldown(fallback, 'req_cooldown_fallback_test', 'TRANSIENT_FAILURE', 15000);
+  assert.strictEqual(isModelInCooldown(primary), false);
+  assert.strictEqual(isModelInCooldown(fallback), true);
+
+  const client = createMockClient({
+    [primary]: () => ({
+      text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Primary model answered' }),
+    }),
+    [fallback]: () => { throw new Error('Fallback in cooldown must not be called'); },
+  });
+
+  const result = await callGemini({
+    prompt: 'Check steering wheel play',
+    requestId: 'req_fallback_cooldown_exec',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 1, 'Primary model must be called');
+  assert.strictEqual(client.callCounts[fallback] || 0, 0, 'Fallback model in cooldown must be skipped');
+  assert.strictEqual(result.fallbackUsed, false);
+  assert.strictEqual(result.modelUsed, primary);
+});
+
+// 17. Both primary and fallback models in cooldown rejects with HTTP 503 GEMINI_OVERLOADED without calling client
+await test('Both models in cooldown rejects with HTTP 503 GEMINI_OVERLOADED without calling client', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  triggerModelCooldown(primary, 'req_both_cooldown', 'OVERLOADED', 20000);
+  triggerModelCooldown(fallback, 'req_both_cooldown', 'OVERLOADED', 20000);
+
+  const client = createMockClient({
+    [primary]: () => { throw new Error('Primary in cooldown must not be called'); },
+    [fallback]: () => { throw new Error('Fallback in cooldown must not be called'); },
+  });
+
+  let caught = null;
+  try {
+    await callGemini({
+      prompt: 'Check engine check light',
+      requestId: 'req_both_cooldown_exec',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now(),
+      totalBudgetMs: 20000,
+    }, client);
+  } catch (err) {
+    caught = err;
+  }
+
+  assert.ok(caught, 'Must reject when both models are in cooldown');
+  assert.strictEqual(caught.statusCode, 503, 'Must return HTTP 503');
+  assert.strictEqual(caught.code, 'GEMINI_OVERLOADED', 'Error code must be GEMINI_OVERLOADED');
+  assert.strictEqual(caught.retryable, true, 'Error must be marked retryable');
+  assert.strictEqual(client.callCounts[primary] || 0, 0, 'Primary must not be called');
+  assert.strictEqual(client.callCounts[fallback] || 0, 0, 'Fallback must not be called');
+
+  // Verify error middleware formats this cleanly as 503
+  let sentStatus = null;
+  let sentJson = null;
+  const mockRes = {
+    status: (s) => { sentStatus = s; return mockRes; },
+    json: (d) => { sentJson = d; return mockRes; },
+  };
+  errorHandlerMiddleware(caught, { headers: { 'x-request-id': 'req_both_cooldown_exec' } }, mockRes, () => {});
+  assert.strictEqual(sentStatus, 503);
+  assert.strictEqual(sentJson.success, false);
+  assert.strictEqual(sentJson.error.code, 'GEMINI_OVERLOADED');
+  assert.strictEqual(sentJson.error.retryable, true);
+});
+
+// 18. Cooldown expiration restores model availability
+await test('Expired cooldown allows model to be selected again', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  // Set cooldown to expire in the past
+  triggerModelCooldown(primary, 'req_expire_test', 'TRANSIENT', -100);
+  assert.strictEqual(isModelInCooldown(primary), false, 'Expired cooldown must return false');
+
+  const client = createMockClient({
+    [primary]: () => ({
+      text: JSON.stringify({ type: 'diagnostic', status: 'diagnosis_ready', summary: 'Restored primary model answered' }),
+    }),
+  });
+
+  const result = await callGemini({
+    prompt: 'Check brake pads',
+    requestId: 'req_cooldown_restored',
+    requestType: 'diagnostic',
+    inputType: 'text',
+    startTime: Date.now(),
+    totalBudgetMs: 20000,
+  }, client);
+
+  assert.strictEqual(client.callCounts[primary], 1);
+  assert.strictEqual(result.fallbackUsed, false);
+});
+
+// 19. Primary timeout followed by fallback timeout reports clean 504 GEMINI_TIMEOUT
+await test('Primary timeout followed by fallback timeout returns clean 504 GEMINI_TIMEOUT', async () => {
+  const primary = config.gemini.model;
+  const fallback = config.gemini.fallbackModel;
+
+  const client = createMockClient({
+    [primary]: () => {
+      const err = new Error('Primary gateway timeout');
+      err.status = 504;
+      err.code = 'DEADLINE_EXCEEDED';
+      throw err;
+    },
+    [fallback]: () => {
+      const err = new Error('Fallback gateway timeout');
+      err.status = 504;
+      err.code = 'DEADLINE_EXCEEDED';
+      throw err;
+    },
+  });
+
+  let caught = null;
+  try {
+    await callGemini({
+      prompt: 'Check clutch slippage',
+      requestId: 'req_both_timeout',
+      requestType: 'diagnostic',
+      inputType: 'text',
+      startTime: Date.now(),
+      totalBudgetMs: 20000,
+    }, client);
+  } catch (err) {
+    caught = err;
+  }
+
+  assert.ok(caught);
+  assert.strictEqual(caught.statusCode, 504, 'Must report 504 timeout');
+  assert.strictEqual(caught.code, 'GEMINI_TIMEOUT', 'Must report GEMINI_TIMEOUT code');
+  assert.strictEqual(caught.retryable, true, 'Timeout must be retryable');
+  assert.strictEqual(client.callCounts[primary], 1);
+  assert.strictEqual(client.callCounts[fallback], 1);
+});
+
 console.log('================================================================');
 console.log(`Gemini Resilience Suite Results: ${passedTests}/${totalTests} tests passed cleanly.`);
 console.log('================================================================');

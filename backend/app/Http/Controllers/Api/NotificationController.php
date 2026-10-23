@@ -24,8 +24,8 @@ class NotificationController extends Controller
                 $data = is_array($data) ? $data : [];
 
                 $type = $data['type'] ?? ($n->type === 'App\\Notifications\\AnnouncementNotification' ? 'announcement' : $n->type);
-                $title = $data['title'] ?? 'Notification';
-                $message = $data['message'] ?? '';
+                $title = $data['title'] ?? ($data['data']['title'] ?? ($data['subject'] ?? 'VehiCare Notification'));
+                $message = $data['message'] ?? ($data['data']['message'] ?? ($data['body'] ?? ($data['data']['body'] ?? ($data['content'] ?? ($data['description'] ?? '')))));
                 
                 return [
                     'id' => (string) $n->id,
@@ -63,12 +63,14 @@ class NotificationController extends Controller
             $data = is_array($latest->data) ? $latest->data : json_decode($latest->data ?? '', true);
             $data = is_array($data) ? $data : [];
             $type = $data['type'] ?? ($latest->type === 'App\\Notifications\\AnnouncementNotification' ? 'announcement' : $latest->type);
+            $title = $data['title'] ?? ($data['data']['title'] ?? ($data['subject'] ?? 'VehiCare Notification'));
+            $message = $data['message'] ?? ($data['data']['message'] ?? ($data['body'] ?? ($data['data']['body'] ?? ($data['content'] ?? ($data['description'] ?? '')))));
 
             $latestUnread = [
                 'id' => (string) $latest->id,
                 'type' => (string) $type,
-                'title' => (string) ($data['title'] ?? 'Notification'),
-                'message' => (string) ($data['message'] ?? ''),
+                'title' => (string) $title,
+                'message' => (string) $message,
                 'data' => $data['data'] ?? $data,
                 'created_at' => $latest->created_at ? $latest->created_at->toIso8601String() : null,
                 'timestamp' => $latest->created_at ? $latest->created_at->timestamp * 1000 : null,

@@ -171,6 +171,8 @@ export const buildDiagnosisPrompt = ({
   diagnosticState = { assessments: [] },
   isAlternateVehicle = false,
   targetVehicleDesc = null,
+  mediaFallbackMode = false,
+  originalMediaType = 'image',
 }) => {
   if (!hasMedia && isGeneralQuestion(symptoms, history, diagnosticState)) {
     return buildCompactGeneralPrompt({ vehicleContext, symptoms, userLanguage, history });
@@ -209,9 +211,17 @@ export const buildDiagnosisPrompt = ({
     audio: 'Analyze the voice/audio recording: The recording may contain a spoken consultation from the user describing vehicle symptoms, concerns, or history (in English, Filipino/Tagalog, or Taglish), acoustic vehicle sounds (e.g. engine ticking, squealing, knocking, grinding, rattling, exhaust noises), or a combination of both. If speech is present, transcribe and extract the user\'s spoken symptoms and include them in "reported". If vehicle sounds are audible, describe their acoustic characteristics and pattern in "observed". Synthesize both spoken user symptoms and acoustic observations into the diagnostic assessment. Do not claim visual observations.',
   };
   const modality = inputType === 'voice' ? 'voice' : inputType;
-  const mediaInstruction = hasMedia
-    ? `${modalityInstructions[modality] || 'Analyze the attached media only for evidence supported by its content.'}${mediaMime ? ` Media MIME type: ${mediaMime}.` : ''}`
-    : 'NO MEDIA ATTACHED: Base diagnosis on reported symptoms.';
+  const mediaInstruction = mediaFallbackMode
+    ? `MEDIA UNINSPECTABLE (MEDIA RECOVERY FALLBACK):
+- The original user-attached ${originalMediaType || 'media'} could not be inspected or processed due to a technical/media service error.
+- You MUST base all diagnostic conclusions and observations EXCLUSIVELY on the user's written symptoms and available vehicle context.
+- DO NOT claim, state, or imply that you analyzed or observed the image, video, or audio file.
+- Set "observed" to only what was described in text by the user, or note that direct inspection was unavailable.
+- DO NOT invent visual or acoustic findings that were not explicitly described in text by the user.
+- If the written symptoms are insufficient or ambiguous to form a confident diagnosis, set status to "clarification_needed" and ask targeted questions rather than inventing findings.`
+    : (hasMedia
+      ? `${modalityInstructions[modality] || 'Analyze the attached media only for evidence supported by its content.'}${mediaMime ? ` Media MIME type: ${mediaMime}.` : ''}`
+      : 'NO MEDIA ATTACHED: Base diagnosis on reported symptoms.');
 
   const isImageInput = hasMedia && (inputType === 'image' || (mediaMime && mediaMime.startsWith('image/')));
 

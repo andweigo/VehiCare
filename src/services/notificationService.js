@@ -14,6 +14,17 @@ let lastLatestUnread = null;
 let alertedToastIds = new Set();
 let cachedPreferences = null;
 
+// Eagerly restore cached preferences on module initialization
+AsyncStorage.getItem(PREFS_STORAGE_KEY)
+  .then(stored => {
+    if (stored) {
+      try {
+        cachedPreferences = { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+      } catch (_) {}
+    }
+  })
+  .catch(() => {});
+
 export const DEFAULT_PREFERENCES = {
   push_notifications: true,
   in_app_notifications: true,
@@ -180,8 +191,14 @@ export const fetchNotifications = async () => {
         id: String(n.id),
         type: notificationType,
         category: resolveCategory(notificationType, dataPayload),
-        title: n.title || dataPayload.title || 'Notification',
-        message: n.message || dataPayload.message || '',
+        title: n.title || dataPayload.title || dataPayload.subject || 'VehiCare Alert',
+        message:
+          n.message ||
+          dataPayload.message ||
+          dataPayload.body ||
+          dataPayload.content ||
+          dataPayload.description ||
+          (notificationType ? `New ${notificationType.replace(/_/g, ' ')} update` : 'New notification from VehiCare'),
         data: dataPayload,
         isRead: Boolean(n.is_read),
         timestamp: n.timestamp || (n.created_at ? new Date(n.created_at).getTime() : Date.now()),
@@ -256,8 +273,14 @@ export const getUnreadCount = async () => {
         id: String(rawLatest.id),
         type: notificationType,
         category: resolveCategory(notificationType, dataPayload),
-        title: rawLatest.title || dataPayload.title || 'Notification',
-        message: rawLatest.message || dataPayload.message || '',
+        title: rawLatest.title || dataPayload.title || dataPayload.subject || 'VehiCare Alert',
+        message:
+          rawLatest.message ||
+          dataPayload.message ||
+          dataPayload.body ||
+          dataPayload.content ||
+          dataPayload.description ||
+          'New notification from VehiCare - tap to view details.',
         data: dataPayload,
         isRead: false,
         timestamp:
@@ -274,11 +297,14 @@ export const getUnreadCount = async () => {
     if (Number.isInteger(count) && count >= 0) {
       if (count !== lastSynchronizedCount) {
         lastSynchronizedCount = count;
-        if (count > 0 && shouldShowPushNotification(lastLatestUnread)) {
-          if (rawLatest && lastLatestUnread) {
-            setDeviceBadgeCount(count, lastLatestUnread).catch(() => {});
+        const targetNotif = lastLatestUnread || getLatestUnreadNotification();
+        if (count > 0 && shouldShowPushNotification(targetNotif)) {
+          if (targetNotif) {
+            setDeviceBadgeCount(count, targetNotif).catch(() => {});
           } else {
             setDeviceBadgeCount(count).catch(() => {});
+            // Enqueue background fetch to enrich badge with content if available
+            fetchNotifications().catch(() => {});
           }
         } else {
           setDeviceBadgeCount(0).catch(() => {});
@@ -302,7 +328,12 @@ export const markAsRead = async id => {
     lastSynchronizedCount = null;
     const unreadCount = await getUnreadCount();
     if (typeof unreadCount === 'number') {
-      await setDeviceBadgeCount(unreadCount);
+      const remainingNotif = getLatestUnreadNotification();
+      if (remainingNotif) {
+        await setDeviceBadgeCount(unreadCount, remainingNotif);
+      } else {
+        await setDeviceBadgeCount(unreadCount);
+      }
     }
     return true;
   } catch (err) {

@@ -211,11 +211,16 @@ export const processDiagnosisRequest = async (payload) => {
           const isSynthetic = isSyntheticPlaceholder(symptoms);
           const hasUsableSymptoms = Boolean(symptoms) && !isSynthetic && symptoms.trim().length >= 5;
 
-          if (isMediaError && hasUsableSymptoms) {
+          const originalTotalBudgetMs = resolveTotalBudgetMs(inputType, Boolean(mediaBase64));
+          const remainingOverallMs = (startTime + originalTotalBudgetMs) - Date.now();
+          const minViableTextBudgetMs = 8000;
+
+          if (isMediaError && hasUsableSymptoms && remainingOverallMs >= minViableTextBudgetMs) {
             logger.warn('AI_MEDIA_FALLBACK_TO_TEXT', requestId, {
               originalErrorCode: geminiError.code,
               originalError: geminiError.message,
               symptomsLength: symptoms.length,
+              remainingOverallMs,
             });
 
             mediaFallbackUsed = true;
@@ -235,18 +240,26 @@ export const processDiagnosisRequest = async (payload) => {
               entitlements,
               historicalContext,
               diagnosticState,
+              mediaFallbackMode: true,
+              originalMediaType: inputType,
             });
 
             const fallbackTextBudgetMs = Math.min(
               resolveTotalBudgetMs('text', false),
-              Math.max(12000, (startTime + 80000) - Date.now()),
+              remainingOverallMs,
             );
+
+            logger.info('AI_MEDIA_RECOVERY_REQUEST', requestId, {
+              originalInputType: inputType,
+              fallbackInputType: 'text',
+              budgetMs: fallbackTextBudgetMs,
+            });
 
             response = await callGemini({
               prompt: fallbackPrompt,
               mediaBase64: null,
               mediaMime: null,
-              requestId: `${requestId}_fallback`,
+              requestId: `${requestId}_media_recovery`,
               requestType,
               inputType: 'text',
               startTime: Date.now(),

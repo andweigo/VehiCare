@@ -36,6 +36,7 @@ import AILimitModal from '../components/AILimitModal';
 import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
 import AiThinkingBubble from '../components/AiThinkingBubble';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import CustomToast from '../components/CustomToast';
 import DiagnosisLimitModal from '../components/DiagnosisLimitModal';
 import DiagnosticResultModal from '../components/DiagnosticResultModal';
 import NearbyShopsModal from '../components/NearbyShopsModal';
@@ -502,6 +503,12 @@ export default function AskVehiCareScreen({
   const [pendingVehicleToSwitch, setPendingVehicleToSwitch] = useState(null);
   const [showVehicleConfirmModal, setShowVehicleConfirmModal] = useState(false);
   const [showNewChatConfirmModal, setShowNewChatConfirmModal] = useState(false);
+  const [vehicleLimitToast, setVehicleLimitToast] = useState({
+    visible: false,
+    type: 'error',
+    title: '',
+    message: '',
+  });
   const [freshChatNotice, setFreshChatNotice] = useState(null);
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const activeConversationUiState = conversationUiState[currentSessionId] || {};
@@ -929,6 +936,23 @@ export default function AskVehiCareScreen({
         ],
       );
 
+      return;
+    }
+
+    const isPremium = Boolean(
+      usage?.plan === 'premium' ||
+      user?.subscription === 'premium' ||
+      user?.is_premium ||
+      user?.plan === 'premium'
+    );
+
+    if (!isPremium && selectableVehicles.length >= 1) {
+      setVehicleLimitToast({
+        visible: true,
+        type: 'error',
+        title: 'Vehicle Limit Reached',
+        message: 'Free accounts are limited to 1 registered vehicle. Upgrade to Premium to manage multiple vehicles.',
+      });
       return;
     }
 
@@ -3563,6 +3587,14 @@ export default function AskVehiCareScreen({
         onConfirm={confirmNewChat}
         onCancel={() => setShowNewChatConfirmModal(false)}
       />
+
+      <CustomToast
+        visible={vehicleLimitToast.visible}
+        type={vehicleLimitToast.type}
+        title={vehicleLimitToast.title}
+        message={vehicleLimitToast.message}
+        onHide={() => setVehicleLimitToast(t => ({ ...t, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -3652,6 +3684,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Outfit-Bold',
     letterSpacing: 0.2,
   },
+  headerIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   headerMenuButton: {
     width: 38,
     height: 38,
@@ -3659,6 +3700,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   headerButtonPressed: {
     opacity: 0.72,
