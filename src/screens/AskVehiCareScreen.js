@@ -2519,7 +2519,13 @@ export default function AskVehiCareScreen({
                         );
                       })()}
 
-                      {item.diagnosisData && (
+                      {Boolean(
+                        item.diagnosisData &&
+                        item.diagnosisData.type === 'diagnostic' &&
+                        item.diagnosisData.status === 'diagnosis_ready' &&
+                        Array.isArray(item.diagnosisData.possible_causes) &&
+                        item.diagnosisData.possible_causes.length > 0
+                      ) && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                           <TouchableOpacity
                             style={{

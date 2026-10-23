@@ -1,23 +1,39 @@
 import { extractEstablishedFacts, extractPreviousQuestions } from '../services/question-dedup.js';
+import {
+  isContextDependentFollowUp,
+  isMaintenanceOrHowToIntent,
+  isNoDefectClarification,
+} from '../utils/symptom-normalizer.js';
 
 export const isGeneralQuestion = (symptomsText, history = [], diagnosticState = null) => {
   if (!symptomsText || typeof symptomsText !== 'string') return true;
 
-  // If there is prior conversation history with diagnostic turns or active diagnostic state,
-  // do NOT classify as general question: it is a diagnostic follow-up/clarification answer!
-  const hasHistory = Array.isArray(history) && history.length > 0;
-  const hasDiagnosticAssessments = Array.isArray(diagnosticState?.assessments) && diagnosticState.assessments.length > 0;
-  if (hasHistory || hasDiagnosticAssessments) {
-    return false;
+  // 1. Explicit no-defect clarifications and maintenance/DIY how-to requests are always general/maintenance
+  if (isNoDefectClarification(symptomsText) || isMaintenanceOrHowToIntent(symptomsText)) {
+    return true;
   }
 
   const text = symptomsText.toLowerCase().trim();
   const wordCount = text.split(/\s+/).length;
 
-  const greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'kumusta', 'kamusta', 'help'];
-  if (greetings.includes(text) || (wordCount <= 2 && greetings.some(g => text.startsWith(g)))) {
+  const greetings = [
+    'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
+    'kumusta', 'kamusta', 'help', 'salamat', 'thank you', 'thanks'
+  ];
+  if (greetings.includes(text) || (wordCount <= 5 && greetings.some(g => text.startsWith(g) || text.includes(g)))) {
     return true;
   }
+
+  // 2. If there is prior conversation history or active diagnostic assessments:
+  const hasHistory = Array.isArray(history) && history.length > 0;
+  const hasDiagnosticAssessments = Array.isArray(diagnosticState?.assessments) && diagnosticState.assessments.length > 0;
+  if (hasHistory || hasDiagnosticAssessments) {
+    // If it's a context-dependent short follow-up to a diagnostic question (e.g. "yes", "front right", "only when cold"):
+    if (isContextDependentFollowUp(symptomsText)) {
+      return false;
+    }
+  }
+
   const generalKeywords = [
     'what is', 'what are', 'how to maintain', 'how do i maintain', 'how does', 'why do',
     'function of', 'purpose of', 'schedule', 'maintenance tip', 'explain', 'meaning of'
@@ -38,6 +54,10 @@ export const isGeneralQuestion = (symptomsText, history = [], diagnosticState = 
   const hasGeneralWord = generalKeywords.some(kw => text.includes(kw));
   if (hasGeneralWord && wordCount <= 12) {
     return true;
+  }
+
+  if (hasHistory || hasDiagnosticAssessments) {
+    return false;
   }
 
   return false;
@@ -92,26 +112,32 @@ export const buildCompactGeneralPrompt = ({ vehicleContext, symptoms, userLangua
   const langInstruction = matchLanguage(userLanguage);
   const historyText = formatHistory(history, 3);
 
-  return `You are VehiCare AI, a helpful automotive maintenance and general vehicle assistant.
+  return `You are VehiCare AI, a knowledgeable, friendly automotive maintenance and vehicle assistant.
 
 VEHICLE: ${vYear} ${vBrand} ${vModel} (${vType})
 ${langInstruction}
 ${historyText}
 
-USER QUESTION:
+USER QUESTION / REQUEST:
 "${symptoms}"
 
 INSTRUCTIONS:
 1. Stay strictly within the vehicle/automotive domain.
-2. Tailor your answer specifically to the selected vehicle (${vYear} ${vBrand} ${vModel} - ${vType}) and its vehicle type, components, and specifications. Never give generic or mismatched advice for a different vehicle type or model.
-3. Provide a helpful, clear, and concise answer.
-4. Return ONLY valid JSON format. No markdown code blocks or extra text outside JSON.
+2. Tailor your answer specifically to the selected vehicle (${vYear} ${vBrand} ${vModel} - ${vType}) and its exact vehicle type, components, and specifications. Never give generic or mismatched advice for a different vehicle type or model.
+3. If the user asks for maintenance, component replacement, DIY steps, or part changes (e.g. changing bulbs, oil, fluids, tires, spark plugs), provide:
+   - Specific part/fluid specifications for ${vYear} ${vBrand} ${vModel} (e.g. bulb socket type/wattage, oil viscosity, torque spec).
+   - Tools and materials needed.
+   - Clear, numbered step-by-step instructions.
+   - Important practical tips and precautions.
+   - Do NOT include diagnostic causes, fault likelihoods, or medical-style hazard warnings when nothing is broken.
+4. If the user asks a general automotive question, feature explanation, or greeting, provide a friendly, helpful, and concise answer.
+5. Return ONLY valid JSON format. No markdown code blocks or extra text outside JSON.
 
 JSON RESPONSE FORMAT:
 {
   "type": "conversation",
   "status": "conversation",
-  "response": "Your concise, helpful response here."
+  "response": "Your structured, helpful response here formatted with clean markdown."
 }`;
 };
 
@@ -308,8 +334,17 @@ LATEST USER FOLLOW-UP / ANSWER:
 FOLLOW-UP CONTINUITY INSTRUCTIONS:
 - The user is answering a clarification question or adding details to the ROOT COMPLAINT.
 - Short answers like "yes", "no", "only when hot", "after accelerating", "front right", or "when braking" MUST be interpreted strictly in the context of the clarification question asked and the root complaint.
-- Do NOT abandon the original diagnostic topic or switch to a generic conversation.
-- Maintain diagnostic continuity and refine causes, severity, and next steps.${progressiveInstructions}`
+- INTENT RE-CLASSIFICATION & MAINTENANCE OVERRIDE:
+  * If the user clarifies that nothing is broken, or that they simply want to perform routine maintenance, change, replace, install, or upgrade a component (e.g. "nothing lang, i just want to change it", "wala lang gusto ko lang palitan", "routine upgrade", "just want to replace bulb"):
+    - Immediately OVERRIDE diagnostic continuity. Do NOT force a mechanical fault or invent causes (NEVER list "Desire for better illumination" or treat wanting to change/upgrade a part as a mechanical defect).
+    - Do NOT provide medical-style driving warnings or hazard restrictions for non-existent faults.
+    - Set type="conversation", status="conversation".
+    - Provide a structured DIY guide tailored specifically to ${vYear} ${vBrand} ${vModel}:
+      1. Specific part/bulb/fluid specifications for ${vYear} ${vBrand} ${vModel}.
+      2. Tools and materials needed.
+      3. Step-by-step instructions.
+      4. Important practical tips and precautions.
+- Otherwise, maintain diagnostic continuity and refine causes, severity, and next steps.${progressiveInstructions}`
     : `CURRENT USER SYMPTOM / ISSUE:
 "${symptoms}"${progressiveInstructions}`;
 
@@ -413,7 +448,33 @@ ${tierInstruction}
 
 DOMAIN & SAFETY RULES (APPLIES STRICTLY TO ALL TIERS):
 - Focus strictly on vehicle diagnostics, repairs, maintenance, and safety.
-- Use type="conversation" for greetings/general questions without symptoms; type="diagnostic" for faults/symptoms/sounds/lights/leaks.
+- THREE DISTINCT INTENT MODES:
+  1. MALFUNCTION / DEFECT DIAGNOSIS (type="diagnostic"):
+     * Use ONLY when the user reports an actual vehicle malfunction, breakdown, abnormal noise (clicking, squeaking, knocking, grinding), fluid leak, warning light, smoke, smell, or abnormal vehicle behavior.
+  2. MAINTENANCE / DIY REPLACEMENT / HOW-TO GUIDE (type="conversation"):
+     * Use when the user asks how to perform routine maintenance, change, replace, install, clean, or upgrade a component (e.g. changing headlight bulbs, oil change, brake pad replacement, battery installation, tire rotation), OR
+     * When the user clarifies that nothing is broken/faulty (e.g. "nothing lang, i just want to change it", "walang sira, gusto ko lang palitan", "routine upgrade", "just changing bulb").
+     * Do NOT invent mechanical causes (NEVER list "Desire for better illumination" or treat wanting to change a part as a mechanical defect)!
+     * Do NOT provide driving hazard or safety warnings when nothing is broken!
+     * Provide a helpful, structured step-by-step DIY guide tailored specifically to ${vYear} ${vBrand} ${vModel}:
+       - Specific part/bulb/fluid specifications for ${vYear} ${vBrand} ${vModel} (e.g. socket type, wattage, viscosity, capacity).
+       - Tools and materials required.
+       - Clear, numbered step-by-step replacement instructions.
+       - Practical pro-tips and safety precautions (e.g. do not touch halogen glass with bare fingers, let engine cool).
+     * Return format:
+       {
+         "type": "conversation",
+         "status": "conversation",
+         "response": "Your structured, step-by-step guide formatted with clean markdown headings and bullet points."
+       }
+  3. GENERAL CONVERSATION & GREETINGS (type="conversation"):
+     * Greetings, appreciation, general vehicle questions, specifications, or automotive advice without defects.
+     * Return format:
+       {
+         "type": "conversation",
+         "status": "conversation",
+         "response": "Friendly, direct answer tailored to ${vYear} ${vBrand} ${vModel}."
+       }
 - Separate reported symptoms from media observations; treat inferences as possible causes, not confirmed failures.
 - Recommend professional assistance only when severity is HIGH/CRITICAL or specialist tools/skills are required.
 - VEHICLE TYPE AWARENESS (${vType}):

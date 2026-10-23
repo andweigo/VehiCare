@@ -51,9 +51,9 @@ export const processDiagnosisRequest = async (payload) => {
   } = diagnosis;
   const language = userContext?.language || 'en';
 
-  const isRepair = !mediaBase64 && isRepairGuideIntent(symptoms);
-  const isGeneral = !mediaBase64 && !isRepair && isGeneralQuestion(symptoms, history, diagnosticState);
-  const requestType = isRepair ? 'repair' : (isGeneral ? 'conversation' : 'diagnostic');
+  const isGeneral = !mediaBase64 && isGeneralQuestion(symptoms, history, diagnosticState);
+  const isRepair = !mediaBase64 && !isGeneral && isRepairGuideIntent(symptoms);
+  const requestType = isGeneral ? 'conversation' : (isRepair ? 'repair' : 'diagnostic');
 
   logger.info('AI_REQUEST_RECEIVED', requestId, {
     inputType,
