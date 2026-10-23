@@ -95,45 +95,7 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
     };
   }
 
-  // 5. Media Processing / Upload Failures (422, 400, or media-specific codes)
-  const isMediaProcessingFailure =
-    status === 422 ||
-    status === 400 ||
-    reason === 'INVALID_MEDIA' ||
-    reason === 'MEDIA_UPLOAD_FAILED' ||
-    reason === 'MEDIA_PROCESSING_FAILED' ||
-    reason === 'MEDIA_UPLOAD_TIMEOUT' ||
-    reason === 'MEDIA_PROCESSING_TIMEOUT' ||
-    rawBody.includes('failed to upload');
-
-  if (isMediaProcessingFailure || ['image', 'video', 'voice', 'audio'].includes(inputType)) {
-    if (inputType === 'image') {
-      return {
-        message: "We couldn't process your image. Please check your connection and ensure the image is clear and in a supported format, then try again. You can also describe the vehicle issue in text.",
-        code: reason || 'IMAGE_PROCESSING_FAILED',
-        retryable: true,
-        category: 'media',
-      };
-    }
-    if (inputType === 'video') {
-      return {
-        message: "We couldn't analyze your video. Please check the supported file format, size, and duration, then try again. Alternatively, upload a photo or describe the vehicle symptoms.",
-        code: reason || 'VIDEO_PROCESSING_FAILED',
-        retryable: true,
-        category: 'media',
-      };
-    }
-    if (inputType === 'voice' || inputType === 'audio') {
-      return {
-        message: "We couldn't process your voice recording. Please try recording again in a quiet environment or describe the vehicle issue in text.",
-        code: reason || 'VOICE_PROCESSING_FAILED',
-        retryable: true,
-        category: 'media',
-      };
-    }
-  }
-
-  // 6. Temporary Provider Outage / High Demand (500, 502, 503, 504, 429, ERR_BAD_RESPONSE)
+  // 5. Temporary Provider Outage / High Demand (500, 502, 503, 504, 429, ERR_BAD_RESPONSE)
   const isTemporaryIssue =
     status === 503 ||
     status === 504 ||
@@ -158,6 +120,44 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
       retryable: true,
       category: 'temporary',
     };
+  }
+
+  // 6. Media Processing / Upload Failures (422, 400, or media-specific codes)
+  const isMediaProcessingFailure =
+    status === 422 ||
+    status === 400 ||
+    reason === 'INVALID_MEDIA' ||
+    reason === 'MEDIA_UPLOAD_FAILED' ||
+    reason === 'MEDIA_PROCESSING_FAILED' ||
+    reason === 'MEDIA_UPLOAD_TIMEOUT' ||
+    reason === 'MEDIA_PROCESSING_TIMEOUT' ||
+    rawBody.includes('failed to upload');
+
+  if (isMediaProcessingFailure && ['image', 'video', 'voice', 'audio'].includes(inputType)) {
+    if (inputType === 'image') {
+      return {
+        message: "We couldn't process your image. Please check your connection and ensure the image is clear and in a supported format, then try again. You can also describe the vehicle issue in text.",
+        code: reason || 'IMAGE_PROCESSING_FAILED',
+        retryable: true,
+        category: 'media',
+      };
+    }
+    if (inputType === 'video') {
+      return {
+        message: "We couldn't analyze your video. Please check the supported file format, size, and duration, then try again. Alternatively, upload a photo or describe the vehicle symptoms.",
+        code: reason || 'VIDEO_PROCESSING_FAILED',
+        retryable: true,
+        category: 'media',
+      };
+    }
+    if (inputType === 'voice' || inputType === 'audio') {
+      return {
+        message: "We couldn't process your voice recording. Please try recording again in a quiet environment or describe the vehicle issue in text.",
+        code: reason || 'VOICE_PROCESSING_FAILED',
+        retryable: true,
+        category: 'media',
+      };
+    }
   }
 
   // 7. General Fallback

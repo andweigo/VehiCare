@@ -1,4 +1,5 @@
 import { getAiErrorMessage } from '../src/utils/aiErrorHelper';
+import { formatAiResponseText } from '../src/screens/AskVehiCareScreen';
 
 describe('ChatErrorHandling & Contextual Messaging', () => {
   it('returns exact contextual guidance for image failure', () => {
@@ -152,5 +153,57 @@ describe('ChatErrorHandling & Contextual Messaging', () => {
 
     const premiumResult = getAiErrorMessage({ error: quotaError, inputType: 'text', plan: 'premium' });
     expect(premiumResult.message).toContain('consultation limit for this billing period');
+  });
+
+  it('correctly classifies 503 provider outages on image requests as temporary issue rather than media error', () => {
+    const error503OnImage = {
+      response: {
+        status: 503,
+        data: {
+          error: {
+            code: 'AI_SERVICE_UNAVAILABLE',
+            message: 'Our diagnostic service is experiencing high demand. Please try again in a few moments.',
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error: error503OnImage, inputType: 'image' });
+    expect(result.category).toBe('temporary');
+    expect(result.message).toBe(
+      "VehiCare couldn't complete your request at this time due to a temporary processing issue. Please try again shortly."
+    );
+    expect(result.retryable).toBe(true);
+  });
+
+  it('formatAiResponseText returns error failure message when data is null, not a welcome greeting', () => {
+    const formatted = formatAiResponseText(null);
+    expect(formatted).toBe('VehiCare AI was unable to generate a response. Please try again.');
+    expect(formatted).not.toContain('How can I assist you with your vehicle today?');
+  });
+
+  it('formatAiResponseText formats vehicle mismatch cleanly with prompt to clarify or switch', () => {
+    const mismatchData = {
+      type: 'vehicle_mismatch',
+      status: 'vehicle_mismatch',
+      image_vehicle_match: 'possible_mismatch',
+      response: 'The uploaded photo appears to depict a Motorcycle, which does not match your Lamborghini Urus profile.',
+    };
+
+    const formatted = formatAiResponseText(mismatchData);
+    expect(formatted).toContain('Motorcycle');
+    expect(formatted).toContain('Lamborghini Urus');
+  });
+
+  it('formatAiResponseText formats vehicle switch confirmation cleanly', () => {
+    const switchData = {
+      type: 'vehicle_switch_confirmation_required',
+      status: 'vehicle_switch_confirmation_required',
+      response: 'Your inquiry mentions a Ferrari F8, which is different from your selected Lamborghini Urus. Would you like to switch vehicle profiles or start a separate consultation?',
+    };
+
+    const formatted = formatAiResponseText(switchData);
+    expect(formatted).toContain('Ferrari F8');
+    expect(formatted).toContain('switch vehicle profile');
   });
 });

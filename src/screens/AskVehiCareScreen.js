@@ -183,12 +183,38 @@ export const getRandomOpener = () => {
 
 export const formatAiResponseText = (data) => {
   if (!data) {
-    return 'How can I assist you with your vehicle today?';
+    return 'VehiCare AI was unable to generate a response. Please try again.';
   }
 
   // Check out of scope or pivot rejection
   if (data?.type === 'out_of_scope' || data?.status === 'out_of_scope') {
     return STANDARD_OUT_OF_SCOPE_MSG;
+  }
+
+  // Vehicle mismatch detected
+  const isVehicleMismatch =
+    data?.type === 'vehicle_mismatch' ||
+    data?.status === 'vehicle_mismatch' ||
+    data?.image_vehicle_match === 'possible_mismatch';
+
+  if (isVehicleMismatch) {
+    const text = (typeof data?.response === 'string' && data.response.trim())
+      || (typeof data?.summary === 'string' && data.summary.trim())
+      || 'The uploaded photo appears to depict a different vehicle than your active vehicle profile. Would you like to upload the correct media, switch your active vehicle profile, or start a separate consultation?';
+    return text;
+  }
+
+  // Vehicle switch confirmation required
+  const isVehicleSwitchRequired =
+    data?.type === 'vehicle_switch_confirmation_required' ||
+    data?.status === 'vehicle_switch_confirmation_required' ||
+    data?.vehicle_context_status === 'different_vehicle_mentioned';
+
+  if (isVehicleSwitchRequired) {
+    const text = (typeof data?.response === 'string' && data.response.trim())
+      || (typeof data?.summary === 'string' && data.summary.trim())
+      || 'Your question appears to refer to a different vehicle than your active vehicle profile. Would you like to switch your vehicle profile or start a separate consultation so maintenance records stay accurate?';
+    return text;
   }
 
   if (typeof data === 'string') {
@@ -612,7 +638,7 @@ export default function AskVehiCareScreen({
   }, [selectedQuestion, answeredQuestionIds, isSending]);
 
   useEffect(() => {
-    if (isChatLoading) return;
+    if (isChatLoading || isSending || isSendingLocally) return;
     const freshWelcome = getDynamicWelcomeText();
     if (chatMessages.length === 0) {
       addMessage({
@@ -637,7 +663,7 @@ export default function AskVehiCareScreen({
         message: freshWelcome,
       });
     }
-  }, [isChatLoading, chatMessages, getDynamicWelcomeText, addMessage, updateMessage]);
+  }, [isChatLoading, isSending, isSendingLocally, chatMessages, getDynamicWelcomeText, addMessage, updateMessage]);
 
   const confirmNewChat = useCallback(() => {
     setShowNewChatConfirmModal(false);
@@ -1147,9 +1173,14 @@ export default function AskVehiCareScreen({
   };
 
   const handleDiagnosticResponse = async resultData => {
-    const isDiagnostic = resultData?.type === 'diagnostic';
-    const isClarificationNeeded = resultData?.status === 'needs_clarification'
-      || (resultData?.clarification_questions && resultData.clarification_questions.length > 0);
+    const isMismatch = resultData?.type === 'vehicle_mismatch' || resultData?.status === 'vehicle_mismatch' || resultData?.image_vehicle_match === 'possible_mismatch';
+    const isSwitchRequired = resultData?.type === 'vehicle_switch_confirmation_required' || resultData?.status === 'vehicle_switch_confirmation_required' || resultData?.vehicle_context_status === 'different_vehicle_mentioned';
+
+    const isDiagnostic = resultData?.type === 'diagnostic' && !isMismatch && !isSwitchRequired;
+    const isClarificationNeeded = !isMismatch && !isSwitchRequired && (
+      resultData?.status === 'needs_clarification'
+      || (resultData?.clarification_questions && resultData.clarification_questions.length > 0)
+    );
 
     if (isDiagnostic || isClarificationNeeded) {
       if (!isAuthenticated) {
@@ -1160,7 +1191,7 @@ export default function AskVehiCareScreen({
       }
     }
 
-    if (resultData?.status === 'diagnosis_ready' || (!isClarificationNeeded && isDiagnostic)) {
+    if (!isMismatch && !isSwitchRequired && (resultData?.status === 'diagnosis_ready' || (!isClarificationNeeded && isDiagnostic))) {
       if (screenMountedRef.current) setSelectedDiagnosis(resultData);
 
       const diagProblem =
@@ -1236,6 +1267,26 @@ export default function AskVehiCareScreen({
 
   const sendMessage = async (overrideText = null) => {
     const isCustomOverride = typeof overrideText === 'string';
+
+    if (isCustomOverride) {
+      const lower = overrideText.toLowerCase();
+      if (lower.includes('switch vehicle') || lower.includes('switch profile')) {
+        setShowVehicleDropdown(true);
+        setSelectedQuestion(null);
+        return;
+      }
+      if (lower.includes('upload correct') || lower.includes('upload photo') || lower.includes('upload media')) {
+        setShowMediaPickerModal(true);
+        setSelectedQuestion(null);
+        return;
+      }
+      if (lower.includes('start separate') || lower.includes('separate consultation') || lower.includes('new consultation')) {
+        confirmNewChat();
+        setSelectedQuestion(null);
+        return;
+      }
+    }
+
     const textToSend = isCustomOverride ? overrideText : message;
     const trimmed = textToSend.trim();
     if ((!trimmed && !attachedImage && !attachedVideo && !attachedAudio) || isSendingLocally) {

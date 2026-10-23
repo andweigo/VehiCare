@@ -327,12 +327,24 @@ export const processDiagnosisRequest = async (payload) => {
 
 
       const type = typeof jsonObject.type === 'string' ? jsonObject.type.toLowerCase() : '';
-      const isConversationResponse =
+      const isMismatchResponse =
+        type === 'vehicle_mismatch' ||
+        jsonObject.status === 'vehicle_mismatch' ||
+        jsonObject.image_vehicle_match === 'possible_mismatch' ||
+        jsonObject.vehicle_context_status === 'mismatch';
+
+      const isSwitchConfirmationResponse =
+        type === 'vehicle_switch_confirmation_required' ||
+        jsonObject.status === 'vehicle_switch_confirmation_required' ||
+        jsonObject.vehicle_context_status === 'different_vehicle_mentioned';
+
+      const isConversationResponse = !isMismatchResponse && !isSwitchConfirmationResponse && (
         type === 'conversation' ||
         jsonObject.status === 'conversation' ||
         jsonObject.type === 'out_of_scope' ||
         jsonObject.status === 'out_of_scope' ||
-        (Boolean(jsonObject.response) && !jsonObject.summary && (!Array.isArray(jsonObject.possible_causes) || jsonObject.possible_causes.length === 0));
+        (Boolean(jsonObject.response) && !jsonObject.summary && (!Array.isArray(jsonObject.possible_causes) || jsonObject.possible_causes.length === 0))
+      );
 
       // 9. Validate & Normalize Output
       let finalDiagnosisData = null;
@@ -350,22 +362,77 @@ export const processDiagnosisRequest = async (payload) => {
           response: textResponse.slice(0, 3000),
         };
       } else {
-        // Pre-normalize diagnostic structure to avoid superficial schema mismatches
-        jsonObject.type = 'diagnostic';
+        if (isMismatchResponse) {
+          jsonObject.type = 'vehicle_mismatch';
+          jsonObject.status = 'vehicle_mismatch';
+          jsonObject.image_vehicle_match = 'possible_mismatch';
+          jsonObject.vehicle_context_status = 'mismatch';
+          jsonObject.possible_causes = [];
+          jsonObject.maintenance_tasks = [];
+          jsonObject.smart_recommendations = [];
+          jsonObject.repair_guidance = null;
+          jsonObject.cost_breakdown = null;
+          jsonObject.estimated_cost = null;
+          if (!jsonObject.response && !jsonObject.summary) {
+            jsonObject.response = 'The uploaded photo appears to depict a different vehicle than your active vehicle profile. Would you like to upload the correct media, switch your active vehicle profile, or start a separate consultation?';
+          }
+          if (!jsonObject.summary) {
+            jsonObject.summary = jsonObject.response;
+          }
+          if (!Array.isArray(jsonObject.clarification_questions) || jsonObject.clarification_questions.length === 0) {
+            jsonObject.clarification_questions = [
+              {
+                question: 'The uploaded photo appears to depict a different vehicle. How would you like to proceed?',
+                options: ['Upload correct media', 'Switch vehicle profile', 'Start separate consultation'],
+              },
+            ];
+          }
+        } else if (isSwitchConfirmationResponse) {
+          jsonObject.type = 'vehicle_switch_confirmation_required';
+          jsonObject.status = 'vehicle_switch_confirmation_required';
+          jsonObject.vehicle_context_status = 'different_vehicle_mentioned';
+          jsonObject.possible_causes = [];
+          jsonObject.maintenance_tasks = [];
+          jsonObject.smart_recommendations = [];
+          jsonObject.repair_guidance = null;
+          jsonObject.cost_breakdown = null;
+          jsonObject.estimated_cost = null;
+          if (!jsonObject.response && !jsonObject.summary) {
+            const vName = jsonObject.mentioned_vehicle || 'a different vehicle';
+            jsonObject.response = `Your question appears to refer to ${vName}, which is different from your active profile. Would you like to switch your vehicle profile or start a separate consultation so maintenance records stay accurate?`;
+          }
+          if (!jsonObject.summary) {
+            jsonObject.summary = jsonObject.response;
+          }
+          if (!Array.isArray(jsonObject.clarification_questions) || jsonObject.clarification_questions.length === 0) {
+            jsonObject.clarification_questions = [
+              {
+                question: 'Your inquiry appears to refer to a different vehicle. How would you like to proceed?',
+                options: ['Switch vehicle profile', 'Start separate consultation', 'Continue with current vehicle'],
+              },
+            ];
+          }
+        } else {
+          // Pre-normalize diagnostic structure to avoid superficial schema mismatches
+          jsonObject.type = 'diagnostic';
+        }
 
         // 1. Apply deterministic deduplication on clarification questions
-        const rawQuestions = Array.isArray(jsonObject.clarification_questions)
-          ? jsonObject.clarification_questions
-          : [];
+        let dedupResult = { questions: [] };
+        if (!isMismatchResponse && !isSwitchConfirmationResponse) {
+          const rawQuestions = Array.isArray(jsonObject.clarification_questions)
+            ? jsonObject.clarification_questions
+            : [];
 
-        const dedupResult = filterAndSelectQuestions({
-          proposedQuestions: rawQuestions,
-          history,
-          diagnosticState,
-          symptoms,
-          rootSymptom: rootSymptom || symptoms,
-          maxClarificationTurns: 2,
-        });
+          dedupResult = filterAndSelectQuestions({
+            proposedQuestions: rawQuestions,
+            history,
+            diagnosticState,
+            symptoms,
+            rootSymptom: rootSymptom || symptoms,
+            maxClarificationTurns: 2,
+          });
+        }
 
         // Fill in follow_up_ack / diagnostic_progress if follow-up turn
         const isFollowUpTurn = Boolean(rootSymptom && rootSymptom.trim() !== symptoms.trim()) ||
@@ -406,19 +473,44 @@ export const processDiagnosisRequest = async (payload) => {
           }
         }
 
-        // If turn limit or sufficient info reached, or no questions remain:
-        if (dedupResult.questions.length === 0) {
-          jsonObject.status = 'diagnosis_ready';
-          jsonObject.clarification_questions = [];
-        } else {
-          jsonObject.clarification_questions = dedupResult.questions;
+        if (!isMismatchResponse && !isSwitchConfirmationResponse) {
+          // If turn limit or sufficient info reached, or no questions remain:
+          if (dedupResult.questions.length === 0) {
+            jsonObject.status = 'diagnosis_ready';
+            jsonObject.clarification_questions = [];
+          } else {
+            jsonObject.clarification_questions = dedupResult.questions;
+          }
+
+          if (jsonObject.status !== 'needs_clarification') {
+            jsonObject.status = 'diagnosis_ready';
+          }
         }
 
-        if (jsonObject.status !== 'needs_clarification') {
-          jsonObject.status = 'diagnosis_ready';
-        }
+        if (isMismatchResponse || isSwitchConfirmationResponse) {
+          jsonObject.summary = typeof jsonObject.summary === 'string' && jsonObject.summary.trim().length >= 5
+            ? jsonObject.summary.trim()
+            : (typeof jsonObject.response === 'string' && jsonObject.response.trim().length >= 5
+              ? jsonObject.response.trim()
+              : (isMismatchResponse ? 'Vehicle mismatch detected between uploaded media and selected vehicle profile.' : 'Inquiry refers to a different vehicle profile.'));
 
-        if (jsonObject.status === 'needs_clarification') {
+          jsonObject.response = typeof jsonObject.response === 'string' && jsonObject.response.trim().length >= 5
+            ? jsonObject.response.trim()
+            : jsonObject.summary;
+
+          const rawSev = String(jsonObject.severity || 'LOW').toUpperCase();
+          jsonObject.severity = ['LOW', 'MODERATE', 'HIGH', 'CRITICAL'].includes(rawSev) ? rawSev : 'LOW';
+
+          jsonObject.urgency = typeof jsonObject.urgency === 'string' && jsonObject.urgency.trim()
+            ? jsonObject.urgency.trim()
+            : 'Clarify vehicle profile before proceeding with diagnostics.';
+
+          if (!Array.isArray(jsonObject.recommended_actions) || jsonObject.recommended_actions.length === 0) {
+            jsonObject.recommended_actions = isMismatchResponse
+              ? ['Upload correct photo of current vehicle or switch to matching vehicle profile.']
+              : ['Switch to corresponding vehicle profile or start a separate consultation.'];
+          }
+        } else if (jsonObject.status === 'needs_clarification') {
           const ack = jsonObject.follow_up_ack || '';
           const prog = jsonObject.diagnostic_progress || '';
           const qText = jsonObject.clarification_questions?.[0]?.question || 'Please provide more details.';
@@ -506,12 +598,15 @@ export const processDiagnosisRequest = async (payload) => {
           diagnosticData.clarification_questions = normalizeClarificationQuestions(diagnosticData.clarification_questions);
           diagnosticData.maintenance_tasks = normalizeMaintenanceTasks(diagnosticData.maintenance_tasks, vehicleContext);
           diagnosticData.smart_recommendations = normalizeSmartRecommendations(diagnosticData.smart_recommendations, vehicleContext);
-          if (diagnosticData.status === 'needs_clarification') {
+          if (diagnosticData.status === 'needs_clarification' || isMismatchResponse || isSwitchConfirmationResponse) {
             diagnosticData.maintenance_tasks = [];
             diagnosticData.smart_recommendations = [];
             diagnosticData.repair_guidance = null;
             diagnosticData.cost_breakdown = null;
             diagnosticData.estimated_cost = null;
+          }
+          if (isMismatchResponse || isSwitchConfirmationResponse) {
+            diagnosticData.possible_causes = [];
           }
 
           // Apply Safety Rules
@@ -535,8 +630,8 @@ export const processDiagnosisRequest = async (payload) => {
         }
       }
 
-      // 10. Cache Successful Response (bypass cache if media fallback was used)
-      if (!mediaFallbackUsed) {
+      // 10. Cache Successful Response (bypass cache if media fallback, mismatch, or switch confirmation was used)
+      if (!mediaFallbackUsed && !isMismatchResponse && !isSwitchConfirmationResponse) {
         try {
           cacheService.set(cacheKeyParams, finalDiagnosisData, requestId);
         } catch (cacheSetErr) {

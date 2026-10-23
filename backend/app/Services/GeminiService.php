@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\AI\AIServiceException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -37,11 +38,12 @@ class GeminiService
          * Empty request.
          */
         if ($userMessage === '' && !$hasMedia) {
-            return [
-                'type' => 'conversation',
-                'status' => 'conversation',
-                'response' => 'Kumusta! Ako si VehiCare AI. Ano ang maipaglilingkod ko sa iyong sasakyan ngayon? / Hi! How can I help with your vehicle today?',
-            ];
+            throw new AIServiceException(
+                'EMPTY_INPUT',
+                'Please describe your vehicle symptoms or upload a photo.',
+                false,
+                422
+            );
         }
 
         /*
@@ -1283,28 +1285,21 @@ PROMPT;
         string $userMessage,
         bool $hasMedia
     ): array {
-        $vName = trim(
-            ($vehicleInfo['brand'] ?? 'Vehicle') .
-            ' ' .
-            ($vehicleInfo['model'] ?? '')
-        );
-
-        if ($hasMedia) {
-            return $this->buildDiagnosticFallback(
-                $vehicleInfo,
-                $userMessage,
-                true
+        if ($userMessage === '' && !$hasMedia) {
+            throw new AIServiceException(
+                'EMPTY_INPUT',
+                'Please describe your vehicle symptoms or upload a photo.',
+                false,
+                422
             );
         }
 
-        return [
-            'type' => 'conversation',
-            'status' => 'conversation',
-            'response' =>
-                "Hi! I'm VehiCare AI, ready to help with your {$vName}. " .
-                "You can ask me vehicle questions, maintenance advice, " .
-                "or report unusual sounds, warning lights, or symptoms.",
-        ];
+        throw new AIServiceException(
+            'AI_SERVICE_UNAVAILABLE',
+            'VehiCare AI is temporarily unavailable. Your existing vehicle records are safe; please try again shortly.',
+            true,
+            503
+        );
     }
 
     /**

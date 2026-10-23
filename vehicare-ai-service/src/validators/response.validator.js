@@ -104,8 +104,8 @@ export const costBreakdownSchema = z.object({
 }).optional().nullable();
 
 export const diagnosticOutputSchema = z.object({
-  type: z.literal('diagnostic'),
-  status: z.enum(['diagnosis_ready', 'needs_clarification']),
+  type: z.enum(['diagnostic', 'vehicle_mismatch', 'vehicle_switch_confirmation_required']),
+  status: z.enum(['diagnosis_ready', 'needs_clarification', 'vehicle_mismatch', 'vehicle_switch_confirmation_required']),
   plan_tier: z.string().optional(),
   confidence: confidenceSchema.optional(),
   follow_up_ack: z.string().max(1000).optional().nullable(),
@@ -126,6 +126,8 @@ export const diagnosticOutputSchema = z.object({
     confidence: z.string().max(50).optional().nullable(),
     details: z.string().max(500).optional().nullable(),
   }).optional().nullable(),
+  vehicle_context_status: z.enum(['match', 'mismatch', 'uncertain', 'different_vehicle_mentioned', 'not_applicable']).optional(),
+  mentioned_vehicle: z.string().max(100).optional().nullable(),
   severity: z.enum(['LOW', 'MODERATE', 'HIGH', 'CRITICAL']).optional(),
   urgency: z.string().min(1).max(500).optional(),
   possible_causes: z.array(possibleCauseSchema).max(5).optional().default([]),
@@ -157,13 +159,13 @@ export const diagnosticOutputSchema = z.object({
     });
   }
 
-  if (value.status === 'needs_clarification'
+  if ((value.status === 'needs_clarification' || value.status === 'vehicle_mismatch' || value.status === 'vehicle_switch_confirmation_required')
     && !value.response
     && !value.summary) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['response'],
-      message: 'A clarification response must include an explanation.',
+      message: 'A clarification, mismatch, or vehicle switch response must include an explanation.',
     });
   }
 

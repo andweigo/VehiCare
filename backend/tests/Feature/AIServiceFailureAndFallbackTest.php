@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Diagnostic;
+use App\Models\MaintenanceRecord;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleBrand;
@@ -203,5 +205,105 @@ class AIServiceFailureAndFallbackTest extends TestCase
                     'retryable' => true,
                 ],
             ]);
+    }
+
+    #[Test]
+    public function it_does_not_persist_diagnostic_or_maintenance_when_vehicle_mismatch_is_detected()
+    {
+        Sanctum::actingAs($this->user);
+
+        $mockAi = Mockery::mock(AIServiceClient::class);
+        $mockAi->shouldReceive('analyzeSymptoms')
+            ->once()
+            ->andReturn([
+                'type' => 'vehicle_mismatch',
+                'status' => 'vehicle_mismatch',
+                'image_vehicle_match' => 'possible_mismatch',
+                'vehicle_context_status' => 'mismatch',
+                'response' => 'The uploaded photo appears to depict a motorcycle, which does not match your Toyota Corolla.',
+                'summary' => 'Vehicle mismatch detected between uploaded photo and vehicle profile.',
+                'maintenance_tasks' => [
+                    [
+                        'title' => 'Motorcycle Chain Inspection',
+                        'service_type' => 'Chain Drive',
+                    ],
+                ],
+                'clarification_questions' => [
+                    [
+                        'question' => 'How would you like to proceed?',
+                        'options' => ['Upload correct media', 'Switch vehicle profile', 'Start separate consultation'],
+                    ],
+                ],
+            ]);
+
+        $this->app->instance(AIServiceClient::class, $mockAi);
+
+        $response = $this->postJson('/api/diagnostics', [
+            'vehicle_id' => $this->vehicle->id,
+            'symptoms' => 'Check brake photo',
+            'input_type' => 'image',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 'success',
+                'data' => [
+                    'type' => 'vehicle_mismatch',
+                    'status' => 'vehicle_mismatch',
+                    'image_vehicle_match' => 'possible_mismatch',
+                    'vehicle_context_status' => 'mismatch',
+                    'maintenance_tasks' => [],
+                ],
+            ]);
+
+        // CRUCIAL: No Diagnostic record created, no MaintenanceRecord created!
+        $this->assertEquals(0, Diagnostic::count(), 'No diagnostic record should be saved on vehicle mismatch');
+        $this->assertEquals(0, MaintenanceRecord::count(), 'No maintenance record should be attached to vehicle on mismatch');
+    }
+
+    #[Test]
+    public function it_does_not_persist_diagnostic_or_maintenance_when_vehicle_switch_confirmation_is_required()
+    {
+        Sanctum::actingAs($this->user);
+
+        $mockAi = Mockery::mock(AIServiceClient::class);
+        $mockAi->shouldReceive('analyzeSymptoms')
+            ->once()
+            ->andReturn([
+                'type' => 'vehicle_switch_confirmation_required',
+                'status' => 'vehicle_switch_confirmation_required',
+                'vehicle_context_status' => 'different_vehicle_mentioned',
+                'mentioned_vehicle' => 'Ferrari F8',
+                'response' => 'Your question refers to a Ferrari F8, but your active vehicle is a Toyota Corolla.',
+                'summary' => 'Inquiry refers to a different vehicle profile.',
+                'maintenance_tasks' => [],
+                'clarification_questions' => [
+                    [
+                        'question' => 'How would you like to proceed?',
+                        'options' => ['Switch vehicle profile', 'Start separate consultation', 'Continue with current vehicle'],
+                    ],
+                ],
+            ]);
+
+        $this->app->instance(AIServiceClient::class, $mockAi);
+
+        $response = $this->postJson('/api/diagnostics', [
+            'vehicle_id' => $this->vehicle->id,
+            'symptoms' => 'How to change Ferrari oil?',
+            'input_type' => 'text',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'status' => 'success',
+                'data' => [
+                    'type' => 'vehicle_switch_confirmation_required',
+                    'status' => 'vehicle_switch_confirmation_required',
+                    'vehicle_context_status' => 'different_vehicle_mentioned',
+                ],
+            ]);
+
+        $this->assertEquals(0, Diagnostic::count(), 'No diagnostic record should be saved when vehicle switch confirmation is required');
+        $this->assertEquals(0, MaintenanceRecord::count(), 'No maintenance record should be saved when vehicle switch confirmation is required');
     }
 }

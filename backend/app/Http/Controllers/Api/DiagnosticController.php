@@ -754,12 +754,67 @@ class DiagnosticController extends Controller
                 );
             }
 
+            // Check for Vehicle Mismatch
+            $isMismatch = ($analysis['type'] ?? '') === 'vehicle_mismatch'
+                || ($analysis['status'] ?? '') === 'vehicle_mismatch'
+                || ($analysis['image_vehicle_match'] ?? '') === 'possible_mismatch'
+                || ($analysis['vehicle_context_status'] ?? '') === 'mismatch';
+
+            if ($isMismatch) {
+                $responseData = [
+                    ...$analysis,
+                    'type' => 'vehicle_mismatch',
+                    'status' => 'vehicle_mismatch',
+                    'image_vehicle_match' => 'possible_mismatch',
+                    'vehicle_context_status' => 'mismatch',
+                    'maintenance_tasks' => [],
+                    'smart_recommendations' => [],
+                    'possible_causes' => [],
+                    'repair_guidance' => null,
+                    'cost_breakdown' => null,
+                    'estimated_cost' => null,
+                    'plan_tier' => $entitlements['plan'],
+                    'entitlements' => $entitlements,
+                    'ai_source' => $aiSource,
+                    'remaining_consultations' => $reservation['remaining'],
+                ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
+            }
+
+            // Check for Vehicle Switch Confirmation Required
+            $isSwitchRequired = ($analysis['type'] ?? '') === 'vehicle_switch_confirmation_required'
+                || ($analysis['status'] ?? '') === 'vehicle_switch_confirmation_required'
+                || ($analysis['vehicle_context_status'] ?? '') === 'different_vehicle_mentioned';
+
+            if ($isSwitchRequired) {
+                $responseData = [
+                    ...$analysis,
+                    'type' => 'vehicle_switch_confirmation_required',
+                    'status' => 'vehicle_switch_confirmation_required',
+                    'vehicle_context_status' => 'different_vehicle_mentioned',
+                    'maintenance_tasks' => [],
+                    'smart_recommendations' => [],
+                    'possible_causes' => [],
+                    'repair_guidance' => null,
+                    'cost_breakdown' => null,
+                    'estimated_cost' => null,
+                    'plan_tier' => $entitlements['plan'],
+                    'entitlements' => $entitlements,
+                    'ai_source' => $aiSource,
+                    'remaining_consultations' => $reservation['remaining'],
+                ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
+            }
+
             $intentType = strtolower($analysis['type'] ?? 'conversation');
 
             // Conversation Intent
             if ($intentType !== 'diagnostic') {
                 $responseData = [
                         'type' => 'conversation',
+                        'status' => 'conversation',
                         'response' => $analysis['response'] ?? 'I am here to assist with your vehicle.',
                         'plan_tier' => $entitlements['plan'],
                         'entitlements' => $entitlements,

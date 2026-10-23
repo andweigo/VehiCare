@@ -197,6 +197,10 @@ class CacheService {
 
       // Never cache temporary error, busy, or unvalidated responses
       if (
+        diagnosisData.type === 'vehicle_mismatch' ||
+        diagnosisData.status === 'vehicle_mismatch' ||
+        diagnosisData.type === 'vehicle_switch_confirmation_required' ||
+        diagnosisData.status === 'vehicle_switch_confirmation_required' ||
         diagnosisData.status === 'temporarily_busy' ||
         diagnosisData.status === 'failed' ||
         diagnosisData.status === 'error' ||

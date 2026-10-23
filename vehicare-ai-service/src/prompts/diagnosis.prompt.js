@@ -234,8 +234,10 @@ export const buildDiagnosisPrompt = ({
     "details": "Brief visual notes explaining category or identity inference"
   }
 - IF "possible_mismatch":
-  * In the response summary, clearly alert the user that the uploaded image appears to depict a different vehicle (state the observed category/make/model vs the saved vehicle).
-  * Prompt the user to clarify whether they want to diagnose the vehicle shown in the image or continue with their saved ${vBrand} ${vModel}.
+  * Set "type": "vehicle_mismatch", "status": "vehicle_mismatch", and "vehicle_context_status": "mismatch".
+  * In the response and summary, clearly alert the user that the uploaded image appears to depict a different vehicle (state the observed category/make/model vs the saved vehicle).
+  * DO NOT generate maintenance tasks, smart recommendations, repair guidance, or cost breakdown for the wrong vehicle. Set "maintenance_tasks": [], "smart_recommendations": [], "possible_causes": [], "repair_guidance": null, "cost_breakdown": null.
+  * Provide clarification options asking the user to choose: "Upload correct media", "Switch vehicle profile", or "Start separate consultation".
   * Never automatically claim an uncertain image is the saved vehicle.`
     : '';
 
@@ -309,7 +311,13 @@ FOLLOW-UP CONTINUITY INSTRUCTIONS:
 - Do NOT link this diagnosis to any saved vehicle maintenance schedule.`
     : `SAVED VEHICLE PROFILE: ${vYear} ${vBrand} ${vModel} (${vType})
 - Tailor all diagnostic assessments, probable causes, component terminology, safe DIY checks, and follow-up responses specifically to this selected ${vYear} ${vBrand} ${vModel} (${vType}).
-- Never reference parts or systems that do not exist on a ${vType} (${vYear} ${vBrand} ${vModel}).`;
+- Never reference parts or systems that do not exist on a ${vType} (${vYear} ${vBrand} ${vModel}).
+- If the user explicitly asks about or describes a completely different vehicle (e.g. asking about a motorcycle, truck, or a different car make/model like Ferrari or Honda Civic when the selected vehicle is ${vYear} ${vBrand} ${vModel}):
+  * DO NOT silently switch context or apply maintenance/diagnostic records to the selected vehicle!
+  * Set type: "vehicle_switch_confirmation_required", status: "vehicle_switch_confirmation_required", vehicle_context_status: "different_vehicle_mentioned", mentioned_vehicle: "<detected make/model/type>".
+  * Set maintenance_tasks: [], smart_recommendations: [], repair_guidance: null, cost_breakdown: null, possible_causes: [].
+  * In summary and response, clearly state that the question refers to a different vehicle (<detected make/model/type>) than the active profile (${vYear} ${vBrand} ${vModel}).
+  * Set clarification_questions with options: ["A. Switch vehicle profile", "B. Start separate consultation", "C. Continue with current vehicle"].`;
 
   const tierInstruction = isPremium
     ? `SUBSCRIPTION TIER: PREMIUM — ADVANCED VEHICLE CARE
@@ -420,6 +428,31 @@ For CONVERSATION:
   "type": "conversation",
   "status": "conversation",
   "response": "Helpful, friendly AI response"
+}
+
+When a vehicle mismatch is detected in media:
+{
+  "type": "vehicle_mismatch",
+  "status": "vehicle_mismatch",
+  "vehicle_context_status": "mismatch",
+  "response": "The uploaded photo appears to depict a [Vehicle Category/Make/Model], which does not match your currently selected vehicle profile (${vYear} ${vBrand} ${vModel}). Would you like to upload the correct media, switch your active vehicle profile, or start a separate consultation?",
+  "summary": "Vehicle mismatch detected between uploaded media and active vehicle profile.",
+${imageClarificationFields}  "clarification_questions": [
+    { "question": "How would you like to proceed?", "options": ["Upload correct media", "Switch vehicle profile", "Start separate consultation"] }
+  ]
+}
+
+When a different vehicle is mentioned in text:
+{
+  "type": "vehicle_switch_confirmation_required",
+  "status": "vehicle_switch_confirmation_required",
+  "vehicle_context_status": "different_vehicle_mentioned",
+  "mentioned_vehicle": "Name of mentioned vehicle",
+  "response": "It looks like your question is about a different vehicle than your active profile (${vYear} ${vBrand} ${vModel}). Would you like to switch your vehicle profile or start a separate consultation so maintenance records stay accurate?",
+  "summary": "Inquiry refers to a different vehicle than active vehicle profile.",
+  "clarification_questions": [
+    { "question": "How would you like to proceed?", "options": ["Switch vehicle profile", "Start separate consultation", "Continue with current vehicle"] }
+  ]
 }
 
 When essential information is missing and a safe assessment is not yet possible, use this clarification-only response:
