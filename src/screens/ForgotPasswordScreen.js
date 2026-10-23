@@ -74,6 +74,8 @@ const ForgotPasswordScreen = ({ navigation }) => {
           navigation.navigate('OtpVerification', {
             email: trimmedEmail,
             purpose: 'password_reset',
+            cooldown_seconds: response?.cooldown_seconds || 60,
+            expires_in_seconds: response?.expires_in_seconds || 600,
           });
         }, 1500);
       } else {

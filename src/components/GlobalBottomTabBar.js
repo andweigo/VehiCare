@@ -12,6 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
+import { consumePendingPushNotification } from '../services/deviceBadgeService';
 import notificationService, { NOTIFICATION_READ_STATE_CHANGED } from '../services/notificationService';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -123,22 +124,66 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
   useEffect(() => {
     loadUnread();
     const timer = setInterval(loadUnread, 10000);
+
+    const handlePushOpen = async payload => {
+      const fallback = notificationService.getLatestUnreadNotification?.() || null;
+      const resolved = payload && (payload.id || payload.title || payload.message) ? payload : fallback;
+      if (!resolved) return;
+
+      const notifId = resolved.id ? String(resolved.id) : (fallback?.id ? String(fallback.id) : null);
+      if (notifId) {
+        notificationService.markAsRead(notifId).catch(() => {});
+      }
+
+      const tryNavigate = (attempt = 0) => {
+        if (navigationRef?.isReady?.()) {
+          navigationRef.navigate('Notifications', {
+            openNotificationId: notifId,
+            openNotification: {
+              ...fallback,
+              ...resolved,
+              id: notifId || resolved.id,
+              isRead: true,
+            },
+            _pushClickTs: Date.now(),
+          });
+        } else if (attempt < 10) {
+          setTimeout(() => tryNavigate(attempt + 1), 150);
+        }
+      };
+      tryNavigate();
+    };
+
+    const checkPendingPush = async () => {
+      const pending = await consumePendingPushNotification();
+      if (pending) {
+        handlePushOpen(pending);
+      }
+    };
+    checkPendingPush();
+
     const appStateSubscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
         loadUnread();
+        checkPendingPush();
       }
     });
     const readStateSubscription = DeviceEventEmitter.addListener(
       NOTIFICATION_READ_STATE_CHANGED,
       loadUnread,
     );
+    const pushClickSubscription = DeviceEventEmitter.addListener(
+      'vehicarePushNotificationClicked',
+      handlePushOpen,
+    );
 
     return () => {
       clearInterval(timer);
       appStateSubscription.remove();
       readStateSubscription.remove();
+      pushClickSubscription.remove();
     };
-  }, [loadUnread]);
+  }, [loadUnread, navigationRef]);
 
   useRealtimeUpdates(user?.id, {
     'Illuminate\\Notifications\\Events\\BroadcastNotificationCreated': loadUnread,

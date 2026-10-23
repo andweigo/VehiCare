@@ -15,6 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import OnboardingPagination from '../components/OnboardingPagination';
 import OnboardingSlide from '../components/OnboardingSlide';
 import { useAuth } from '../context/AuthContext';
+import { useVehicle } from '../context/VehicleContext';
+import {
+  getOnboardingCompleted,
+  saveOnboardingCompleted,
+} from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 
 const slides = [
@@ -44,9 +49,11 @@ const WelcomeScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const { continueAsGuest } = useAuth();
+  const { pendingVehicle } = useVehicle();
 
   const [introComplete, setIntroComplete] = useState(false);
   const [showAuthActions, setShowAuthActions] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const scrollViewRef = useRef(null);
@@ -108,80 +115,103 @@ const WelcomeScreen = ({ navigation }) => {
   // =========================
 
   useEffect(() => {
-    const introAnimation = Animated.sequence([
-      Animated.parallel([
-        Animated.spring(logoScale, {
-          toValue: 1,
-          friction: 7,
-          tension: 65,
-          useNativeDriver: true,
-        }),
+    let isMounted = true;
+    let timer = null;
+    let introAnimation = null;
 
-        Animated.timing(logoOpacity, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]),
+    const initOnboarding = async () => {
+      const alreadyCompleted = await getOnboardingCompleted();
+      if (!isMounted) return;
 
-      Animated.parallel([
-        Animated.timing(introTextOpacity, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-
-        Animated.timing(introTextTranslateY, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]);
-
-    introAnimation.start();
-
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(logoOpacity, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-
-        Animated.timing(introTextOpacity, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-
-        Animated.timing(introTextTranslateY, {
-          toValue: -10,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
+      if (alreadyCompleted) {
         setIntroComplete(true);
+        setShowAuthActions(true);
+        setOnboardingChecked(true);
+        return;
+      }
+
+      setOnboardingChecked(true);
+
+      introAnimation = Animated.sequence([
+        Animated.parallel([
+          Animated.spring(logoScale, {
+            toValue: 1,
+            friction: 7,
+            tension: 65,
+            useNativeDriver: true,
+          }),
+
+          Animated.timing(logoOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ]),
 
         Animated.parallel([
-          Animated.timing(onboardingOpacity, {
+          Animated.timing(introTextOpacity, {
             toValue: 1,
-            duration: 400,
+            duration: 500,
             useNativeDriver: true,
           }),
 
-          Animated.timing(onboardingTranslateY, {
+          Animated.timing(introTextTranslateY, {
             toValue: 0,
-            duration: 400,
+            duration: 500,
             useNativeDriver: true,
           }),
-        ]).start();
-      });
-    }, INTRO_DURATION);
+        ]),
+      ]);
+
+      introAnimation.start();
+
+      timer = setTimeout(() => {
+        if (!isMounted) return;
+        Animated.parallel([
+          Animated.timing(logoOpacity, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+
+          Animated.timing(introTextOpacity, {
+            toValue: 0,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+
+          Animated.timing(introTextTranslateY, {
+            toValue: -10,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          if (!isMounted) return;
+          setIntroComplete(true);
+
+          Animated.parallel([
+            Animated.timing(onboardingOpacity, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+
+            Animated.timing(onboardingTranslateY, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        });
+      }, INTRO_DURATION);
+    };
+
+    initOnboarding();
 
     return () => {
-      clearTimeout(timer);
-      introAnimation.stop();
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+      if (introAnimation) introAnimation.stop();
     };
   }, [
     introTextOpacity,
@@ -229,20 +259,28 @@ const WelcomeScreen = ({ navigation }) => {
   // =========================
 
   const handleContinueAsGuest = () => {
+    saveOnboardingCompleted(true);
     if (typeof continueAsGuest === 'function') {
       continueAsGuest();
     }
   };
 
   const handleSignIn = () => {
+    saveOnboardingCompleted(true);
     navigation.navigate('Login');
   };
 
   const handleCreateAccount = () => {
+    saveOnboardingCompleted(true);
     navigation.navigate('Register', {
-      redirectTo: {
-        name: 'VehicleDetails',
-      },
+      ...(pendingVehicle
+        ? {
+            guestVehicleToClaim: pendingVehicle,
+            redirectTo: { name: 'Dashboard' },
+          }
+        : {
+            redirectTo: { name: 'VehicleDetails' },
+          }),
     });
   };
 
@@ -288,6 +326,7 @@ const WelcomeScreen = ({ navigation }) => {
   };
 
   const handleOnboardingFinish = () => {
+    saveOnboardingCompleted(true);
     Animated.parallel([
       Animated.timing(onboardingOpacity, {
         toValue: 0,

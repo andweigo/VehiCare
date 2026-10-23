@@ -32,7 +32,12 @@ import {
   getPasswordScore,
   getPasswordStrengthLabel,
   isPasswordStrong,
+  validateFullName,
 } from '../utils/passwordValidation';
+
+import {
+  getGuestVehicle,
+} from '../services/storageService';
 
 import {
   getVehicleDisplayDetails,
@@ -132,6 +137,7 @@ const RegisterScreen = ({
 
   const vehicleProfile =
     pendingVehicle ||
+    route?.params?.guestVehicleToClaim ||
     activeVehicle;
 
   const hasSelectedVehicle =
@@ -503,6 +509,8 @@ const RegisterScreen = ({
       const shouldShakeTerms =
         !acceptedTerms;
 
+      const nameValidation = validateFullName(name);
+
       if (
         !name.trim() ||
         !email.trim() ||
@@ -521,6 +529,24 @@ const RegisterScreen = ({
 
           message:
             'Please fill in all fields.',
+        });
+
+        return;
+      }
+
+      if (!nameValidation.valid) {
+        if (shouldShakeTerms) {
+          triggerTermsWarning();
+        }
+
+        showToast({
+          type: 'warning',
+
+          title:
+            'Invalid Name',
+
+          message:
+            nameValidation.message,
         });
 
         return;
@@ -618,14 +644,24 @@ const RegisterScreen = ({
          * authentication changes the VehicleContext.
          */
 
+        const storedGuestVehicle =
+          typeof getGuestVehicle === 'function'
+            ? await getGuestVehicle()
+            : null;
+
         const vehicleToSave =
           pendingVehicle ||
+          route?.params?.guestVehicleToClaim ||
+          storedGuestVehicle ||
           activeVehicle ||
           null;
 
+        const normalizedName =
+          nameValidation.normalized || name.trim();
+
         const result =
           await register(
-            name.trim(),
+            normalizedName,
             email.trim(),
             password,
             vehicleToSave,
@@ -646,6 +682,7 @@ const RegisterScreen = ({
           redirectTo,
           guestVehicle: vehicleToSave,
           cooldown_seconds: result?.cooldownSeconds || 60,
+          expires_in_seconds: result?.expiresInSeconds || 600,
         });
         return;
       } catch (err) {
@@ -695,8 +732,15 @@ const RegisterScreen = ({
          * Capture the vehicle before auth changes.
          */
 
+        const storedGuestVehicle =
+          typeof getGuestVehicle === 'function'
+            ? await getGuestVehicle()
+            : null;
+
         const vehicleToSave =
           pendingVehicle ||
+          route?.params?.guestVehicleToClaim ||
+          storedGuestVehicle ||
           activeVehicle ||
           null;
 
@@ -972,7 +1016,9 @@ const RegisterScreen = ({
                   theme.surfaceAlt,
 
                 borderColor:
-                  theme.border,
+                  name.length > 0 && !validateFullName(name).valid
+                    ? '#FF5A5F'
+                    : theme.border,
               },
             ]}
           >
@@ -1008,6 +1054,15 @@ const RegisterScreen = ({
               editable={!isLoading}
             />
           </View>
+
+          {name.length > 0 && !validateFullName(name).valid && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 5 }}>
+              <Ionicons name="alert-circle-outline" size={14} color="#FF5A5F" />
+              <Text style={{ fontFamily: 'Inter-Medium', fontSize: 12, color: '#FF5A5F', flex: 1 }}>
+                {validateFullName(name).message}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View

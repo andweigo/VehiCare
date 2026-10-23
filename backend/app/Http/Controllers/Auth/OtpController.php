@@ -121,15 +121,28 @@ class OtpController extends Controller
         $verifiedOtp = OtpCode::where('email', $email)
             ->where('purpose', OtpService::PURPOSE_PASSWORD_RESET)
             ->whereNotNull('verified_at')
-            ->where('verified_at', '>=', now()->subMinutes(15))
             ->orderByDesc('id')
             ->first();
 
         if (! $verifiedOtp) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Please verify your OTP code first before resetting password.',
-            ], 400);
+            $unverifiedOtp = OtpCode::where('email', $email)
+                ->where('purpose', OtpService::PURPOSE_PASSWORD_RESET)
+                ->whereNull('verified_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($unverifiedOtp && ! $unverifiedOtp->isExpired() && Hash::check($code, $unverifiedOtp->code_hash)) {
+                $unverifiedOtp->update([
+                    'verified_at' => now(),
+                    'expires_at' => now()->addMinutes(15),
+                ]);
+                $verifiedOtp = $unverifiedOtp->fresh();
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please verify your OTP code first before resetting password.',
+                ], 400);
+            }
         }
 
         if ($verifiedOtp->isExpired() || ($verifiedOtp->verified_at && $verifiedOtp->verified_at->lt(now()->subMinutes(15)))) {

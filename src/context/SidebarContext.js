@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
+import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sidebar from '../components/Sidebar';
 
@@ -81,19 +81,26 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
         StyleSheet.absoluteFill,
         isOpen && styles.openOverlay,
       ]}
-      pointerEvents={isOpen ? 'auto' : 'none'}>
-      {/* BACKDROP */}
-      <TouchableWithoutFeedback onPress={closeSidebar} disabled={!isOpen}>
+      pointerEvents={isOpen ? 'box-none' : 'none'}>
+      {/* BACKDROP - Tapping outside the sidebar dismisses it */}
+      <Pressable
+        style={styles.backdropPressable}
+        onPress={closeSidebar}
+        disabled={!isOpen}
+        accessibilityRole="button"
+        accessibilityLabel="Close Sidebar Menu">
         <Animated.View
+          pointerEvents="none"
           style={[
             styles.backdrop,
             { opacity: backdropOpacity },
           ]}
         />
-      </TouchableWithoutFeedback>
+      </Pressable>
 
       {/* SOLID OPAQUE SIDEBAR DRAWER */}
       <Animated.View
+        pointerEvents={isOpen ? 'auto' : 'none'}
         style={[
           styles.sidebarWrapper,
           {
@@ -112,6 +119,10 @@ export const SidebarDrawerOverlay = ({ navigationRef }) => {
 };
 
 const styles = StyleSheet.create({
+  backdropPressable: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
@@ -122,9 +133,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     width: 300,
+    maxWidth: '82%',
     backgroundColor: '#0A0A0A',
-    elevation: 30,
-    zIndex: 30,
+    elevation: 31,
+    zIndex: 2,
   },
   openOverlay: {
     elevation: 30,

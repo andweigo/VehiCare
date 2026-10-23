@@ -126,36 +126,32 @@ class FirebaseService
         }
 
         $now = time();
-        $header = $this->base64UrlEncode(json_encode([
-            'alg' => 'RS256',
-            'typ' => 'JWT',
-        ]));
-
-        $claims = $this->base64UrlEncode(json_encode([
-            'iss' => $clientEmail,
-            'sub' => $clientEmail,
-            'aud' => 'https://oauth2.googleapis.com/token',
-            'iat' => $now,
-            'exp' => $now + 3600,
-            'scope' => 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase',
-        ]));
-
-        $signatureInput = "{$header}.{$claims}";
-        $signature = '';
-
-        $success = openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-        if (! $success) {
+        $jwt = $this->createSignedJwtAssertion($clientEmail, $privateKey, $now);
+        if (! $jwt) {
             Log::error('[FirebaseService] Failed to sign JWT with service account private key.');
             return null;
         }
-
-        $jwt = "{$signatureInput}." . $this->base64UrlEncode($signature);
 
         try {
             $response = Http::asForm()->timeout(10)->post('https://oauth2.googleapis.com/token', [
                 'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
                 'assertion' => $jwt,
             ]);
+
+            if (! $response->ok()) {
+                $dateHeader = $response->header('Date');
+                $serverTime = $dateHeader ? strtotime($dateHeader) : false;
+
+                if ($serverTime && abs($serverTime - $now) > 60) {
+                    $retryJwt = $this->createSignedJwtAssertion($clientEmail, $privateKey, $serverTime);
+                    if ($retryJwt) {
+                        $response = Http::asForm()->timeout(10)->post('https://oauth2.googleapis.com/token', [
+                            'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                            'assertion' => $retryJwt,
+                        ]);
+                    }
+                }
+            }
 
             if (! $response->ok()) {
                 Log::error('[FirebaseService] Failed to exchange JWT for OAuth2 token', [
@@ -180,6 +176,33 @@ class FirebaseService
         return null;
     }
 
+    private function createSignedJwtAssertion(string $clientEmail, string $privateKey, int $timestamp): ?string
+    {
+        $header = $this->base64UrlEncode(json_encode([
+            'alg' => 'RS256',
+            'typ' => 'JWT',
+        ]));
+
+        $claims = $this->base64UrlEncode(json_encode([
+            'iss' => $clientEmail,
+            'sub' => $clientEmail,
+            'aud' => 'https://oauth2.googleapis.com/token',
+            'iat' => $timestamp,
+            'exp' => $timestamp + 3600,
+            'scope' => 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase',
+        ]));
+
+        $signatureInput = "{$header}.{$claims}";
+        $signature = '';
+
+        $success = openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+        if (! $success) {
+            return null;
+        }
+
+        return "{$signatureInput}." . $this->base64UrlEncode($signature);
+    }
+
     /**
      * Update user password in Firebase Authentication.
      * Works for both existing email/password users and Google-only users.
@@ -189,9 +212,14 @@ class FirebaseService
     {
         $token = $this->getAccessToken();
         if (! $token) {
+            Log::warning('[FirebaseService] OAuth2 token unavailable; proceeding with local database password update.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ]);
             return [
-                'success' => false,
-                'message' => 'Firebase authentication service is temporarily unavailable.',
+                'success' => true,
+                'firebase_skipped' => true,
+                'message' => 'Firebase Admin OAuth unavailable; local database password updated.',
             ];
         }
 
@@ -233,15 +261,20 @@ class FirebaseService
                 }
 
                 $errorData = $response->json();
-                Log::error('[FirebaseService] Firebase Admin accounts:update failed', [
-                    'status' => $response->status(),
-                    'error' => $errorData['error']['message'] ?? 'Unknown Firebase error',
-                ]);
+                $fbErrorMsg = (string) ($errorData['error']['message'] ?? 'Unknown Firebase error');
 
-                return [
-                    'success' => false,
-                    'message' => 'Unable to update Firebase credentials: ' . ($errorData['error']['message'] ?? 'Identity Toolkit error'),
-                ];
+                // If stored firebase_uid was not found in Firebase, fall back to email lookup / account creation
+                if (! str_contains(strtoupper($fbErrorMsg), 'USER_NOT_FOUND')) {
+                    Log::error('[FirebaseService] Firebase Admin accounts:update failed', [
+                        'status' => $response->status(),
+                        'error' => $fbErrorMsg,
+                    ]);
+
+                    return [
+                        'success' => false,
+                        'message' => 'Unable to update Firebase credentials: ' . $fbErrorMsg,
+                    ];
+                }
             } catch (\Throwable $e) {
                 Log::error('[FirebaseService] Exception while calling Firebase accounts:update: ' . $e->getMessage());
                 return [

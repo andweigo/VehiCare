@@ -281,6 +281,10 @@ class DiagnosticController extends Controller
             'audio' => ['nullable', 'file', 'mimes:mp3,wav,m4a,aac,mp4,3gp,amr,ogg,oga', 'max:' . ((int) $mediaLimits['max_audio_mb'] * 1024)],
             'vehicle_name' => 'nullable',
             'vehicle_type' => 'nullable',
+            'vehicle_brand' => 'nullable|string|max:120',
+            'vehicle_model' => 'nullable|string|max:120',
+            'vehicle_year' => 'nullable',
+            'model_number' => 'nullable|string|max:120',
             'history' => 'nullable|array',
             'diagnostic_state' => 'nullable',
         ]);
@@ -620,15 +624,61 @@ class DiagnosticController extends Controller
         }
         $rootSymptom = $rootSymptom ?: $validated['symptoms'];
 
+        $reqBrand = $this->toSafeString($request->input('vehicle_brand'), '');
+        $reqModel = $this->toSafeString($request->input('vehicle_model'), '');
+        $reqYear = $this->toSafeString($request->input('vehicle_year'), '');
+        $reqModelNumber = $this->toSafeString($request->input('model_number'), '');
+        $reqVehicleName = $this->toSafeString($request->input('vehicle_name'), '');
+
+        if (!$isExplicitAlternateVehicle && $vehicle === null && $reqBrand === '' && $reqVehicleName !== '' && strtolower($reqVehicleName) !== 'active vehicle') {
+            $nameTokens = preg_split('/\s+/', trim($reqVehicleName)) ?: [];
+            if (!empty($nameTokens) && preg_match('/^(19|20)\d{2}$/', $nameTokens[0])) {
+                if ($reqYear === '') {
+                    $reqYear = array_shift($nameTokens);
+                } else {
+                    array_shift($nameTokens);
+                }
+            }
+            if (!empty($nameTokens)) {
+                $reqBrand = array_shift($nameTokens);
+            }
+            if (!empty($nameTokens) && $reqModel === '') {
+                $reqModel = implode(' ', $nameTokens);
+            }
+        }
+
+        $resolvedBrand = $this->toSafeString(
+            $vehicle?->custom_brand ?: ($vehicle?->vehicleBrand?->name ?: ($reqBrand ?: $reqVehicleName)),
+            'Unknown'
+        );
+        $resolvedModel = $this->toSafeString(
+            $vehicle?->custom_model ?: ($vehicle?->vehicleModel?->name ?: $reqModel),
+            'Unknown'
+        );
+        $resolvedYear = $this->toSafeString(
+            $vehicle?->custom_year ?: ($vehicle?->vehicleYear?->year ?: $reqYear),
+            'Unknown'
+        );
+        $resolvedModelNumber = $this->toSafeString(
+            $vehicle?->model_number ?: $reqModelNumber,
+            ''
+        );
+        $hasSelectedVehicleContext = !$isExplicitAlternateVehicle && (
+            $vehicle !== null
+            || $reqBrand !== ''
+            || $reqModel !== ''
+            || ($reqVehicleName !== '' && strtolower($reqVehicleName) !== 'active vehicle')
+        );
+
         $vehicleInfo = [
             'type' => $this->toSafeString($vehicle?->vehicleType?->name ?? $request->input('vehicle_type'), 'Vehicle'),
-            'brand' => $this->toSafeString($vehicle?->custom_brand ?: ($vehicle?->vehicleBrand?->name ?? $request->input('vehicle_name')), 'Unknown'),
-            'model' => $this->toSafeString($vehicle?->custom_model ?: ($vehicle?->vehicleModel?->name ?? 'Unknown'), 'Unknown'),
-            'year' => $this->toSafeString($vehicle?->custom_year ?: ($vehicle?->vehicleYear?->year ?? 'Unknown'), 'Unknown'),
-            'model_number' => $this->toSafeString($vehicle?->model_number ?? null, ''),
+            'brand' => $resolvedBrand,
+            'model' => $resolvedModel,
+            'year' => $resolvedYear,
+            'model_number' => $resolvedModelNumber,
             'preferred_language' => $request->header('X-User-Language', 'en'),
-            'is_saved_vehicle' => $vehicle !== null,
-            'target_vehicle_desc' => $vehicle === null ? ($request->input('vehicle_name') ?: $request->input('vehicle_type')) : null,
+            'is_saved_vehicle' => $hasSelectedVehicleContext,
+            'target_vehicle_desc' => !$hasSelectedVehicleContext ? ($reqVehicleName ?: $request->input('vehicle_type')) : null,
             'root_symptom' => $rootSymptom,
         ];
 

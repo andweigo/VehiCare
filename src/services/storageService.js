@@ -296,6 +296,60 @@ export const getGuestUuid = async () => {
 };
 
 const GUEST_VEHICLE_KEY = '@vehicare_guest_vehicle';
+const ONBOARDING_COMPLETED_KEY = '@vehicare_onboarding_completed';
+const GUEST_MODE_KEY = '@vehicare_guest_mode';
+
+export const saveOnboardingCompleted = async (completed = true) => {
+  try {
+    if (!completed) {
+      await AsyncStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+  } catch (error) {
+    console.error('Failed to save onboarding completed status:', error?.message || error);
+  }
+};
+
+export const getOnboardingCompleted = async () => {
+  try {
+    const val = await AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY);
+    return val === 'true';
+  } catch (error) {
+    console.error('Failed to get onboarding completed status:', error?.message || error);
+    return false;
+  }
+};
+
+export const saveGuestMode = async (isGuest = true) => {
+  try {
+    if (!isGuest) {
+      await AsyncStorage.removeItem(GUEST_MODE_KEY);
+      return;
+    }
+    await AsyncStorage.setItem(GUEST_MODE_KEY, 'true');
+  } catch (error) {
+    console.error('Failed to save guest mode status:', error?.message || error);
+  }
+};
+
+export const getGuestMode = async () => {
+  try {
+    const val = await AsyncStorage.getItem(GUEST_MODE_KEY);
+    return val === 'true';
+  } catch (error) {
+    console.error('Failed to get guest mode status:', error?.message || error);
+    return false;
+  }
+};
+
+export const clearGuestMode = async () => {
+  try {
+    await AsyncStorage.removeItem(GUEST_MODE_KEY);
+  } catch (error) {
+    console.error('Failed to clear guest mode status:', error?.message || error);
+  }
+};
 
 export const saveGuestVehicle = async (vehicle) => {
   try {
@@ -420,6 +474,11 @@ export default {
   saveGuestVehicle,
   getGuestVehicle,
   clearGuestVehicle,
+  saveOnboardingCompleted,
+  getOnboardingCompleted,
+  saveGuestMode,
+  getGuestMode,
+  clearGuestMode,
 
   getHistoryStorageKey,
   getRecentActivitiesStorageKey,

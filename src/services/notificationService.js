@@ -96,10 +96,14 @@ export const fetchNotifications = async () => {
 };
 
 let lastSynchronizedCount = null;
+let lastLatestUnread = null;
 
 export const resetNotificationSyncState = () => {
   lastSynchronizedCount = null;
+  lastLatestUnread = null;
 };
+
+export const getLatestUnreadNotification = () => lastLatestUnread;
 
 export const getUnreadCount = async () => {
   try {
@@ -107,6 +111,7 @@ export const getUnreadCount = async () => {
     if (!token || String(token).startsWith('guest')) {
       if (lastSynchronizedCount !== 0) {
         lastSynchronizedCount = 0;
+        lastLatestUnread = null;
         setDeviceBadgeCount(0).catch(() => {});
       }
       return 0;
@@ -114,10 +119,37 @@ export const getUnreadCount = async () => {
 
     const response = await apiClient.get('/notifications/unread-count');
     const count = response?.data?.data?.unread_count;
+    const rawLatest = response?.data?.data?.latest_unread || null;
+
+    if (rawLatest && typeof rawLatest === 'object') {
+      const dataPayload = rawLatest.data || {};
+      const notificationType = rawLatest.type || dataPayload.type || 'system_notice';
+      lastLatestUnread = {
+        id: String(rawLatest.id),
+        type: notificationType,
+        category: resolveCategory(notificationType, dataPayload),
+        title: rawLatest.title || dataPayload.title || 'Notification',
+        message: rawLatest.message || dataPayload.message || '',
+        data: dataPayload,
+        isRead: false,
+        timestamp:
+          rawLatest.timestamp ||
+          (rawLatest.created_at ? new Date(rawLatest.created_at).getTime() : Date.now()),
+        vehicleId: dataPayload.vehicle_id || rawLatest.vehicle_id || null,
+        requestId: dataPayload.request_id || rawLatest.request_id || null,
+      };
+    } else if (count === 0) {
+      lastLatestUnread = null;
+    }
+
     if (Number.isInteger(count) && count >= 0) {
       if (count !== lastSynchronizedCount) {
         lastSynchronizedCount = count;
-        setDeviceBadgeCount(count).catch(() => {});
+        if (rawLatest && lastLatestUnread) {
+          setDeviceBadgeCount(count, lastLatestUnread).catch(() => {});
+        } else {
+          setDeviceBadgeCount(count).catch(() => {});
+        }
       }
       return count;
     }
@@ -193,6 +225,7 @@ export default {
   DEFAULT_PREFERENCES,
   fetchNotifications,
   getUnreadCount,
+  getLatestUnreadNotification,
   setDeviceBadgeCount,
   resetNotificationSyncState,
   markAsRead,

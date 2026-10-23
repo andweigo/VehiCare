@@ -85,8 +85,9 @@ USER QUESTION:
 
 INSTRUCTIONS:
 1. Stay strictly within the vehicle/automotive domain.
-2. Provide a helpful, clear, and concise answer.
-3. Return ONLY valid JSON format. No markdown code blocks or extra text outside JSON.
+2. Tailor your answer specifically to the selected vehicle (${vYear} ${vBrand} ${vModel} - ${vType}) and its vehicle type, components, and specifications. Never give generic or mismatched advice for a different vehicle type or model.
+3. Provide a helpful, clear, and concise answer.
+4. Return ONLY valid JSON format. No markdown code blocks or extra text outside JSON.
 
 JSON RESPONSE FORMAT:
 {
@@ -285,7 +286,9 @@ FOLLOW-UP CONTINUITY INSTRUCTIONS:
 - Do NOT assume the user's permanent saved vehicle profile or its maintenance history applies to this vehicle.
 - If essential technical details (such as engine type, fuel type, or transmission) are needed for accurate diagnosis of this alternate vehicle, ask a concise clarification question.
 - Do NOT link this diagnosis to any saved vehicle maintenance schedule.`
-    : `SAVED VEHICLE PROFILE: ${vYear} ${vBrand} ${vModel} (${vType})`;
+    : `SAVED VEHICLE PROFILE: ${vYear} ${vBrand} ${vModel} (${vType})
+- Tailor all diagnostic assessments, probable causes, component terminology, safe DIY checks, and follow-up responses specifically to this selected ${vYear} ${vBrand} ${vModel} (${vType}).
+- Never reference parts or systems that do not exist on a ${vType} (${vYear} ${vBrand} ${vModel}).`;
 
   const tierInstruction = isPremium
     ? `SUBSCRIPTION TIER: PREMIUM — ADVANCED VEHICLE CARE

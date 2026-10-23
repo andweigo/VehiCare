@@ -8,6 +8,11 @@ import {
 
 import vehicleApi from '../api/vehicleApi';
 import activityService from '../services/activity.service';
+import {
+  clearGuestVehicle,
+  getGuestVehicle,
+  saveGuestVehicle,
+} from '../services/storageService';
 import { transferGuestVehicleToAccount } from '../services/vehicleService';
 import { useAuth } from './AuthContext';
 
@@ -36,6 +41,11 @@ export const VehicleProvider = ({ children }) => {
 
   const userId = user?.id || user?.uid || null;
   const hasInitializedRef = useRef(false);
+  const currentScope = `${isAuthenticated ? 'auth' : 'guest'}:${userId || 'anon'}:${logoutSignal}`;
+  const [syncedScope, setSyncedScope] = useState(null);
+  const prevLogoutSignalRef = useRef(logoutSignal);
+  const pendingVehicleRef = useRef(null);
+  pendingVehicleRef.current = pendingVehicle;
 
   /*
   |--------------------------------------------------------------------------
@@ -49,7 +59,22 @@ export const VehicleProvider = ({ children }) => {
       return null;
     }
 
-    return pendingVehicle;
+    if (pendingVehicleRef.current) {
+      return pendingVehicleRef.current;
+    }
+
+    const storedGuest =
+      typeof getGuestVehicle === 'function'
+        ? await getGuestVehicle()
+        : null;
+
+    if (storedGuest) {
+      setPendingVehicleState(storedGuest);
+      setActiveVehicle(storedGuest);
+      return storedGuest;
+    }
+
+    return null;
   };
 
   /*
@@ -230,7 +255,13 @@ export const VehicleProvider = ({ children }) => {
 
     const nextVehicle = vehicle || null;
 
+    pendingVehicleRef.current = nextVehicle;
     setPendingVehicleState(nextVehicle);
+    setActiveVehicle(nextVehicle);
+
+    if (typeof saveGuestVehicle === 'function') {
+      await saveGuestVehicle(nextVehicle);
+    }
 
     return nextVehicle;
   };
@@ -242,7 +273,14 @@ export const VehicleProvider = ({ children }) => {
   */
 
   const clearPendingVehicle = async () => {
+    pendingVehicleRef.current = null;
     setPendingVehicleState(null);
+    if (!isAuthenticated) {
+      setActiveVehicle(null);
+    }
+    if (typeof clearGuestVehicle === 'function') {
+      await clearGuestVehicle();
+    }
   };
 
   /*
@@ -311,24 +349,74 @@ export const VehicleProvider = ({ children }) => {
 
   useEffect(() => {
     let cancelled = false;
+    const scopeAtStart = `${isAuthenticated ? 'auth' : 'guest'}:${userId || 'anon'}:${logoutSignal}`;
 
     const syncVehicleState = async () => {
-      if (!hasInitializedRef.current) {
-        setLoading(true);
-      }
+      setLoading(true);
 
       try {
         if (isAuthenticated) {
+          const guestCandidate =
+            pendingVehicleRef.current ||
+            (typeof getGuestVehicle === 'function'
+              ? await getGuestVehicle()
+              : null);
+
           if (!cancelled) {
+            pendingVehicleRef.current = null;
             setPendingVehicleState(null);
           }
 
-          await refreshActiveVehicle();
+          let accountList = await refreshActiveVehicle();
+
+          if (
+            Array.isArray(accountList) &&
+            accountList.length === 0 &&
+            guestCandidate
+          ) {
+            try {
+              const migrated = await transferGuestVehicleToAccount(
+                guestCandidate,
+              );
+              if (migrated) {
+                accountList = await refreshActiveVehicle();
+              }
+            } catch (migrationErr) {
+              console.warn(
+                'Automatic guest vehicle migration note:',
+                migrationErr?.message || migrationErr,
+              );
+            }
+          }
+
+          if (typeof clearGuestVehicle === 'function') {
+            await clearGuestVehicle();
+          }
         } else {
+          const logoutChanged =
+            prevLogoutSignalRef.current !== logoutSignal;
+          prevLogoutSignalRef.current = logoutSignal;
+
+          const storedGuest =
+            pendingVehicleRef.current ||
+            (typeof getGuestVehicle === 'function'
+              ? await getGuestVehicle()
+              : null);
+
           if (!cancelled) {
             setVehicles([]);
-            setActiveVehicle(null);
-            setPendingVehicleState(null);
+            if (storedGuest && !logoutChanged) {
+              pendingVehicleRef.current = storedGuest;
+              setPendingVehicleState(storedGuest);
+              setActiveVehicle(storedGuest);
+            } else if (storedGuest) {
+              pendingVehicleRef.current = storedGuest;
+              setPendingVehicleState(storedGuest);
+              setActiveVehicle(storedGuest);
+            } else {
+              setActiveVehicle(null);
+              setPendingVehicleState(null);
+            }
           }
         }
       } catch (error) {
@@ -338,6 +426,7 @@ export const VehicleProvider = ({ children }) => {
         );
       } finally {
         if (!cancelled) {
+          setSyncedScope(scopeAtStart);
           setLoading(false);
           hasInitializedRef.current = true;
         }
@@ -354,6 +443,8 @@ export const VehicleProvider = ({ children }) => {
     userId,
     logoutSignal,
   ]);
+
+  const effectiveLoading = loading || syncedScope !== currentScope;
 
   /*
   |--------------------------------------------------------------------------
@@ -374,7 +465,7 @@ export const VehicleProvider = ({ children }) => {
         setVehicles,
         activeVehicle,
         pendingVehicle,
-        loading,
+        loading: effectiveLoading,
 
         /*
         |--------------------------------------------------------------------------

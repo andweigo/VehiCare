@@ -14,6 +14,7 @@ class OtpService
 {
     public const PURPOSE_REGISTRATION = 'registration';
     public const PURPOSE_PASSWORD_RESET = 'password_reset';
+    public const OTP_EXPIRY_MINUTES = 10;
 
     /**
      * Generate and dispatch a 6-digit OTP code to specified email.
@@ -59,7 +60,7 @@ class OtpService
         // Generate 6-digit numeric OTP
         $rawCode = (string) random_int(100000, 999999);
         $codeHash = Hash::make($rawCode);
-        $expiresAt = now()->addMinutes(5);
+        $expiresAt = now()->addMinutes(self::OTP_EXPIRY_MINUTES);
 
         $otpRecord = OtpCode::create([
             'email' => $normalizedEmail,
@@ -143,6 +144,7 @@ class OtpService
                 'success' => true,
                 'message' => 'Verification code sent successfully.',
                 'cooldown_seconds' => 60,
+                'expires_in_seconds' => self::OTP_EXPIRY_MINUTES * 60,
             ];
         }
 

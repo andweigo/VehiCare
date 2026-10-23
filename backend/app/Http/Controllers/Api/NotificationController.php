@@ -49,15 +49,37 @@ class NotificationController extends Controller
     public function unreadCount(): JsonResponse
     {
         $user = Auth::user();
-        $unreadCount = $user->unreadNotifications()
+        $visibleUnread = $user->unreadNotifications()
+            ->latest('created_at')
             ->get()
             ->filter(fn ($notification) => $this->isVisible($notification))
-            ->count();
+            ->values();
+
+        $unreadCount = $visibleUnread->count();
+        $latest = $visibleUnread->first();
+        $latestUnread = null;
+
+        if ($latest) {
+            $data = is_array($latest->data) ? $latest->data : json_decode($latest->data ?? '', true);
+            $data = is_array($data) ? $data : [];
+            $type = $data['type'] ?? ($latest->type === 'App\\Notifications\\AnnouncementNotification' ? 'announcement' : $latest->type);
+
+            $latestUnread = [
+                'id' => (string) $latest->id,
+                'type' => (string) $type,
+                'title' => (string) ($data['title'] ?? 'Notification'),
+                'message' => (string) ($data['message'] ?? ''),
+                'data' => $data['data'] ?? $data,
+                'created_at' => $latest->created_at ? $latest->created_at->toIso8601String() : null,
+                'timestamp' => $latest->created_at ? $latest->created_at->timestamp * 1000 : null,
+            ];
+        }
 
         return response()->json([
             'status' => 'success',
             'data' => [
                 'unread_count' => $unreadCount,
+                'latest_unread' => $latestUnread,
             ],
         ]);
     }

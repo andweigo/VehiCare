@@ -43,9 +43,15 @@ import {
 import {
   clearAuthData,
   clearGuestDiagnosisCount,
+  clearGuestMode,
+  clearGuestVehicle,
+  getGuestMode,
+  getGuestVehicle,
   getToken,
   getUser,
   saveAuthData,
+  saveGuestMode,
+  saveOnboardingCompleted,
 } from '../services/storageService';
 
 import {
@@ -182,10 +188,19 @@ export const AuthProvider = ({
 
   const continueAsGuest = () => {
     setIsGuest(true);
+    if (typeof saveGuestMode === 'function') {
+      saveGuestMode(true).catch?.(() => {});
+    }
+    if (typeof saveOnboardingCompleted === 'function') {
+      saveOnboardingCompleted(true).catch?.(() => {});
+    }
   };
 
   const exitGuestMode = () => {
     setIsGuest(false);
+    if (typeof clearGuestMode === 'function') {
+      clearGuestMode().catch?.(() => {});
+    }
   };
 
   /*
@@ -209,6 +224,13 @@ export const AuthProvider = ({
         resolvedToken,
         nextUser,
       );
+
+      if (typeof clearGuestMode === 'function') {
+        await clearGuestMode();
+      }
+      if (typeof saveOnboardingCompleted === 'function') {
+        await saveOnboardingCompleted(true);
+      }
 
       setAuthToken(
         resolvedToken,
@@ -310,6 +332,14 @@ export const AuthProvider = ({
             .catch(err => {
               console.warn('[AuthContext] Startup session check note:', err?.message || err);
             });
+        } else if (isMounted) {
+          const storedGuestMode =
+            typeof getGuestMode === 'function' ? await getGuestMode() : false;
+          const storedGuestVehicle =
+            typeof getGuestVehicle === 'function' ? await getGuestVehicle() : null;
+          if ((storedGuestMode || storedGuestVehicle) && isMounted) {
+            setIsGuest(true);
+          }
         }
       } catch (err) {
         console.warn('[AuthContext] Storage bootstrap error:', err?.message || err);
@@ -509,6 +539,7 @@ export const AuthProvider = ({
           name,
           email,
           password,
+          firebaseUser?.uid || null,
         );
 
       // Temporarily sign out of Firebase on this device so onAuthStateChanged doesn't restore session before OTP is entered!
@@ -578,19 +609,32 @@ export const AuthProvider = ({
       throw new Error('Invalid verification credentials.');
     }
 
-    const authUser = buildAuthUser(
+    let authUser = buildAuthUser(
       null,
       verifiedUser,
     );
 
-    let claimedVehicle = null;
+    // IMPORTANT: Persist token to storage FIRST so vehicleApi.saveVehicle()
+    // can read the token via getToken() when migrating the guest vehicle.
+    await saveAuthData(verifiedToken, authUser);
+    setAuthToken(verifiedToken);
 
-    if (guestVehicleToClaim) {
+    let claimedVehicle = null;
+    const resolvedGuestVehicle =
+      guestVehicleToClaim ||
+      (typeof getGuestVehicle === 'function' ? await getGuestVehicle() : null);
+
+    if (resolvedGuestVehicle) {
       try {
-        setAuthToken(verifiedToken);
         claimedVehicle = await transferGuestVehicleToAccount(
-          guestVehicleToClaim,
+          resolvedGuestVehicle,
         );
+        if (claimedVehicle?.id) {
+          authUser = {
+            ...authUser,
+            active_vehicle_id: claimedVehicle.id,
+          };
+        }
       } catch (error) {
         console.warn(
           'Failed to claim guest vehicle during OTP completion:',
@@ -599,24 +643,28 @@ export const AuthProvider = ({
       }
     }
 
-    setIsNewRegistration(true);
+    const {
+      accountVehicles,
+      hasAccountVehicles,
+    } = await loadAccountVehicles();
+
+    const finalHasVehicles = Boolean(claimedVehicle || hasAccountVehicles);
+    setIsNewRegistration(!finalHasVehicles);
 
     await persistAuthState(
       verifiedToken,
       authUser,
     );
 
-    const {
-      accountVehicles,
-      hasAccountVehicles,
-    } = await loadAccountVehicles();
-
     return {
       user: authUser,
       token: verifiedToken,
       claimedVehicle,
-      accountVehicles,
-      hasAccountVehicles: Boolean(claimedVehicle || hasAccountVehicles),
+      accountVehicles:
+        claimedVehicle && (!Array.isArray(accountVehicles) || accountVehicles.length === 0)
+          ? [claimedVehicle]
+          : accountVehicles,
+      hasAccountVehicles: finalHasVehicles,
     };
   };
 
@@ -630,30 +678,43 @@ export const AuthProvider = ({
     email,
     password,
   ) => {
-    const userCredential =
-      await loginWithEmail(
-        email,
-        password,
-      );
+    let firebaseUser = null;
+    let firebaseError = null;
 
-    const firebaseUser =
-      userCredential?.user;
+    try {
+      const userCredential =
+        await loginWithEmail(
+          email,
+          password,
+        );
 
-    if (!firebaseUser) {
-      throw new Error(
-        'Firebase login failed.',
-      );
+      firebaseUser =
+        userCredential?.user || null;
+    } catch (fbErr) {
+      firebaseError = fbErr;
     }
 
-    const backendAuth =
-      await loginWithBackend(
-        email,
-        password,
-      );
+    let backendAuth = null;
+    try {
+      backendAuth =
+        await loginWithBackend(
+          email,
+          password,
+        );
+    } catch (backendErr) {
+      if (firebaseError) {
+        throw firebaseError;
+      }
+      throw backendErr;
+    }
 
     const authToken =
       backendAuth?.token ||
       null;
+
+    if (!authToken && !firebaseUser) {
+      throw firebaseError || new Error('Firebase login failed.');
+    }
 
     const authUser =
       buildAuthUser(
@@ -846,12 +907,15 @@ export const AuthProvider = ({
 
         let claimedVehicle =
           null;
+        const resolvedGuestVehicle =
+          guestVehicle ||
+          (typeof getGuestVehicle === 'function' ? await getGuestVehicle() : null);
 
-        if (guestVehicle) {
+        if (resolvedGuestVehicle) {
           try {
             claimedVehicle =
               await transferGuestVehicleToAccount(
-                guestVehicle,
+                resolvedGuestVehicle,
               );
           } catch (error) {
             console.warn(
@@ -1104,9 +1168,15 @@ export const AuthProvider = ({
         }
 
         /*
-         * Reset guest diagnosis counter.
+         * Reset guest diagnosis counter and guest mode/vehicle on explicit logout.
          */
         await clearGuestDiagnosisCount();
+        if (typeof clearGuestMode === 'function') {
+          await clearGuestMode();
+        }
+        if (typeof clearGuestVehicle === 'function') {
+          await clearGuestVehicle();
+        }
 
         /*
          * Clear API token.

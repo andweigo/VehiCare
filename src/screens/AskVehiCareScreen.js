@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Linking,
   Modal,
+  NativeModules,
   PermissionsAndroid,
   Platform,
   Pressable,
@@ -384,6 +385,7 @@ export default function AskVehiCareScreen({
     addMessage,
     addMessageToSession,
     removeMessageFromSession,
+    updateMessage,
     requestStates,
     conversationUiState,
     updateConversationUiState,
@@ -470,6 +472,7 @@ export default function AskVehiCareScreen({
   const [showVehicleConfirmModal, setShowVehicleConfirmModal] = useState(false);
   const [showNewChatConfirmModal, setShowNewChatConfirmModal] = useState(false);
   const [freshChatNotice, setFreshChatNotice] = useState(null);
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
   const activeConversationUiState = conversationUiState[currentSessionId] || {};
 
   /*
@@ -481,6 +484,7 @@ export default function AskVehiCareScreen({
   const scrollRef = useRef(null);
   const textInputRef = useRef(null);
   const recordingIntervalRef = useRef(null);
+  const copyTimeoutRef = useRef(null);
   const screenMountedRef = useRef(false);
   const ownerUserId = user?.id || user?.uid || null;
   const setConversationField = useCallback((field, value) => {
@@ -512,8 +516,50 @@ export default function AskVehiCareScreen({
     screenMountedRef.current = true;
     return () => {
       screenMountedRef.current = false;
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
     };
   }, []);
+
+  const handleCopyMessage = useCallback(async (item) => {
+    if (!item) return;
+    const rawText =
+      typeof item.text === 'object' || typeof item.message === 'object'
+        ? formatAiResponseText(item.diagnosisData || item.text || item.message)
+        : (item.text || item.message || '');
+    const textToCopy = String(rawText || '').trim();
+    if (!textToCopy) return;
+
+    try {
+      if (typeof NativeModules?.VehiCareBadge?.copyToClipboard === 'function') {
+        await NativeModules.VehiCareBadge.copyToClipboard(textToCopy);
+      } else if (typeof NativeModules?.RNCClipboard?.setString === 'function') {
+        NativeModules.RNCClipboard.setString(textToCopy);
+      } else if (typeof NativeModules?.Clipboard?.setString === 'function') {
+        NativeModules.Clipboard.setString(textToCopy);
+      } else if (typeof global?.navigator?.clipboard?.writeText === 'function') {
+        await global.navigator.clipboard.writeText(textToCopy);
+      }
+    } catch (err) {
+      console.warn('[AskVehiCareScreen] Clipboard copy fallback:', err?.message);
+    }
+
+    if (screenMountedRef.current) {
+      setCopiedMessageId(item.id);
+      const copiedNotice = t('messageCopied', '✓ Message copied to clipboard');
+      setFreshChatNotice(copiedNotice);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        if (screenMountedRef.current) {
+          setCopiedMessageId(prev => (prev === item.id ? null : prev));
+          setFreshChatNotice(prev => (prev === copiedNotice ? null : prev));
+        }
+      }, 2200);
+    }
+  }, [t]);
 
   /*
   |--------------------------------------------------------------------------
@@ -583,8 +629,18 @@ export default function AskVehiCareScreen({
           minute: '2-digit',
         }),
       });
+    } else if (
+      chatMessages.length === 1 &&
+      String(chatMessages[0]?.id || '').startsWith('assistant-welcome-') &&
+      chatMessages[0]?.text !== freshWelcome &&
+      typeof updateMessage === 'function'
+    ) {
+      updateMessage(chatMessages[0].id, {
+        text: freshWelcome,
+        message: freshWelcome,
+      });
     }
-  }, [isChatLoading, chatMessages.length, getDynamicWelcomeText, addMessage]);
+  }, [isChatLoading, chatMessages, getDynamicWelcomeText, addMessage, updateMessage]);
 
   const confirmNewChat = useCallback(() => {
     setShowNewChatConfirmModal(false);
@@ -1276,6 +1332,34 @@ export default function AskVehiCareScreen({
       const safeVehicleType = typeof rawType === 'string' ? rawType : (rawType?.name || rawType?.title || 'car');
       const rawName = vehicleName || activeVehicle?.name || activeVehicle?.make || 'Active Vehicle';
       const safeVehicleName = typeof rawName === 'string' ? rawName : (rawName?.name || rawName?.brand || 'Active Vehicle');
+      const safeVehicleBrand = getDisplayValue(
+        vehicleProfile?.custom_brand ??
+          vehicleProfile?.vehicle_brand ??
+          vehicleProfile?.vehicleBrand ??
+          vehicleProfile?.brand ??
+          vehicleProfile?.make,
+        '',
+      );
+      const safeVehicleModel = getDisplayValue(
+        vehicleProfile?.custom_model ??
+          vehicleProfile?.vehicle_model ??
+          vehicleProfile?.vehicleModel ??
+          vehicleProfile?.model,
+        '',
+      );
+      const safeVehicleYear = getDisplayValue(
+        vehicleProfile?.custom_year ??
+          vehicleProfile?.vehicle_year ??
+          vehicleProfile?.vehicleYear ??
+          vehicleProfile?.year,
+        '',
+      );
+      const safeModelNumber = getDisplayValue(
+        vehicleProfile?.model_number ??
+          vehicleProfile?.modelNumber ??
+          vehicleProfile?.variant,
+        '',
+      );
 
       const history = chatMessages.slice(-6).map(m => ({
         role: m.role || m.sender || 'user',
@@ -1314,6 +1398,10 @@ export default function AskVehiCareScreen({
         vehicle_id: vehicleId,
         vehicle_name: safeVehicleName,
         vehicle_type: safeVehicleType,
+        ...(safeVehicleBrand ? { vehicle_brand: safeVehicleBrand } : {}),
+        ...(safeVehicleModel ? { vehicle_model: safeVehicleModel } : {}),
+        ...(safeVehicleYear ? { vehicle_year: safeVehicleYear } : {}),
+        ...(safeModelNumber ? { model_number: safeModelNumber } : {}),
         symptoms: activeSymptoms,
         root_symptom: rootComplaint,
         input_type: currentAudio ? 'voice' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
@@ -1328,6 +1416,9 @@ export default function AskVehiCareScreen({
       if (media) {
         requestPayload = new FormData();
         Object.entries(payload).forEach(([key, value]) => {
+          if (value === null || value === undefined) {
+            return;
+          }
           if (key === 'history') {
             value.forEach((turn, index) => {
               requestPayload.append(`history[${index}][role]`, turn.role);
@@ -2331,6 +2422,7 @@ export default function AskVehiCareScreen({
                         />
                       ) : (
                         <Text
+                          selectable={true}
                           style={[
                             styles.assistantText,
                             {
@@ -2575,17 +2667,65 @@ export default function AskVehiCareScreen({
                       )}
                     </View>
 
-                    <Text
-                      style={[
-                        styles.assistantTime,
-                        {
-                          color:
-                            theme.textSecondary,
-                        },
-                      ]}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: 4,
+                        paddingHorizontal: 2,
+                      }}
                     >
-                      {item.time}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.assistantTime,
+                          {
+                            color: theme.textSecondary,
+                            marginTop: 0,
+                          },
+                        ]}
+                      >
+                        {item.time}
+                      </Text>
+
+                      {!item.audioUri && Boolean(item.text || item.message || item.diagnosisData) && (
+                        <TouchableOpacity
+                          testID={`copy-message-${item.id}`}
+                          accessibilityRole="button"
+                          accessibilityLabel={copiedMessageId === item.id ? 'Copied message' : 'Copy message'}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          activeOpacity={0.7}
+                          onPress={() => handleCopyMessage(item)}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                            backgroundColor:
+                              copiedMessageId === item.id
+                                ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7')
+                                : 'transparent',
+                          }}
+                        >
+                          <Feather
+                            name={copiedMessageId === item.id ? 'check' : 'copy'}
+                            size={12}
+                            color={copiedMessageId === item.id ? '#10B981' : theme.textSecondary}
+                          />
+                          <Text
+                            style={{
+                              fontFamily: 'Inter-Medium',
+                              fontSize: 11,
+                              color: copiedMessageId === item.id ? '#10B981' : theme.textSecondary,
+                            }}
+                          >
+                            {copiedMessageId === item.id ? 'Copied' : 'Copy'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 </View>
               ) : (
@@ -2665,6 +2805,7 @@ export default function AskVehiCareScreen({
                       </TouchableOpacity>
                     ) : (
                       <Text
+                        selectable={true}
                         style={[
                           styles.userMessageText,
                           {
@@ -2682,6 +2823,38 @@ export default function AskVehiCareScreen({
                       styles.messageMeta
                     }
                   >
+                    {!item.audioUri && Boolean(item.text || item.message) && (
+                      <TouchableOpacity
+                        testID={`copy-message-${item.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={copiedMessageId === item.id ? 'Copied message' : 'Copy message'}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
+                        onPress={() => handleCopyMessage(item)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 3,
+                          marginRight: 6,
+                        }}
+                      >
+                        <Feather
+                          name={copiedMessageId === item.id ? 'check' : 'copy'}
+                          size={11}
+                          color={copiedMessageId === item.id ? '#10B981' : theme.textSecondary}
+                        />
+                        <Text
+                          style={{
+                            fontFamily: 'Inter-Medium',
+                            fontSize: 10.5,
+                            color: copiedMessageId === item.id ? '#10B981' : theme.textSecondary,
+                          }}
+                        >
+                          {copiedMessageId === item.id ? 'Copied' : 'Copy'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
                     <Text
                       style={[
                         styles.messageTime,

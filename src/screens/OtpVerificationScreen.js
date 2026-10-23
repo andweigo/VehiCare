@@ -18,7 +18,10 @@ import { resendOtp, verifyOtp } from '../api/authApi';
 import CustomToast from '../components/CustomToast';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
+import { getGuestVehicle } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
+
+const DEFAULT_OTP_EXPIRY_SECONDS = 600; // 10 minutes
 
 /**
  * Format total seconds into a clean, human-friendly duration string.
@@ -53,7 +56,7 @@ export const formatApiMessage = msg => {
 const OtpVerificationScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
   const { verifyUserEmail, completeRegistrationAuth } = useAuth();
-  const { setActiveVehicle, clearPendingVehicle } = useVehicle();
+  const { pendingVehicle, setActiveVehicle, clearPendingVehicle } = useVehicle();
 
   const email = route?.params?.email || '';
   const purpose = route?.params?.purpose || 'registration';
@@ -65,10 +68,16 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   const [cooldown, setCooldown] = useState(
     route?.params?.cooldown_seconds ? Math.ceil(route.params.cooldown_seconds) : 0,
   );
+  const [expiresIn, setExpiresIn] = useState(
+    route?.params?.expires_in_seconds
+      ? Math.ceil(route.params.expires_in_seconds)
+      : DEFAULT_OTP_EXPIRY_SECONDS,
+  );
   const [toast, setToast] = useState(null);
 
   const inputRef = useRef(null);
   const timerRef = useRef(null);
+  const expiryTimerRef = useRef(null);
 
   const showToast = useCallback(({ type = 'info', title = '', message = '', duration = 3500 }) => {
     setToast({ type, title, message, duration });
@@ -108,9 +117,42 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     };
   }, [cooldown]);
 
+  // Code expiration countdown timer (10 minutes)
+  useEffect(() => {
+    if (expiresIn <= 0) {
+      if (expiryTimerRef.current) clearInterval(expiryTimerRef.current);
+      return;
+    }
+
+    expiryTimerRef.current = setInterval(() => {
+      setExpiresIn(prev => {
+        if (prev <= 1) {
+          clearInterval(expiryTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (expiryTimerRef.current) clearInterval(expiryTimerRef.current);
+    };
+  }, [expiresIn]);
+
+  const isCodeExpired = expiresIn <= 0;
+
   const handleVerify = async (submittedOtp = null) => {
     Keyboard.dismiss();
     const code = submittedOtp !== null && typeof submittedOtp === 'string' ? submittedOtp : otp;
+
+    if (isCodeExpired) {
+      showToast({
+        type: 'warning',
+        title: 'Verification Code Expired',
+        message: 'Your verification code has expired. Please tap Resend Code to get a new code.',
+      });
+      return;
+    }
 
     if (!code || code.length !== 6) {
       showToast({
@@ -141,7 +183,10 @@ const OtpVerificationScreen = ({ route, navigation }) => {
           if (purpose === 'registration') {
             const verifiedToken = response?.token || response?.data?.token;
             const verifiedUser = response?.user || response?.data?.user;
-            const guestVehicle = route?.params?.guestVehicle || null;
+            const storedGuest =
+              typeof getGuestVehicle === 'function' ? await getGuestVehicle() : null;
+            const guestVehicle =
+              route?.params?.guestVehicle || pendingVehicle || storedGuest || null;
 
             if (verifiedToken && verifiedUser) {
               try {
@@ -163,7 +208,11 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                   setActiveVehicle(completeResult.claimedVehicle);
                 }
 
-                if (redirectTo?.name) {
+                const shouldSkipVehicleSetup =
+                  completeResult?.hasAccountVehicles &&
+                  redirectTo?.name === 'VehicleDetails';
+
+                if (redirectTo?.name && !shouldSkipVehicleSetup) {
                   try {
                     navigation.replace(redirectTo.name, redirectTo.params);
                   } catch (navErr) {
@@ -195,7 +244,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
               }
             } else {
               await verifyUserEmail();
-              if (redirectTo?.name) {
+              if (redirectTo?.name && redirectTo.name !== 'VehicleDetails') {
                 try {
                   navigation.replace(redirectTo.name, redirectTo.params);
                 } catch (navErr) {
@@ -218,18 +267,28 @@ const OtpVerificationScreen = ({ route, navigation }) => {
           }
         }, 1500);
       } else {
+        const msg = formatApiMessage(response?.message) || 'Invalid verification code. Please try again.';
+        const isExpiredMsg = String(msg).toLowerCase().includes('expired');
+        if (isExpiredMsg) {
+          setExpiresIn(0);
+        }
         showToast({
-          type: 'error',
-          title: 'Verification Failed',
-          message: formatApiMessage(response?.message) || 'Invalid verification code. Please try again.',
+          type: isExpiredMsg ? 'warning' : 'error',
+          title: isExpiredMsg ? 'Verification Code Expired' : 'Verification Failed',
+          message: msg,
         });
       }
     } catch (err) {
       const apiMsg = err?.response?.data?.message || err?.message || 'Verification failed. Please try again.';
+      const formattedMsg = formatApiMessage(apiMsg);
+      const isExpiredMsg = String(formattedMsg).toLowerCase().includes('expired');
+      if (isExpiredMsg) {
+        setExpiresIn(0);
+      }
       showToast({
-        type: 'error',
-        title: 'Verification Error',
-        message: formatApiMessage(apiMsg),
+        type: isExpiredMsg ? 'warning' : 'error',
+        title: isExpiredMsg ? 'Verification Code Expired' : 'Verification Error',
+        message: formattedMsg,
       });
     } finally {
       setLoading(false);
@@ -256,7 +315,9 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
       if (response?.success) {
         const cd = response?.cooldown_seconds || response?.cooldown || 60;
+        const exp = response?.expires_in_seconds || DEFAULT_OTP_EXPIRY_SECONDS;
         setCooldown(Math.ceil(cd));
+        setExpiresIn(Math.ceil(exp));
         setOtp('');
         showToast({
           type: 'success',
@@ -379,15 +440,63 @@ const OtpVerificationScreen = ({ route, navigation }) => {
             caretHidden
           />
 
+          {/* CODE EXPIRATION STATUS */}
+          {isCodeExpired ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                backgroundColor: 'rgba(255, 90, 95, 0.12)',
+                borderColor: '#FF5A5F',
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                marginBottom: 14,
+              }}
+            >
+              <Ionicons name="time-outline" size={18} color="#FF5A5F" />
+              <Text
+                style={{
+                  fontFamily: 'Inter-Medium',
+                  fontSize: 12.5,
+                  color: '#FF5A5F',
+                  flex: 1,
+                }}
+              >
+                Your verification code has expired. Please tap Resend Code below to receive a new code.
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                marginBottom: 12,
+              }}
+            >
+              <Ionicons name="time-outline" size={15} color={theme.textSecondary} />
+              <Text style={{ fontFamily: 'Inter-Medium', fontSize: 12.5, color: theme.textSecondary }}>
+                Code expires in{' '}
+                <Text style={{ color: theme.text, fontFamily: 'Inter-SemiBold' }}>
+                  {formatCooldownTime(expiresIn)}
+                </Text>
+              </Text>
+            </View>
+          )}
+
           {/* SUBMIT BUTTON */}
           <TouchableOpacity
             style={[
               styles.button,
               { backgroundColor: theme.accent },
-              (loading || otp.length !== 6) && styles.buttonDisabled,
+              (loading || otp.length !== 6 || isCodeExpired) && styles.buttonDisabled,
             ]}
             onPress={() => handleVerify()}
-            disabled={loading || otp.length !== 6}
+            disabled={loading || otp.length !== 6 || isCodeExpired}
             activeOpacity={0.85}
           >
             {loading ? (

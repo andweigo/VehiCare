@@ -353,7 +353,16 @@ const SectionChips = ({ category, setCategory, notifications = [], theme }) => {
    ANNOUNCEMENT MODAL COMPONENT
 ============================================================ */
 
-const AnnouncementModal = ({ visible, title, message, date, onClose, theme }) => {
+const AnnouncementModal = ({
+  visible,
+  title,
+  message,
+  date,
+  badgeLabel = 'ANNOUNCEMENT',
+  badgeIcon = 'campaign',
+  onClose,
+  theme,
+}) => {
   if (!visible) return null;
   const isDark = theme?.name === 'dark';
 
@@ -388,8 +397,8 @@ const AnnouncementModal = ({ visible, title, message, date, onClose, theme }) =>
                 { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.15)' : '#FFF2EE' },
               ]}
             >
-              <Icon name="campaign" size={14} color="#F63B05" />
-              <Text style={styles.announcementBadgeText}>ANNOUNCEMENT</Text>
+              <Icon name={badgeIcon || 'campaign'} size={14} color="#F63B05" />
+              <Text style={styles.announcementBadgeText}>{badgeLabel || 'ANNOUNCEMENT'}</Text>
             </View>
 
             <TouchableOpacity
@@ -452,7 +461,7 @@ const AnnouncementModal = ({ visible, title, message, date, onClose, theme }) =>
    MAIN NOTIFICATIONS SCREEN
 ============================================================ */
 
-const NotificationsScreen = ({ navigation }) => {
+const NotificationsScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
   const { openSidebar } = useSidebar();
@@ -475,6 +484,8 @@ const NotificationsScreen = ({ navigation }) => {
     title: '',
     message: '',
     date: null,
+    badgeLabel: 'ANNOUNCEMENT',
+    badgeIcon: 'campaign',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const listRef = useRef(null);
@@ -483,6 +494,8 @@ const NotificationsScreen = ({ navigation }) => {
   const loadInFlightRef = useRef(false);
   const refreshPendingRef = useRef(false);
   const loadRef = useRef(null);
+  const handledPushClickRef = useRef(null);
+  const locallyReadIdsRef = useRef(new Set());
   const currentUserIdRef = useRef(user?.id);
   currentUserIdRef.current = user?.id;
 
@@ -517,7 +530,14 @@ const NotificationsScreen = ({ navigation }) => {
       setFetchError(null);
       const items = await notificationService.fetchNotifications();
       if (mountedRef.current && currentUserIdRef.current === requestedUserId) {
-        setNotifications(Array.isArray(items) ? items : []);
+        const normalizedItems = Array.isArray(items)
+          ? items.map(item =>
+              locallyReadIdsRef.current.has(String(item.id))
+                ? { ...item, isRead: true }
+                : item,
+            )
+          : [];
+        setNotifications(normalizedItems);
       }
     } catch (error) {
       if (mountedRef.current && currentUserIdRef.current === requestedUserId) {
@@ -558,6 +578,12 @@ const NotificationsScreen = ({ navigation }) => {
 
   const onMarkAll = useCallback(async () => {
     try {
+      setNotifications(prev => {
+        prev.forEach(n => {
+          if (n?.id != null) locallyReadIdsRef.current.add(String(n.id));
+        });
+        return prev.map(n => ({ ...n, isRead: true }));
+      });
       await notificationService.markAllAsRead();
       await load();
     } catch (error) {
@@ -567,16 +593,34 @@ const NotificationsScreen = ({ navigation }) => {
 
   const onPressNotification = useCallback(
     async item => {
+      if (!item) return;
       try {
-        if (!item.isRead) {
+        if (item.id != null) {
+          const idStr = String(item.id);
+          locallyReadIdsRef.current.add(idStr);
+          setNotifications(prev =>
+            prev.map(n => (String(n.id) === idStr ? { ...n, isRead: true } : n)),
+          );
+        }
+
+        if (!item.isRead && item.id != null) {
           await notificationService.markAsRead(item.id);
         }
 
-        await load();
+        load();
 
         const targetVehicleId = item.vehicleId || item.data?.vehicle_id;
         const normType = String(item.type || '').toLowerCase();
         const normCat = String(item.category || '').toLowerCase();
+        const dateStr = item.timestamp
+          ? new Date(item.timestamp).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : null;
 
         // 1. Diagnostic Alert Notification -> Navigate to History and open diagnostic details
         if (normType === 'diagnostic' || normCat === 'diagnostics') {
@@ -590,20 +634,13 @@ const NotificationsScreen = ({ navigation }) => {
 
         // 2. Announcement Notification -> Display in sleek AnnouncementModal
         if (normType === 'announcement' || normCat === 'announcements') {
-          const dateStr = item.timestamp
-            ? new Date(item.timestamp).toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : null;
           setAnnouncementModal({
             visible: true,
             title: item.title || 'Announcement',
             message: item.message || '',
             date: dateStr,
+            badgeLabel: 'ANNOUNCEMENT',
+            badgeIcon: 'campaign',
           });
           return;
         }
@@ -656,14 +693,56 @@ const NotificationsScreen = ({ navigation }) => {
             break;
 
           default:
+            {
+              const meta = getNotificationMeta(item.type, isDark);
+              setAnnouncementModal({
+                visible: true,
+                title: item.title || 'Notification Details',
+                message: item.message || '',
+                date: dateStr,
+                badgeLabel: (meta?.label || 'Notification').toUpperCase(),
+                badgeIcon: meta?.icon || 'notifications',
+              });
+            }
             break;
         }
       } catch (error) {
         console.error('Failed processing notification click:', error);
       }
     },
-    [navigation, refreshActiveVehicle, load],
+    [navigation, refreshActiveVehicle, load, isDark],
   );
+
+  // Open notification details and mark as read when launched/clicked from a push notification
+  useEffect(() => {
+    const openNotifId = route?.params?.openNotificationId;
+    const openNotifPayload = route?.params?.openNotification;
+    const pushTs = route?.params?._pushClickTs || openNotifId || openNotifPayload?.title;
+    if (!pushTs || handledPushClickRef.current === pushTs) {
+      return;
+    }
+    if (loading && !openNotifPayload) {
+      return;
+    }
+
+    const matched = openNotifId
+      ? notifications.find(n => String(n.id) === String(openNotifId))
+      : null;
+    const targetItem = matched || openNotifPayload || notifications.find(n => !n.isRead);
+    if (!targetItem) {
+      return;
+    }
+
+    handledPushClickRef.current = pushTs;
+    onPressNotification(targetItem);
+  }, [
+    route?.params?.openNotificationId,
+    route?.params?.openNotification,
+    route?.params?._pushClickTs,
+    notifications,
+    loading,
+    onPressNotification,
+  ]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1002,7 +1081,18 @@ const NotificationsScreen = ({ navigation }) => {
         title={announcementModal.title}
         message={announcementModal.message}
         date={announcementModal.date}
-        onClose={() => setAnnouncementModal({ visible: false, title: '', message: '', date: null })}
+        badgeLabel={announcementModal.badgeLabel}
+        badgeIcon={announcementModal.badgeIcon}
+        onClose={() =>
+          setAnnouncementModal({
+            visible: false,
+            title: '',
+            message: '',
+            date: null,
+            badgeLabel: 'ANNOUNCEMENT',
+            badgeIcon: 'campaign',
+          })
+        }
         theme={theme}
       />
 

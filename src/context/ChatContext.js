@@ -25,9 +25,27 @@ const ChatContext = createContext(null);
 | HELPER: RESOLVE VEHICLE KEY
 |--------------------------------------------------------------------------
 */
-const getVehicleKey = (vehicleId) => {
-  if (vehicleId !== null && vehicleId !== undefined && vehicleId !== '') {
-    return String(vehicleId);
+const getVehicleKey = (vehicleOrId) => {
+  if (vehicleOrId !== null && vehicleOrId !== undefined && vehicleOrId !== '') {
+    if (typeof vehicleOrId === 'object') {
+      const id = vehicleOrId.id ?? vehicleOrId.vehicle_id;
+      if (id !== null && id !== undefined && id !== '') {
+        return String(id);
+      }
+      const parts = [
+        vehicleOrId.vehicle_type?.name || vehicleOrId.vehicle_type || vehicleOrId.type,
+        vehicleOrId.custom_brand || vehicleOrId.vehicle_brand?.name || vehicleOrId.vehicle_brand || vehicleOrId.brand || vehicleOrId.make,
+        vehicleOrId.custom_model || vehicleOrId.vehicle_model?.name || vehicleOrId.vehicle_model || vehicleOrId.model,
+        vehicleOrId.custom_year || vehicleOrId.vehicle_year?.year || vehicleOrId.vehicle_year || vehicleOrId.year,
+      ]
+        .filter(Boolean)
+        .map(p => String(p).trim().toLowerCase());
+      if (parts.length > 0) {
+        return `guest_${parts.join('_')}`;
+      }
+      return 'default';
+    }
+    return String(vehicleOrId);
   }
   return 'default';
 };
@@ -57,8 +75,9 @@ export const ChatProvider = ({ children }) => {
 
   // Resolve active vehicle & vehicle key based on auth status
   const resolvedVehicle = isAuthenticated ? activeVehicle : pendingVehicle;
-  const vehicleId = resolvedVehicle?.id || resolvedVehicle?.vehicle_id || null;
-  const vehicleKey = getVehicleKey(vehicleId);
+  const rawVehicleId = resolvedVehicle?.id || resolvedVehicle?.vehicle_id || null;
+  const vehicleKey = getVehicleKey(rawVehicleId || resolvedVehicle);
+  const vehicleId = rawVehicleId || (vehicleKey !== 'default' ? vehicleKey : null);
 
   // States
   const [sessionsMap, setSessionsMap] = useState({});
@@ -107,9 +126,14 @@ export const ChatProvider = ({ children }) => {
       String(session.userId ?? '') !== String(userId ?? '')
     ) return session;
     try {
+      const rawSessionVehId = session.vehicleId || rawVehicleId;
+      const numericVehicleId =
+        rawSessionVehId !== null && rawSessionVehId !== undefined && !isNaN(Number(rawSessionVehId))
+          ? Number(rawSessionVehId)
+          : null;
       const payload = {
         id: session.id,
-        vehicle_id: session.vehicleId || vehicleId,
+        vehicle_id: numericVehicleId,
         title: session.title || 'Ask VehiCare Chat',
         type: session.type || 'general',
         status: session.status || 'active',
@@ -124,7 +148,7 @@ export const ChatProvider = ({ children }) => {
       console.warn('[ChatContext] Failed to sync session to server:', err?.message);
     }
     return session;
-  }, [isAuthenticated, token, userId, vehicleId]);
+  }, [isAuthenticated, token, userId, rawVehicleId]);
 
   /*
   |--------------------------------------------------------------------------
@@ -255,6 +279,7 @@ export const ChatProvider = ({ children }) => {
 
       const targetId = forcedVehicleId !== null ? forcedVehicleId : vehicleId;
       const targetKey = getVehicleKey(targetId);
+      prevVehicleKeyRef.current = targetKey;
 
       // Only reuse sessions already in memory; persisted active sessions are history on cold start.
       const existingActive = freshStart ? null : Object.values(existingMap).find(

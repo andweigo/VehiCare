@@ -23,7 +23,9 @@ class AuthController extends Controller
             'name' => [
                 'required',
                 'string',
-                'max:255',
+                'min:2',
+                'max:100',
+                'regex:/^[\p{L}][\p{L}\s.\'\-]+$/u',
             ],
 
             'email' => [
@@ -39,12 +41,24 @@ class AuthController extends Controller
                 'min:8',
                 'confirmed',
             ],
+
+            'firebase_uid' => [
+                'nullable',
+                'string',
+                'max:191',
+            ],
+        ], [
+            'name.required' => 'Please enter your full name.',
+            'name.min' => 'Name must be at least 2 characters long.',
+            'name.max' => 'Name cannot exceed 100 characters.',
+            'name.regex' => 'Name can only contain letters, spaces, hyphens, apostrophes, and periods, and must start with a letter.',
         ]);
 
         $user = User::create([
-            'name' => $validated['name'],
+            'name' => trim((string) preg_replace('/\s+/', ' ', $validated['name'])),
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
+            'firebase_uid' => $validated['firebase_uid'] ?? null,
             'role' => User::ROLE_USER,
             'subscription_plan' => User::SUBSCRIPTION_FREE,
             'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
@@ -78,6 +92,7 @@ class AuthController extends Controller
                 'requires_otp' => true,
                 'email' => $user->email,
                 'cooldown_seconds' => $otpResult['cooldown_seconds'] ?? 60,
+                'expires_in_seconds' => $otpResult['expires_in_seconds'] ?? 600,
                 'token' => null,
             ],
         ], 201);

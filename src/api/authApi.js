@@ -14,13 +14,17 @@ const normalizeAuthResponse = response => {
   return body;
 };
 
-export const register = async (name, email, password) => {
-  const response = await apiClient.post('/register', {
+export const register = async (name, email, password, firebaseUid = null) => {
+  const payload = {
     name,
     email,
     password,
     password_confirmation: password,
-  });
+  };
+  if (firebaseUid) {
+    payload.firebase_uid = firebaseUid;
+  }
+  const response = await apiClient.post('/register', payload);
 
   return normalizeAuthResponse(response);
 };
