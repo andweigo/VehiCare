@@ -143,6 +143,17 @@ const MaintenanceScreen = ({ navigation }) => {
   const totalCatPages = Math.max(1, Math.ceil(safeCategories.length / CAT_PAGE_SIZE));
   const paginatedCategories = safeCategories.slice((categoryPage - 1) * CAT_PAGE_SIZE, categoryPage * CAT_PAGE_SIZE);
 
+  const MAINTENANCE_PAGE_SIZE = 15;
+  const [maintenancePage, setMaintenancePage] = useState(1);
+  const sortedMaintenanceRecords = [...safeMaintenanceRecords].sort(
+    (a, b) => new Date(a.due_date || a.performed_at || a.created_at || 0).getTime() - new Date(b.due_date || b.performed_at || b.created_at || 0).getTime(),
+  );
+  const totalMaintenancePages = Math.max(1, Math.ceil(sortedMaintenanceRecords.length / MAINTENANCE_PAGE_SIZE));
+  const paginatedMaintenanceRecords = sortedMaintenanceRecords.slice(
+    (maintenancePage - 1) * MAINTENANCE_PAGE_SIZE,
+    maintenancePage * MAINTENANCE_PAGE_SIZE,
+  );
+
   const recentActivity = safeHistoryItems.slice(0, 3);
   const hasDiagnosticItems = safeDiagnosticItems.length > 0;
 
@@ -155,6 +166,10 @@ const MaintenanceScreen = ({ navigation }) => {
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  useEffect(() => {
+    setMaintenancePage(page => Math.min(page, totalMaintenancePages));
+  }, [totalMaintenancePages]);
 
   if (loading) {
     return (
@@ -328,6 +343,7 @@ const MaintenanceScreen = ({ navigation }) => {
             </View>
           </View>
 
+          {false && (
           <View style={[styles.recordsCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={styles.recordsHeader}>
               <View style={{ flex: 1 }}>
@@ -386,6 +402,7 @@ const MaintenanceScreen = ({ navigation }) => {
               </View>
             )}
           </View>
+          )}
 
           {/* =========================================================
               BEGINNER-FRIENDLY GUIDE & STATUS EXPLAINER
@@ -642,6 +659,105 @@ const MaintenanceScreen = ({ navigation }) => {
               </View>
             </View>
           )}
+
+          <View style={[styles.recordsCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.recordsHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.recordsTitle, { color: theme.text }]}>This vehicle's maintenance</Text>
+                <Text style={[styles.recordsSubtitle, { color: theme.textSecondary }]}>Scheduled tasks and completed services</Text>
+              </View>
+            </View>
+
+            {!hasMaintenanceRecords ? (
+              <View style={[styles.maintenanceEmptyState, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
+                  <Icon name="event-note" size={27} color={theme.accent} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No maintenance recommendations yet</Text>
+                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                  VehiCare will add maintenance tasks automatically when it identifies them for this vehicle. Mark a recommended task as completed to keep its history up to date.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.recordsList}>
+                {paginatedMaintenanceRecords.map(record => {
+                  const dueTime = record.due_date ? new Date(record.due_date).getTime() : null;
+                  const isOverdue = record.status !== 'completed' && dueTime !== null && dueTime < now;
+                  const statusLabel = record.status === 'completed' ? 'Completed' : isOverdue ? 'Overdue' : record.status === 'in_progress' ? 'In progress' : 'Scheduled';
+                  const statusColor = record.status === 'completed' ? '#32D583' : isOverdue ? '#EF4444' : '#D6A23A';
+                  const shownDate = record.status === 'completed' ? (record.performed_at || record.created_at) : record.due_date;
+                  const dateLabel = shownDate && !Number.isNaN(new Date(shownDate).getTime())
+                    ? new Date(shownDate).toLocaleDateString()
+                    : (record.status === 'completed' ? 'Completion date not recorded' : 'No due date set');
+
+                  return (
+                    <View key={record.id} style={[styles.recordRow, { borderTopColor: theme.border }]}>
+                      <View style={[styles.recordStatusDot, { backgroundColor: statusColor }]} />
+                      <TouchableOpacity style={styles.recordMain} onPress={() => openRecordForm(record.status || 'pending', record)} activeOpacity={0.8}>
+                        <Text style={[styles.recordName, { color: theme.text }]} numberOfLines={1}>{record.title || 'Maintenance task'}</Text>
+                        <Text style={[styles.recordMeta, { color: theme.textSecondary }]} numberOfLines={2}>
+                          {statusLabel} - {record.status === 'completed' ? 'Serviced' : 'Due'} {dateLabel}
+                        </Text>
+                      </TouchableOpacity>
+                      {record.status !== 'completed' && (
+                        <TouchableOpacity style={styles.recordIconButton} onPress={() => completeScheduledRecord(record)} accessibilityLabel={`Mark ${record.title} completed`}>
+                          <Icon name="check-circle-outline" size={19} color="#32D583" />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity style={styles.recordIconButton} onPress={() => openRecordForm(record.status || 'pending', record)} accessibilityLabel={`Edit ${record.title}`}>
+                        <Icon name="edit" size={18} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.recordIconButton} onPress={() => deleteMaintenanceRecord(record)} accessibilityLabel={`Delete ${record.title}`}>
+                        <Icon name="delete-outline" size={19} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {hasMaintenanceRecords && totalMaintenancePages > 1 && (
+              <View style={styles.paginationContainer}>
+                <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+                  Showing {((maintenancePage - 1) * MAINTENANCE_PAGE_SIZE) + 1}-{Math.min(maintenancePage * MAINTENANCE_PAGE_SIZE, sortedMaintenanceRecords.length)} of {sortedMaintenanceRecords.length} maintenance records
+                </Text>
+                <View style={styles.paginationControls}>
+                  <TouchableOpacity
+                    style={[styles.pageNavButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: maintenancePage === 1 ? 0.4 : 1 }]}
+                    disabled={maintenancePage === 1}
+                    onPress={() => setMaintenancePage(page => Math.max(1, page - 1))}
+                  >
+                    <Icon name="chevron-left" size={18} color={theme.text} />
+                    <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.pagePillsRow}>
+                    {Array.from({ length: totalMaintenancePages }, (_, idx) => idx + 1).map(pageNum => {
+                      const isActive = pageNum === maintenancePage;
+                      return (
+                        <TouchableOpacity
+                          key={pageNum}
+                          style={[styles.pagePill, isActive ? { backgroundColor: theme.accent, borderColor: theme.accent } : { backgroundColor: theme.surface, borderColor: theme.border }]}
+                          onPress={() => setMaintenancePage(pageNum)}
+                        >
+                          <Text style={[styles.pagePillText, { color: isActive ? '#FFFFFF' : theme.text }]}>{pageNum}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.pageNavButton, { backgroundColor: theme.surface, borderColor: theme.border, opacity: maintenancePage >= totalMaintenancePages ? 0.4 : 1 }]}
+                    disabled={maintenancePage >= totalMaintenancePages}
+                    onPress={() => setMaintenancePage(page => Math.min(totalMaintenancePages, page + 1))}
+                  >
+                    <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
+                    <Icon name="chevron-right" size={18} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
 
           {/* SUBTLE INFO CARD IF VEHICLE HAS NO DIAGNOSTIC HISTORY */}
           {safeDiagnostics.length === 0 && (
