@@ -279,11 +279,24 @@ export const validateAndDecodeMedia = (mediaBase64, inputType, mediaMime) => {
   };
 };
 
-const withTimeout = async (operation, timeoutMs, code, message) => {
+const withTimeout = async (operation, timeoutMs, code, message, externalSignal = null) => {
   const controller = new AbortController();
   let timedOut = false;
   let settled = false;
   let timeoutId;
+
+  let abortListener = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      throw makeError('CLIENT_CANCELLED', 'Client cancelled the request.', 499, false);
+    }
+    abortListener = () => {
+      if (settled) return;
+      settled = true;
+      controller.abort();
+    };
+    externalSignal.addEventListener('abort', abortListener, { once: true });
+  }
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
@@ -308,12 +321,18 @@ const withTimeout = async (operation, timeoutMs, code, message) => {
   try {
     return await Promise.race([guardedOperation, timeoutPromise]);
   } catch (error) {
+    if (externalSignal?.aborted) {
+      throw makeError('CLIENT_CANCELLED', 'Client cancelled the request.', 499, false);
+    }
     if (timedOut) {
       throw makeError(code, message, 504, true, error);
     }
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    if (abortListener && externalSignal) {
+      externalSignal.removeEventListener('abort', abortListener);
+    }
   }
 };
 
@@ -339,7 +358,7 @@ const classifyFailureCategory = (errInfo, normalizedError) => {
   return 'unknown';
 };
 
-const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId, requestDeadline }) => {
+const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId, requestDeadline, clientSignal = null }) => {
   const uploadStartedAt = Date.now();
   const remainingForMediaMs = requestDeadline
     ? Math.max(5000, requestDeadline - Date.now() - 8000)
@@ -363,6 +382,7 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId, requestD
       uploadTimeoutMs,
       'MEDIA_UPLOAD_TIMEOUT',
       'Gemini did not accept the uploaded media before the upload timed out.',
+      clientSignal,
     );
   } catch (error) {
     logger.warn('AI_MEDIA_UPLOAD_FAILED', requestId, {
@@ -419,6 +439,7 @@ const uploadMedia = async ({ ai, bytes, mimeType, mediaType, requestId, requestD
           Math.max(1000, processDeadline - Date.now()),
           'MEDIA_PROCESSING_TIMEOUT',
           'Gemini could not process the uploaded media within the allowed time.',
+          clientSignal,
         );
       } catch (error) {
         if (error.code === 'MEDIA_PROCESSING_TIMEOUT') throw error;
@@ -549,6 +570,7 @@ export const callGemini = async (params, client = null) => {
     inputType = 'text',
     startTime = Date.now(),
     totalBudgetMs: explicitBudgetMs,
+    clientSignal = null,
   } = params || {};
   const totalBudgetMs = explicitBudgetMs || resolveTotalBudgetMs(inputType, Boolean(mediaBase64));
   const ai = client || getGeminiClient();
@@ -606,6 +628,7 @@ export const callGemini = async (params, client = null) => {
         mediaType: media.mediaType,
         requestId,
         requestDeadline,
+        clientSignal,
       });
       parts.push({
         fileData: {
@@ -796,6 +819,7 @@ export const callGemini = async (params, client = null) => {
             timeoutMs,
             'GEMINI_TIMEOUT',
             `Vehicle ${media?.mediaType || 'diagnostic'} analysis took longer than expected. Please try again.`,
+            clientSignal,
           );
           const textOutput = response?.text;
 
@@ -851,8 +875,8 @@ export const callGemini = async (params, client = null) => {
             errorMessage: errInfo.message,
           });
 
-          // Never retry or fall back on invalid API keys or invalid arguments
-          if (errInfo.isAuthOrClient || errInfo.isInvalidArgument) {
+          // Never retry or fall back on invalid API keys, invalid arguments, or client cancellation
+          if (errInfo.isAuthOrClient || errInfo.isInvalidArgument || normalizedError.code === 'CLIENT_CANCELLED' || clientSignal?.aborted) {
             throw normalizedError;
           }
 

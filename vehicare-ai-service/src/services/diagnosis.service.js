@@ -71,10 +71,17 @@ export const processDiagnosisRequest = async (payload) => {
 
     // Keep the classifier inside the same concurrency queue as diagnosis calls.
     // It still runs before cache and deduplication, so neither can bypass it.
+    const audioUserKey = userContext?.id ? `user_${userContext.id}` : null;
+    const audioPlanTier = (entitlements?.plan || userContext?.plan || 'free').toLowerCase();
     const validation = await queueService.enqueue(
-      () => classifyVehicleSound({ mediaBase64, mediaMime, requestId }),
+      () => classifyVehicleSound({ mediaBase64, mediaMime, requestId, clientSignal: payload?.clientSignal }),
       `${requestId}_sound_validation`,
-      'audio_validation',
+      {
+        requestType: 'audio_validation',
+        userKey: audioUserKey,
+        planTier: audioPlanTier,
+        signal: payload?.clientSignal,
+      },
     );
     if (validation.outcome !== 'valid_vehicle_sound') {
       const error = new Error(
@@ -204,6 +211,9 @@ export const processDiagnosisRequest = async (payload) => {
 
     try {
       // 5. Enter Concurrency Queue
+      const diagUserKey = userContext?.id ? `user_${userContext.id}` : null;
+      const diagPlanTier = (entitlements?.plan || userContext?.plan || 'free').toLowerCase();
+
       const geminiResult = await queueService.enqueue(async () => {
         const queueWaitMs = Date.now() - queueEnterTime;
         // 6. Build Prompt
@@ -238,6 +248,7 @@ export const processDiagnosisRequest = async (payload) => {
             inputType,
             startTime,
             totalBudgetMs: resolveTotalBudgetMs(inputType, Boolean(mediaBase64)),
+            clientSignal: payload?.clientSignal,
           });
         } catch (geminiError) {
           const isMediaError = [
@@ -330,7 +341,12 @@ export const processDiagnosisRequest = async (payload) => {
         }
 
         return { response, queueWaitMs, mediaFallbackUsed, mediaErrorNotice };
-      }, requestId, requestType);
+      }, requestId, {
+        requestType,
+        userKey: diagUserKey,
+        planTier: diagPlanTier,
+        signal: payload?.clientSignal,
+      });
 
       const { response: geminiResponse, queueWaitMs, mediaFallbackUsed, mediaErrorNotice } = geminiResult;
       const rawResponseText = geminiResponse.text;

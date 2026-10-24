@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VehiCare - Administrator System Flowchart (A4 Portrait)</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background-color: #e2e8f0;
+      color: #000000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 0 40px 0;
+    }
+    .print-bar {
+      width: 210mm;
+      background: #ffffff;
+      border: 1px solid #000000;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .print-bar span {
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .print-btn {
+      background: #000000;
+      color: #ffffff;
+      border: none;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .a4-page {
+      width: 210mm;
+      height: 297mm;
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid #94a3b8;
+      margin-bottom: 20px;
+      padding: 8mm 10mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      overflow: hidden;
+    }
+    .sheet-title {
+      font-size: 12px;
+      font-weight: bold;
+      border-bottom: 1.5px solid #000000;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .svg-wrap {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+    .shape {
+      fill: #ffffff;
+      stroke: #000000;
+      stroke-width: 1.5;
+    }
+    .line {
+      fill: none;
+      stroke: #000000;
+      stroke-width: 1.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .txt {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      fill: #000000;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .txt-b {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.5px;
+      font-weight: bold;
+      fill: #000000;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .lbl {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9.5px;
+      font-weight: bold;
+      fill: #000000;
+    }
+    @media print {
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .a4-page {
+        border: none !important;
+        margin: 0 !important;
+        width: 194mm !important;
+        height: 281mm !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="print-bar no-print">
+    <span>VehiCare – Administrator Web Portal Flowchart (2 Portrait A4 Sheets)</span>
+    <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <!-- =========================================================================
+       ADMIN SHEET 1: LOGIN, OVERVIEW, USERS, VEHICLES, DIAGNOSTICS & SERVICES
+  ========================================================================== -->
+  <div class="a4-page">
+    <div class="sheet-title">
+      <span>Figure 5.1: Administrator Flowchart – Portal Authentication and Core Management Modules</span>
+      <span>Part 1 of 2</span>
+    </div>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 760 1000">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#000000"/>
+          </marker>
+        </defs>
+
+        <!-- Start -->
+        <rect x="330" y="10" width="100" height="30" rx="15" class="shape"/>
+        <text x="380" y="25" class="txt-b">Start</text>
+        <line x1="380" y1="40" x2="380" y2="60" class="line" marker-end="url(#arr)"/>
+
+        <!-- Admin Login Screen -->
+        <rect x="305" y="60" width="150" height="32" class="shape"/>
+        <text x="380" y="76" class="txt-b">Admin Login Screen</text>
+        <line x1="380" y1="92" x2="380" y2="112" class="line" marker-end="url(#arr)"/>
+
+        <!-- Input Admin Credentials -->
+        <polygon points="310,112 464,112 450,146 296,146" class="shape"/>
+        <text x="380" y="129" class="txt">Input Admin Credentials</text>
+        <line x1="380" y1="146" x2="380" y2="168" class="line" marker-end="url(#arr)"/>
+
+        <!-- Decision: Is Valid Admin? -->
+        <polygon points="380,168 448,196 380,224 312,196" class="shape"/>
+        <text x="380" y="191" class="txt">Is Valid</text>
+        <text x="380" y="203" class="txt">Admin?</text>
+
+        <!-- Valid = N -> Loop back -->
+        <polyline points="312,196 260,196 260,129 303,129" class="line" marker-end="url(#arr)"/>
+        <text x="292" y="189" class="lbl">N</text>
+
+        <!-- Valid = Y -> Admin Overview Screen -->
+        <line x1="380" y1="224" x2="380" y2="250" class="line" marker-end="url(#arr)"/>
+        <text x="388" y="240" class="lbl">Y</text>
+
+        <!-- Connector B Return Entry into Overview -->
+        <polygon points="500,202 540,202 540,226 520,240 500,226" class="shape"/>
+        <text x="520" y="217" class="txt-b">B</text>
+        <line x1="520" y1="240" x2="520" y2="267" class="line" marker-end="url(#arr)"/>
+
+        <rect x="295" y="250" width="170" height="34" class="shape"/>
+        <text x="380" y="267" class="txt-b">Admin Overview Screen</text>
+        <line x1="380" y1="284" x2="380" y2="306" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="295,306 479,306 465,342 281,342" class="shape"/>
+        <text x="380" y="319" class="txt">Display Metrics, AI Chart</text>
+        <text x="380" y="331" class="txt">&amp; Repair Shop Map</text>
+
+        <!-- Left Sidebar Spine from Overview -->
+        <polyline points="288,324 55,324 55,950" class="line" marker-end="url(#arr)"/>
+
+        <!-- Right Return Spine looping back to Overview -->
+        <polyline points="730,865 730,267 465,267" class="line" marker-end="url(#arr)"/>
+
+        <!-- ================= ROW 1: USERS SCREEN (y=390) ================= -->
+        <line x1="55" y1="390" x2="95" y2="390" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="372" width="130" height="36" class="shape"/>
+        <text x="160" y="385" class="txt-b">Users Screen</text>
+        <text x="160" y="397" class="txt">(Manage Accounts)</text>
+        <line x1="225" y1="390" x2="260" y2="390" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,372 418,372 404,408 256,408" class="shape"/>
+        <text x="337" y="385" class="txt">Show Users List &amp;</text>
+        <text x="337" y="397" class="txt">User Details</text>
+        <line x1="411" y1="390" x2="440" y2="390" class="line" marker-end="url(#arr)"/>
+
+        <rect x="440" y="372" width="145" height="36" class="shape"/>
+        <text x="512" y="385" class="txt">Edit, Toggle Status, Grant</text>
+        <text x="512" y="397" class="txt">Premium, or Delete</text>
+        <line x1="585" y1="390" x2="615" y2="390" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,364 705,390 660,416 615,390" class="shape"/>
+        <text x="660" y="390" class="txt">Done?</text>
+        <polyline points="660,416 660,428 337,428 337,408" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="425" class="lbl">N</text>
+        <line x1="705" y1="390" x2="730" y2="390" class="line"/>
+        <text x="708" y="383" class="lbl">Y</text>
+
+        <!-- ================= ROW 2: VEHICLES SCREEN (y=485) ================= -->
+        <line x1="55" y1="485" x2="95" y2="485" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="467" width="130" height="36" class="shape"/>
+        <text x="160" y="480" class="txt-b">Vehicles Screen</text>
+        <text x="160" y="492" class="txt">(Fleet Records)</text>
+        <line x1="225" y1="485" x2="260" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,467 418,467 404,503 256,503" class="shape"/>
+        <text x="337" y="480" class="txt">Show Vehicles List &amp;</text>
+        <text x="337" y="492" class="txt">Vehicle Specs</text>
+        <line x1="411" y1="485" x2="440" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <rect x="440" y="467" width="145" height="36" class="shape"/>
+        <text x="512" y="480" class="txt">Inspect Data Quality</text>
+        <text x="512" y="492" class="txt">or Delete Vehicle</text>
+        <line x1="585" y1="485" x2="615" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,459 705,485 660,511 615,485" class="shape"/>
+        <text x="660" y="485" class="txt">Done?</text>
+        <polyline points="660,511 660,523 337,523 337,503" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="520" class="lbl">N</text>
+        <line x1="705" y1="485" x2="730" y2="485" class="line"/>
+        <text x="708" y="478" class="lbl">Y</text>
+
+        <!-- ================= ROW 3: DIAGNOSTICS SCREEN (y=580) ================= -->
+        <line x1="55" y1="580" x2="95" y2="580" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="562" width="130" height="36" class="shape"/>
+        <text x="160" y="575" class="txt-b">Diagnostics Screen</text>
+        <text x="160" y="587" class="txt">(AI Consultations)</text>
+        <line x1="225" y1="580" x2="260" y2="580" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,562 418,562 404,598 256,598" class="shape"/>
+        <text x="337" y="575" class="txt">Show AI Diagnoses</text>
+        <text x="337" y="587" class="txt">List &amp; Severity</text>
+        <line x1="411" y1="580" x2="440" y2="580" class="line" marker-end="url(#arr)"/>
+
+        <rect x="440" y="562" width="145" height="36" class="shape"/>
+        <text x="512" y="575" class="txt">View Symptoms, Causes</text>
+        <text x="512" y="587" class="txt">&amp; Cost Breakdown</text>
+        <line x1="585" y1="580" x2="615" y2="580" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,554 705,580 660,606 615,580" class="shape"/>
+        <text x="660" y="580" class="txt">Done?</text>
+        <polyline points="660,606 660,618 337,618 337,598" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="615" class="lbl">N</text>
+        <line x1="705" y1="580" x2="730" y2="580" class="line"/>
+        <text x="708" y="573" class="lbl">Y</text>
+
+        <!-- ================= ROW 4: REPAIR SHOPS SCREEN (y=675) ================= -->
+        <line x1="55" y1="675" x2="95" y2="675" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="657" width="130" height="36" class="shape"/>
+        <text x="160" y="670" class="txt-b">Repair Shops</text>
+        <text x="160" y="682" class="txt">Screen</text>
+        <line x1="225" y1="675" x2="260" y2="675" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,657 418,657 404,693 256,693" class="shape"/>
+        <text x="337" y="670" class="txt">Show Listed Repair</text>
+        <text x="337" y="682" class="txt">Shops Directory</text>
+        <line x1="411" y1="675" x2="440" y2="675" class="line" marker-end="url(#arr)"/>
+
+        <rect x="440" y="657" width="145" height="36" class="shape"/>
+        <text x="512" y="670" class="txt">Create, Edit Map Coords,</text>
+        <text x="512" y="682" class="txt">Toggle Active, or Delete</text>
+        <line x1="585" y1="675" x2="615" y2="675" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,649 705,675 660,701 615,675" class="shape"/>
+        <text x="660" y="675" class="txt">Done?</text>
+        <polyline points="660,701 660,713 337,713 337,693" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="710" class="lbl">N</text>
+        <line x1="705" y1="675" x2="730" y2="675" class="line"/>
+        <text x="708" y="668" class="lbl">Y</text>
+
+        <!-- ================= ROW 5: REPAIR ASSISTANCE & MAINTENANCE SCREEN (y=770) ================= -->
+        <line x1="55" y1="770" x2="95" y2="770" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="752" width="130" height="36" class="shape"/>
+        <text x="160" y="765" class="txt-b">Maintenance &amp;</text>
+        <text x="160" y="777" class="txt">Repair Assistance</text>
+        <line x1="225" y1="770" x2="260" y2="770" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,752 418,752 404,788 256,788" class="shape"/>
+        <text x="337" y="765" class="txt">Show User Maintenance</text>
+        <text x="337" y="777" class="txt">&amp; Repair Logs</text>
+        <line x1="411" y1="770" x2="615" y2="770" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,744 705,770 660,796 615,770" class="shape"/>
+        <text x="660" y="770" class="txt">Done?</text>
+        <polyline points="660,796 660,808 337,808 337,788" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="805" class="lbl">N</text>
+        <line x1="705" y1="770" x2="730" y2="770" class="line"/>
+        <text x="708" y="763" class="lbl">Y</text>
+
+        <!-- ================= ROW 6: FEEDBACK SCREEN (y=865) ================= -->
+        <line x1="55" y1="865" x2="95" y2="865" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="847" width="130" height="36" class="shape"/>
+        <text x="160" y="860" class="txt-b">Feedback Screen</text>
+        <text x="160" y="872" class="txt">(User Submissions)</text>
+        <line x1="225" y1="865" x2="260" y2="865" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,847 418,847 404,883 256,883" class="shape"/>
+        <text x="337" y="860" class="txt">Show Feedback &amp;</text>
+        <text x="337" y="872" class="txt">Problem Reports</text>
+        <line x1="411" y1="865" x2="440" y2="865" class="line" marker-end="url(#arr)"/>
+
+        <rect x="440" y="847" width="145" height="36" class="shape"/>
+        <text x="512" y="860" class="txt">Update Feedback</text>
+        <text x="512" y="872" class="txt">Review Status</text>
+        <line x1="585" y1="865" x2="615" y2="865" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,839 705,865 660,891 615,865" class="shape"/>
+        <text x="660" y="865" class="txt">Done?</text>
+        <polyline points="660,891 660,903 337,903 337,883" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="900" class="lbl">N</text>
+        <line x1="705" y1="865" x2="730" y2="865" class="line"/>
+        <text x="708" y="858" class="lbl">Y</text>
+
+        <!-- Off-Page Connector A to Sheet 2 -->
+        <polygon points="35,950 75,950 75,974 55,988 35,974" class="shape"/>
+        <text x="55" y="965" class="txt-b">A</text>
+      </svg>
+    </div>
+  </div>
+
+
+  <!-- =========================================================================
+       ADMIN SHEET 2: AI ENGINE, SUBSCRIPTIONS, CORRECTIONS, SYSTEM & LOGOUT
+  ========================================================================== -->
+  <div class="a4-page">
+    <div class="sheet-title">
+      <span>Figure 5.2: Administrator Flowchart – AI Telemetry, Request Approvals, and System Administration</span>
+      <span>Part 2 of 2</span>
+    </div>
+    <div class="svg-wrap">
+      <svg viewBox="0 0 760 1000">
+        <!-- Connector A Entry -->
+        <polygon points="35,12 75,12 75,36 55,50 35,36" class="shape"/>
+        <text x="55" y="27" class="txt-b">A</text>
+
+        <!-- Left Sidebar Spine at x=55 -->
+        <line x1="55" y1="50" x2="55" y2="915" class="line"/>
+
+        <!-- Right Return Bus at x=730 leading down to Off-Page Connector B (Overview) -->
+        <line x1="730" y1="80" x2="730" y2="835" class="line" marker-end="url(#arr)"/>
+        <polygon points="710,835 750,835 750,859 730,873 710,859" class="shape"/>
+        <text x="730" y="850" class="txt-b">B</text>
+
+        <!-- ================= ROW 1: AI ACTIVITY & REPORTS SCREEN (y=80) ================= -->
+        <line x1="55" y1="80" x2="95" y2="80" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="62" width="130" height="36" class="shape"/>
+        <text x="160" y="75" class="txt-b">AI Activity &amp;</text>
+        <text x="160" y="87" class="txt">Reports Screen</text>
+        <line x1="225" y1="80" x2="260" y2="80" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,62 435,62 421,98 256,98" class="shape"/>
+        <text x="345" y="75" class="txt">Show AI Telemetry &amp;</text>
+        <text x="345" y="87" class="txt">Analytics Reports</text>
+        <line x1="428" y1="80" x2="615" y2="80" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,54 705,80 660,106 615,80" class="shape"/>
+        <text x="660" y="80" class="txt">Done?</text>
+        <polyline points="660,106 660,118 345,118 345,98" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="115" class="lbl">N</text>
+        <line x1="705" y1="80" x2="730" y2="80" class="line"/>
+        <text x="708" y="73" class="lbl">Y</text>
+
+        <!-- ================= ROW 2: SUBSCRIPTIONS & PAYMENTS SCREEN (y=195) ================= -->
+        <line x1="55" y1="195" x2="95" y2="195" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="177" width="125" height="36" class="shape"/>
+        <text x="157" y="190" class="txt-b">Subscriptions</text>
+        <text x="157" y="202" class="txt">Screen (Payments)</text>
+        <line x1="220" y1="195" x2="248" y2="195" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="258,177 382,177 368,213 244,213" class="shape"/>
+        <text x="313" y="190" class="txt">Show Pending</text>
+        <text x="313" y="202" class="txt">Payment Proof</text>
+        <line x1="375" y1="195" x2="402" y2="195" class="line" marker-end="url(#arr)"/>
+
+        <!-- Decision: Approve Payment? -->
+        <polygon points="452,167 502,195 452,223 402,195" class="shape"/>
+        <text x="452" y="190" class="txt">Approve</text>
+        <text x="452" y="202" class="txt">Payment?</text>
+
+        <!-- Approve = Y -> Activate Premium -->
+        <polyline points="452,167 452,150 520,150" class="line" marker-end="url(#arr)"/>
+        <text x="460" y="162" class="lbl">Y</text>
+        <rect x="520" y="134" width="100" height="32" class="shape"/>
+        <text x="570" y="145" class="txt">Approve &amp; Grant</text>
+        <text x="570" y="157" class="txt">Premium Plan</text>
+        <polyline points="620,150 632,150 632,195" class="line"/>
+
+        <!-- Approve = N -> Reject or Refund -->
+        <polyline points="452,223 452,240 520,240" class="line" marker-end="url(#arr)"/>
+        <text x="460" y="236" class="lbl">N</text>
+        <rect x="520" y="224" width="100" height="32" class="shape"/>
+        <text x="570" y="235" class="txt">Reject Payment</text>
+        <text x="570" y="247" class="txt">or Refund</text>
+        <polyline points="620,240 632,240 632,195" class="line"/>
+
+        <line x1="632" y1="195" x2="645" y2="195" class="line" marker-end="url(#arr)"/>
+        <polygon points="678,171 711,195 678,219 645,195" class="shape"/>
+        <text x="678" y="195" class="txt">Done?</text>
+        <polyline points="678,219 678,268 313,268 313,213" class="line" marker-end="url(#arr)"/>
+        <text x="685" y="264" class="lbl">N</text>
+        <line x1="711" y1="195" x2="730" y2="195" class="line"/>
+        <text x="713" y="188" class="lbl">Y</text>
+
+        <!-- ================= ROW 3: CORRECTION REQUESTS SCREEN (y=350) ================= -->
+        <line x1="55" y1="350" x2="95" y2="350" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="332" width="125" height="36" class="shape"/>
+        <text x="157" y="345" class="txt-b">Correction</text>
+        <text x="157" y="357" class="txt">Requests Screen</text>
+        <line x1="220" y1="350" x2="248" y2="350" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="258,332 382,332 368,368 244,368" class="shape"/>
+        <text x="313" y="345" class="txt">Show Requested</text>
+        <text x="313" y="357" class="txt">Vehicle Changes</text>
+        <line x1="375" y1="350" x2="402" y2="350" class="line" marker-end="url(#arr)"/>
+
+        <!-- Decision: Approve Request? -->
+        <polygon points="452,322 502,350 452,378 402,350" class="shape"/>
+        <text x="452" y="345" class="txt">Approve</text>
+        <text x="452" y="357" class="txt">Request?</text>
+
+        <!-- Approve = Y -> Update Vehicle Specs -->
+        <polyline points="452,322 452,305 520,305" class="line" marker-end="url(#arr)"/>
+        <text x="460" y="317" class="lbl">Y</text>
+        <rect x="520" y="289" width="100" height="32" class="shape"/>
+        <text x="570" y="300" class="txt">Approve &amp; Update</text>
+        <text x="570" y="312" class="txt">Vehicle Specs</text>
+        <polyline points="620,305 632,305 632,350" class="line"/>
+
+        <!-- Approve = N -> Reject Request -->
+        <polyline points="452,378 452,395 520,395" class="line" marker-end="url(#arr)"/>
+        <text x="460" y="391" class="lbl">N</text>
+        <rect x="520" y="379" width="100" height="32" class="shape"/>
+        <text x="570" y="390" class="txt">Reject Request &amp;</text>
+        <text x="570" y="402" class="txt">Notify Owner</text>
+        <polyline points="620,395 632,395 632,350" class="line"/>
+
+        <line x1="632" y1="350" x2="645" y2="350" class="line" marker-end="url(#arr)"/>
+        <polygon points="678,326 711,350 678,374 645,350" class="shape"/>
+        <text x="678" y="350" class="txt">Done?</text>
+        <polyline points="678,374 678,423 313,423 313,368" class="line" marker-end="url(#arr)"/>
+        <text x="685" y="419" class="lbl">N</text>
+        <line x1="711" y1="350" x2="730" y2="350" class="line"/>
+        <text x="713" y="343" class="lbl">Y</text>
+
+        <!-- ================= ROW 4: ANNOUNCEMENTS & ADMIN ACTIVITY SCREEN (y=485) ================= -->
+        <line x1="55" y1="485" x2="95" y2="485" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="467" width="130" height="36" class="shape"/>
+        <text x="160" y="480" class="txt-b">Announcements &amp;</text>
+        <text x="160" y="492" class="txt">Admin Activity</text>
+        <line x1="225" y1="485" x2="260" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,467 435,467 421,503 256,503" class="shape"/>
+        <text x="345" y="480" class="txt">Input Announcement or</text>
+        <text x="345" y="492" class="txt">View System Alerts</text>
+        <line x1="428" y1="485" x2="455" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <rect x="455" y="467" width="135" height="36" class="shape"/>
+        <text x="522" y="480" class="txt">Broadcast to Users</text>
+        <text x="522" y="492" class="txt">or Mark Alert Read</text>
+        <line x1="590" y1="485" x2="615" y2="485" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,459 705,485 660,511 615,485" class="shape"/>
+        <text x="660" y="485" class="txt">Done?</text>
+        <polyline points="660,511 660,523 345,523 345,503" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="520" class="lbl">N</text>
+        <line x1="705" y1="485" x2="730" y2="485" class="line"/>
+        <text x="708" y="478" class="lbl">Y</text>
+
+        <!-- ================= ROW 5: SYSTEM HEALTH & ADMIN AUDIT SCREEN (y=585) ================= -->
+        <line x1="55" y1="585" x2="95" y2="585" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="567" width="130" height="36" class="shape"/>
+        <text x="160" y="580" class="txt-b">System Health &amp;</text>
+        <text x="160" y="592" class="txt">Admin Audit Screen</text>
+        <line x1="225" y1="585" x2="260" y2="585" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,567 435,567 421,603 256,603" class="shape"/>
+        <text x="345" y="580" class="txt">Display API Status &amp;</text>
+        <text x="345" y="592" class="txt">Admin Audit Logs</text>
+        <line x1="428" y1="585" x2="615" y2="585" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,559 705,585 660,611 615,585" class="shape"/>
+        <text x="660" y="585" class="txt">Done?</text>
+        <polyline points="660,611 660,623 345,623 345,603" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="620" class="lbl">N</text>
+        <line x1="705" y1="585" x2="730" y2="585" class="line"/>
+        <text x="708" y="578" class="lbl">Y</text>
+
+        <!-- ================= ROW 6: SETTINGS SCREEN (AI LIMITS) (y=685) ================= -->
+        <line x1="55" y1="685" x2="95" y2="685" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="667" width="130" height="36" class="shape"/>
+        <text x="160" y="680" class="txt-b">Admin Settings</text>
+        <text x="160" y="692" class="txt">Screen</text>
+        <line x1="225" y1="685" x2="260" y2="685" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,667 435,667 421,703 256,703" class="shape"/>
+        <text x="345" y="680" class="txt">Input Free &amp; Premium</text>
+        <text x="345" y="692" class="txt">AI Quota Limits</text>
+        <line x1="428" y1="685" x2="455" y2="685" class="line" marker-end="url(#arr)"/>
+
+        <rect x="455" y="667" width="135" height="36" class="shape"/>
+        <text x="522" y="680" class="txt">Save Updated AI</text>
+        <text x="522" y="692" class="txt">Limits Config</text>
+        <line x1="590" y1="685" x2="615" y2="685" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,659 705,685 660,711 615,685" class="shape"/>
+        <text x="660" y="685" class="txt">Done?</text>
+        <polyline points="660,711 660,723 345,723 345,703" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="720" class="lbl">N</text>
+        <line x1="705" y1="685" x2="730" y2="685" class="line"/>
+        <text x="708" y="678" class="lbl">Y</text>
+
+        <!-- ================= ROW 7: ADMIN ACCOUNTS SCREEN (y=785) ================= -->
+        <line x1="55" y1="785" x2="95" y2="785" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="767" width="130" height="36" class="shape"/>
+        <text x="160" y="780" class="txt-b">Admin Accounts</text>
+        <text x="160" y="792" class="txt">Screen</text>
+        <line x1="225" y1="785" x2="260" y2="785" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="270,767 435,767 421,803 256,803" class="shape"/>
+        <text x="345" y="780" class="txt">Show Administrator</text>
+        <text x="345" y="792" class="txt">Accounts List</text>
+        <line x1="428" y1="785" x2="455" y2="785" class="line" marker-end="url(#arr)"/>
+
+        <rect x="455" y="767" width="135" height="36" class="shape"/>
+        <text x="522" y="780" class="txt">Create, Toggle Active,</text>
+        <text x="522" y="792" class="txt">or Delete Admin</text>
+        <line x1="590" y1="785" x2="615" y2="785" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="660,759 705,785 660,811 615,785" class="shape"/>
+        <text x="660" y="785" class="txt">Done?</text>
+        <polyline points="660,811 660,823 345,823 345,803" class="line" marker-end="url(#arr)"/>
+        <text x="668" y="820" class="lbl">N</text>
+        <line x1="705" y1="785" x2="730" y2="785" class="line"/>
+        <text x="708" y="778" class="lbl">Y</text>
+
+        <!-- ================= ROW 8: ADMIN LOGOUT & END (y=915) ================= -->
+        <line x1="55" y1="915" x2="95" y2="915" class="line" marker-end="url(#arr)"/>
+        <rect x="95" y="897" width="130" height="36" class="shape"/>
+        <text x="160" y="915" class="txt-b">Admin Logout</text>
+        <line x1="225" y1="915" x2="275" y2="915" class="line" marker-end="url(#arr)"/>
+
+        <polygon points="340,885 405,915 340,945 275,915" class="shape"/>
+        <text x="340" y="910" class="txt">Confirm</text>
+        <text x="340" y="922" class="txt">Logout?</text>
+
+        <!-- Confirm = N -> Return to Spine -->
+        <polyline points="340,945 340,970 18,970 18,27 35,27" class="line" marker-end="url(#arr)"/>
+        <text x="348" y="962" class="lbl">N</text>
+
+        <!-- Confirm = Y -> Admin Login Screen -> End -->
+        <line x1="405" y1="915" x2="450" y2="915" class="line" marker-end="url(#arr)"/>
+        <text x="415" y="908" class="lbl">Y</text>
+
+        <rect x="450" y="897" width="140" height="36" class="shape"/>
+        <text x="520" y="915" class="txt-b">Admin Login Screen</text>
+        <line x1="590" y1="915" x2="625" y2="915" class="line" marker-end="url(#arr)"/>
+
+        <rect x="625" y="899" width="90" height="32" rx="16" class="shape"/>
+        <text x="670" y="915" class="txt-b">End</text>
+      </svg>
+    </div>
+  </div>
+
+</body>
+</html>

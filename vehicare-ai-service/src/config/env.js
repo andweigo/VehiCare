@@ -22,6 +22,40 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
+// Validate concurrency settings if explicitly provided
+if (process.env.AI_MAX_CONCURRENT_REQUESTS !== undefined) {
+  const val = Number.parseInt(process.env.AI_MAX_CONCURRENT_REQUESTS, 10);
+  if (!Number.isFinite(val) || val < 1 || val > 50) {
+    console.error(`[FATAL ERROR] Invalid AI_MAX_CONCURRENT_REQUESTS: must be an integer between 1 and 50. Received: "${process.env.AI_MAX_CONCURRENT_REQUESTS}"`);
+    process.exit(1);
+  }
+}
+
+if (process.env.AI_MAX_QUEUE_SIZE !== undefined) {
+  const val = Number.parseInt(process.env.AI_MAX_QUEUE_SIZE, 10);
+  if (!Number.isFinite(val) || val < 1 || val > 200) {
+    console.error(`[FATAL ERROR] Invalid AI_MAX_QUEUE_SIZE: must be an integer between 1 and 200. Received: "${process.env.AI_MAX_QUEUE_SIZE}"`);
+    process.exit(1);
+  }
+}
+
+const rawQueueWait = process.env.AI_QUEUE_WAIT_TIMEOUT_MS || process.env.AI_MAX_QUEUE_WAIT_MS;
+if (rawQueueWait !== undefined) {
+  const val = Number.parseInt(rawQueueWait, 10);
+  if (!Number.isFinite(val) || val < 1000 || val > 120000) {
+    console.error(`[FATAL ERROR] Invalid AI_QUEUE_WAIT_TIMEOUT_MS: must be an integer between 1000 and 120000 ms. Received: "${rawQueueWait}"`);
+    process.exit(1);
+  }
+}
+
+if (process.env.AI_MAX_PENDING_PER_USER !== undefined) {
+  const val = Number.parseInt(process.env.AI_MAX_PENDING_PER_USER, 10);
+  if (!Number.isFinite(val) || val < 1 || val > 20) {
+    console.error(`[FATAL ERROR] Invalid AI_MAX_PENDING_PER_USER: must be an integer between 1 and 20. Received: "${process.env.AI_MAX_PENDING_PER_USER}"`);
+    process.exit(1);
+  }
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -57,9 +91,10 @@ export const config = {
     maxRetries: readInteger('AI_MAX_RETRIES', 1, 0),
   },
   concurrency: {
-    maxConcurrent: parseInt(process.env.AI_MAX_CONCURRENT_REQUESTS || '2', 10),
-    maxQueueSize: parseInt(process.env.AI_MAX_QUEUE_SIZE || '20', 10),
-    maxQueueWaitMs: parseInt(process.env.AI_MAX_QUEUE_WAIT_MS || '10000', 10),
+    maxConcurrent: readInteger('AI_MAX_CONCURRENT_REQUESTS', 3, 1),
+    maxQueueSize: readInteger('AI_MAX_QUEUE_SIZE', 25, 1),
+    maxQueueWaitMs: readInteger('AI_QUEUE_WAIT_TIMEOUT_MS', readInteger('AI_MAX_QUEUE_WAIT_MS', 25000, 1000), 1000),
+    maxPendingPerUser: readInteger('AI_MAX_PENDING_PER_USER', 2, 1),
   },
   rateLimit: {
     windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_MS || '60000', 10),

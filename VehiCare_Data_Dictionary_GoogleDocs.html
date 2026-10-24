@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VehiCare - Capstone Data Dictionary (Google Docs Ready)</title>
+  <style>
+    body {
+      font-family: Arial, Calibri, sans-serif;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #000000;
+      background: #ffffff;
+      padding: 30px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .toolbar {
+      position: sticky;
+      top: 10px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    .btn {
+      background: #0284c7;
+      color: #ffffff;
+      font-weight: bold;
+      font-size: 13px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: #0369a1;
+    }
+    h2 {
+      font-size: 13pt;
+      font-weight: bold;
+      color: #000000;
+      margin-top: 28px;
+      margin-bottom: 6px;
+    }
+    p.table-caption {
+      font-weight: bold;
+      margin-top: 24px;
+      margin-bottom: 6px;
+      font-size: 11pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      font-size: 10pt;
+    }
+    th {
+      background-color: #f2f2f2;
+      border: 1px solid #000000;
+      padding: 6px 8px;
+      text-align: left;
+      font-weight: bold;
+    }
+    td {
+      border: 1px solid #000000;
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+    @media print {
+      .toolbar { display: none; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar no-print">
+    <div>
+      <strong>VehiCare Capstone Data Dictionary (Tables 2.1 to 2.22)</strong>
+      <div style="font-size: 11px; color: #64748b;">Ready to copy and paste directly into Google Docs or Microsoft Word.</div>
+    </div>
+    <button class="btn" onclick="copyDocumentToClipboard()">Copy All Tables to Clipboard</button>
+  </div>
+
+  <div id="document-content">
+    
+    <h2>PART A: CORE APPLICATION ENTITIES</h2>
+
+    <p class="table-caption">Table 2.1: Data Dictionary of Users</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique internal identifier for the user</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 3)</td></tr>
+        <tr><td><b>firebaseUid</b></td><td>Unique identifier from Firebase Authentication</td><td>String</td><td>255</td><td>Unique / Nullable</td><td>MZ4tEZgyGgM9wziHDiQbsAJqkDL2</td></tr>
+        <tr><td><b>googleId</b></td><td>OAuth unique identifier for Google Sign-In</td><td>String</td><td>255</td><td>Unique / Nullable</td><td>1083920194829104</td></tr>
+        <tr><td><b>name</b></td><td>Full legal or display name of the user</td><td>String</td><td>255</td><td>Not Null</td><td>User User</td></tr>
+        <tr><td><b>email</b></td><td>Registered email address of the user</td><td>String</td><td>255</td><td>Unique / Not Null</td><td>user@gmail.com</td></tr>
+        <tr><td><b>password</b></td><td>Encrypted account login password</td><td>String</td><td>255</td><td>Not Null</td><td>Hashed string</td></tr>
+        <tr><td><b>phoneNumber</b></td><td>Mobile contact number of the user</td><td>String</td><td>20</td><td>Nullable</td><td>+639123456789</td></tr>
+        <tr><td><b>avatar</b></td><td>Public storage URL to user's profile image</td><td>String</td><td>255</td><td>Nullable</td><td>Image URL string</td></tr>
+        <tr><td><b>role</b></td><td>System access control permission role</td><td>String</td><td>20</td><td>Not Null</td><td>user, admin</td></tr>
+        <tr><td><b>subscriptionPlan</b></td><td>Active membership tier</td><td>String</td><td>20</td><td>Not Null</td><td>free, premium</td></tr>
+        <tr><td><b>subscriptionStatus</b></td><td>Current subscription activation state</td><td>String</td><td>20</td><td>Not Null</td><td>active, expired, none</td></tr>
+        <tr><td><b>subscriptionCycle</b></td><td>Billing recurrence frequency</td><td>String</td><td>20</td><td>Nullable</td><td>monthly, yearly</td></tr>
+        <tr><td><b>subscriptionExpiresAt</b></td><td>Timestamp when premium privileges expire</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time</td></tr>
+        <tr><td><b>vehicleLimit</b></td><td>Maximum allowed garage vehicles</td><td>SmallInt</td><td>5</td><td>Not Null</td><td>1 (free), 5 (premium)</td></tr>
+        <tr><td><b>activeVehicleId</b></td><td>Foreign key to currently active vehicle</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when account was created</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.2: Data Dictionary of Vehicles</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for the vehicle</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 12)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to owner user account</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleTypeId</b></td><td>Foreign key linking to vehicle classification</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References VehicleTypes(id)</td></tr>
+        <tr><td><b>vehicleBrandId</b></td><td>Foreign key linking to manufacturer brand</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References VehicleBrands(id)</td></tr>
+        <tr><td><b>vehicleModelId</b></td><td>Foreign key linking to vehicle model</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References VehicleModels(id)</td></tr>
+        <tr><td><b>vehicleYearId</b></td><td>Foreign key linking to production year</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References VehicleYears(id)</td></tr>
+        <tr><td><b>type</b></td><td>Fallback category string</td><td>String</td><td>50</td><td>Not Null</td><td>Motorcycle, Car, Bicycle</td></tr>
+        <tr><td><b>brand</b></td><td>Fallback brand name string</td><td>String</td><td>100</td><td>Not Null</td><td>Yamaha, Honda, Specialized</td></tr>
+        <tr><td><b>model</b></td><td>Fallback model name string</td><td>String</td><td>100</td><td>Not Null</td><td>Sniper 150, Civic, Rockhopper</td></tr>
+        <tr><td><b>year</b></td><td>Model manufacturing year</td><td>Integer</td><td>4</td><td>Not Null</td><td>2017, 2021, 2025</td></tr>
+        <tr><td><b>modelNumber</b></td><td>Engine trim or specific variant number</td><td>String</td><td>100</td><td>Nullable</td><td>YZF-R15, 2.0 Turbo</td></tr>
+        <tr><td><b>archivedAt</b></td><td>Timestamp for soft deletion / garage removal</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time, null</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when vehicle was registered</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.3: Data Dictionary of Vehicle Correction Requests</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for correction request</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 3)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to requesting user</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleId</b></td><td>Foreign key linking to target vehicle</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>requestedFields</b></td><td>JSON array of attributes requested to edit</td><td>JSON</td><td>N/A</td><td>Not Null</td><td>["brand", "model", "year"]</td></tr>
+        <tr><td><b>currentValues</b></td><td>JSON snapshot of current specifications</td><td>JSON</td><td>N/A</td><td>Not Null</td><td>JSON object</td></tr>
+        <tr><td><b>requestedValues</b></td><td>JSON snapshot of proposed new specifications</td><td>JSON</td><td>N/A</td><td>Not Null</td><td>JSON object</td></tr>
+        <tr><td><b>reason</b></td><td>User justification for requested edit</td><td>String</td><td>500</td><td>Not Null</td><td>Typo in initial registration model</td></tr>
+        <tr><td><b>status</b></td><td>Administrative review status</td><td>String</td><td>20</td><td>Not Null</td><td>pending, approved, rejected</td></tr>
+        <tr><td><b>approvedBy</b></td><td>Foreign key linking to approving admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+        <tr><td><b>submittedAt</b></td><td>Timestamp when request was submitted</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+        <tr><td><b>approvedAt</b></td><td>Timestamp when approved by admin</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time, null</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.4: Data Dictionary of Subscription Payments</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for payment transaction</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 4)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to paying subscriber</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>plan</b></td><td>Subscribed membership tier</td><td>String</td><td>255</td><td>Not Null</td><td>premium</td></tr>
+        <tr><td><b>billingCycle</b></td><td>Billing recurrence period</td><td>String</td><td>255</td><td>Not Null</td><td>monthly, yearly</td></tr>
+        <tr><td><b>amount</b></td><td>Payment transaction amount in PHP</td><td>Decimal</td><td>10,2</td><td>Not Null</td><td>149.00, 1490.00</td></tr>
+        <tr><td><b>paymentMethod</b></td><td>Channel used for payment submission</td><td>String</td><td>255</td><td>Not Null</td><td>gcash, card</td></tr>
+        <tr><td><b>referenceNumber</b></td><td>Transaction reference number</td><td>String</td><td>255</td><td>Unique / Not Null</td><td>VC-20260913-4597</td></tr>
+        <tr><td><b>status</b></td><td>Administrative verification status</td><td>String</td><td>255</td><td>Not Null</td><td>pending, approved, rejected</td></tr>
+        <tr><td><b>adminId</b></td><td>Foreign key linking to verifying admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+        <tr><td><b>submittedAt</b></td><td>Timestamp when payment proof was sent</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time</td></tr>
+        <tr><td><b>verifiedAt</b></td><td>Timestamp when payment was approved</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time, null</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.5: Data Dictionary of AI Usage Logs</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for usage log</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 1)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to user</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+        <tr><td><b>guestUuid</b></td><td>Identifier for anonymous guest session</td><td>String</td><td>255</td><td>Nullable</td><td>UUID string</td></tr>
+        <tr><td><b>requestKey</b></td><td>Idempotency hash ensuring single charge</td><td>String</td><td>64</td><td>Unique / Nullable</td><td>SHA-256 hash string</td></tr>
+        <tr><td><b>payloadHash</b></td><td>Hash of inputs preventing duplicate calls</td><td>String</td><td>64</td><td>Nullable</td><td>SHA-256 hash string</td></tr>
+        <tr><td><b>plan</b></td><td>Membership plan active during consultation</td><td>String</td><td>20</td><td>Not Null</td><td>guest, free, premium</td></tr>
+        <tr><td><b>inputType</b></td><td>Modality submitted for analysis</td><td>String</td><td>20</td><td>Not Null</td><td>text, image, voice, video</td></tr>
+        <tr><td><b>mediaSizeBytes</b></td><td>Size of media upload in bytes</td><td>BigInt</td><td>20</td><td>Nullable</td><td>1048576 (1 MB)</td></tr>
+        <tr><td><b>videoDurationSeconds</b></td><td>Video duration in seconds</td><td>Integer</td><td>10</td><td>Nullable</td><td>15, 30</td></tr>
+        <tr><td><b>status</b></td><td>Final execution state of AI pipeline</td><td>String</td><td>20</td><td>Not Null</td><td>pending, success, failed</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when usage was recorded</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.6: Data Dictionary of Diagnostics</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for diagnostic report</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 48)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to requesting user</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleId</b></td><td>Foreign key linking to diagnosed vehicle</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>requestKey</b></td><td>Unique idempotency request key</td><td>String</td><td>64</td><td>Unique / Nullable</td><td>SHA-256 hash string</td></tr>
+        <tr><td><b>inputType</b></td><td>Input modality used for diagnosis</td><td>String</td><td>20</td><td>Not Null</td><td>text, image, voice, video</td></tr>
+        <tr><td><b>planTier</b></td><td>Membership tier active during diagnosis</td><td>String</td><td>20</td><td>Not Null</td><td>free, premium</td></tr>
+        <tr><td><b>symptoms</b></td><td>User description of vehicle behavior</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Rear brake making squeaking sound</td></tr>
+        <tr><td><b>summary</b></td><td>AI-generated diagnosis summary overview</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Worn rear brake pads friction material</td></tr>
+        <tr><td><b>confidence</b></td><td>Confidence score percentage</td><td>Integer</td><td>3</td><td>Not Null</td><td>85, 90, 95</td></tr>
+        <tr><td><b>severity</b></td><td>Mechanical danger classification</td><td>String</td><td>20</td><td>Not Null</td><td>LOW, MODERATE, HIGH, CRITICAL</td></tr>
+        <tr><td><b>urgency</b></td><td>Recommended service timeframe</td><td>String</td><td>255</td><td>Not Null</td><td>Immediate inspection needed</td></tr>
+        <tr><td><b>possibleCauses</b></td><td>JSON list of probable root causes</td><td>JSON</td><td>N/A</td><td>Nullable</td><td>JSON array</td></tr>
+        <tr><td><b>recommendedActions</b></td><td>JSON list of step-by-step repair guidance</td><td>JSON</td><td>N/A</td><td>Nullable</td><td>JSON array</td></tr>
+        <tr><td><b>maintenanceTasks</b></td><td>Extracted preventive inspection items</td><td>JSON</td><td>N/A</td><td>Nullable</td><td>JSON array</td></tr>
+        <tr><td><b>estimatedCostMin</b></td><td>Minimum estimated repair cost in PHP</td><td>Decimal</td><td>10,2</td><td>Not Null</td><td>400.00</td>
+        <tr><td><b>estimatedCostMax</b></td><td>Maximum estimated repair cost in PHP</td><td>Decimal</td><td>10,2</td><td>Not Null</td><td>2500.00</td>
+        <tr><td><b>currency</b></td><td>Currency designation</td><td>String</td><td>10</td><td>Not Null</td><td>PHP</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when diagnosis was generated</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.7: Data Dictionary of Chat Sessions</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique string identifier for session</td><td>String</td><td>191</td><td>Primary Key</td><td>session_1787658538211_ij9is</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to user</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleId</b></td><td>Foreign key linking to vehicle context</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>title</b></td><td>Topic title for AI consultation</td><td>String</td><td>255</td><td>Not Null</td><td>Rear brake noise consultation</td></tr>
+        <tr><td><b>type</b></td><td>Context classification</td><td>String</td><td>50</td><td>Not Null</td><td>general, diagnostic_followup</td></tr>
+        <tr><td><b>status</b></td><td>Active state of conversation</td><td>String</td><td>20</td><td>Not Null</td><td>active, completed</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when session started</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.8: Data Dictionary of Chat Messages</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for individual message</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 105)</td></tr>
+        <tr><td><b>chatSessionId</b></td><td>Foreign key linking to parent chat session</td><td>String</td><td>191</td><td>Foreign Key / Not Null</td><td>References ChatSessions(id)</td></tr>
+        <tr><td><b>role</b></td><td>Functional role of message author</td><td>String</td><td>20</td><td>Not Null</td><td>user, assistant</td></tr>
+        <tr><td><b>sender</b></td><td>Display name of message author</td><td>String</td><td>255</td><td>Not Null</td><td>user, assistant</td></tr>
+        <tr><td><b>text</b></td><td>Full content text of message</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Why is my brake squeaking?</td></tr>
+        <tr><td><b>metadata</b></td><td>JSON payload storing token data or refs</td><td>JSON</td><td>N/A</td><td>Nullable</td><td>JSON object</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when message was sent</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.9: Data Dictionary of Maintenance Records</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for maintenance log</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 1)</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to vehicle owner</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleId</b></td><td>Foreign key linking to maintained vehicle</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>diagnosticId</b></td><td>Foreign key to originating diagnosis</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Diagnostics(id)</td></tr>
+        <tr><td><b>title</b></td><td>Title summary of service performed</td><td>String</td><td>255</td><td>Not Null</td><td>Engine Oil Change & Tune-up</td></tr>
+        <tr><td><b>serviceType</b></td><td>Category of maintenance service</td><td>String</td><td>255</td><td>Not Null</td><td>Oil Change, Brake Service</td></tr>
+        <tr><td><b>isInspection</b></td><td>Flag indicating an AI-generated check item</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>urgency</b></td><td>Urgency ranking from diagnostic engine</td><td>String</td><td>30</td><td>Nullable</td><td>Routine, High, Immediate</td></tr>
+        <tr><td><b>status</b></td><td>Service task execution state</td><td>String</td><td>30</td><td>Not Null</td><td>pending, completed</td></tr>
+        <tr><td><b>dueDate</b></td><td>Calculated deadline for preventive task</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time</td></tr>
+        <tr><td><b>performedAt</b></td><td>Timestamp when service was executed</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time</td></tr>
+        <tr><td><b>cost</b></td><td>Actual service cost in PHP</td><td>Decimal</td><td>10,2</td><td>Not Null</td><td>1200.00</td>
+        <tr><td><b>odometer</b></td><td>Vehicle odometer reading at service</td><td>Integer</td><td>10</td><td>Nullable</td><td>45000</td>
+        <tr><td><b>notes</b></td><td>Mechanic notes or task metadata</td><td>Text</td><td>N/A</td><td>Nullable</td><td>Replaced filter and gasket</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.10: Data Dictionary of Repair Shops</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Field Name</th>
+          <th>Data Description</th>
+          <th>Data Type</th>
+          <th>Field Length</th>
+          <th>Constraint</th>
+          <th>Possible Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for repair shop</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment (e.g., 5)</td></tr>
+        <tr><td><b>name</b></td><td>Commercial trade name of garage</td><td>String</td><td>255</td><td>Not Null</td><td>SpeedTech Motors & Repair</td></tr>
+        <tr><td><b>category</b></td><td>Vehicle categories serviced</td><td>String</td><td>50</td><td>Not Null</td><td>car, motorcycle, bicycle, all</td></tr>
+        <tr><td><b>address</b></td><td>Physical street address of shop</td><td>String</td><td>255</td><td>Not Null</td><td>123 Rizal Ave, Calapan City</td></tr>
+        <tr><td><b>latitude</b></td><td>Geospatial latitude coordinate</td><td>Decimal</td><td>10,7</td><td>Nullable</td><td>13.4124012</td></tr>
+        <tr><td><b>longitude</b></td><td>Geospatial longitude coordinate</td><td>Decimal</td><td>10,7</td><td>Nullable</td><td>121.1812901</td></tr>
+        <tr><td><b>contactNumber</b></td><td>Telephone or mobile contact number</td><td>String</td><td>50</td><td>Nullable</td><td>+639171234567</td></tr>
+        <tr><td><b>rating</b></td><td>Customer review rating score</td><td>Decimal</td><td>3,2</td><td>Not Null</td><td>4.85</td>
+        <tr><td><b>isCertified</b></td><td>Accreditation badge status</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+      </tbody>
+    </table>
+
+    <h2>PART B: EXTENDED SYSTEM ENTITIES</h2>
+
+    <p class="table-caption">Table 2.11: Data Dictionary of Diagnostic Media</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for media asset</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>diagnosticId</b></td><td>Foreign key linking to diagnostic report</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Diagnostics(id)</td></tr>
+        <tr><td><b>type</b></td><td>Multimedia classification</td><td>String</td><td>20</td><td>Not Null</td><td>image, video, audio</td></tr>
+        <tr><td><b>storagePath</b></td><td>Server storage file path</td><td>String</td><td>255</td><td>Nullable</td><td>diagnostics/scan_091.jpg</td></tr>
+        <tr><td><b>url</b></td><td>Accessible media endpoint URL</td><td>Text</td><td>N/A</td><td>Nullable</td><td>Storage URL string</td></tr>
+        <tr><td><b>mimeType</b></td><td>MIME format of uploaded file</td><td>String</td><td>100</td><td>Nullable</td><td>image/jpeg, video/mp4</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when media was uploaded</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.12: Data Dictionary of AI Diagnosis Caches</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for cached result</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>vehicleType</b></td><td>Vehicle category of cached query</td><td>String</td><td>50</td><td>Not Null</td><td>Motorcycle, Car, generic</td></tr>
+        <tr><td><b>brand</b></td><td>Vehicle brand of cached query</td><td>String</td><td>50</td><td>Not Null</td><td>Honda, Toyota, generic</td></tr>
+        <tr><td><b>model</b></td><td>Vehicle model of cached query</td><td>String</td><td>50</td><td>Not Null</td><td>Civic, Vios, generic</td></tr>
+        <tr><td><b>year</b></td><td>Model year of cached query</td><td>String</td><td>20</td><td>Not Null</td><td>2020, generic</td></tr>
+        <tr><td><b>symptomKey</b></td><td>Normalized hash of symptom phrase</td><td>String</td><td>128</td><td>Unique / Not Null</td><td>Hash key (Index)</td></tr>
+        <tr><td><b>diagnosisData</b></td><td>Cached JSON diagnosis payload</td><td>JSON</td><td>N/A</td><td>Not Null</td><td>Valid JSON structure</td></tr>
+        <tr><td><b>hitCount</b></td><td>Reuse frequency counter</td><td>Integer</td><td>10</td><td>Not Null</td><td>1, 5, 23</td></tr>
+        <tr><td><b>expiresAt</b></td><td>Cache expiration timestamp</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.13: Data Dictionary of AI Runtime Settings</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for runtime config</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>plan</b></td><td>Target subscription tier</td><td>String</td><td>10</td><td>Unique / Not Null</td><td>guest, free, premium</td></tr>
+        <tr><td><b>consultationLimit</b></td><td>Maximum allowed AI consultations</td><td>SmallInt</td><td>5</td><td>Not Null</td><td>5, 10, 50</td></tr>
+        <tr><td><b>maxImageMb</b></td><td>Maximum image upload size in MB</td><td>SmallInt</td><td>5</td><td>Not Null</td><td>5, 10</td></tr>
+        <tr><td><b>maxVideoMb</b></td><td>Maximum video upload size in MB</td><td>SmallInt</td><td>5</td><td>Not Null</td><td>15, 30</td></tr>
+        <tr><td><b>maxAudioMb</b></td><td>Maximum audio upload size in MB</td><td>SmallInt</td><td>5</td><td>Not Null</td><td>10, 20</td></tr>
+        <tr><td><b>updatedBy</b></td><td>Foreign key linking to admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.14: Data Dictionary of Repair Records</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for physical repair</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to vehicle owner</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>vehicleId</b></td><td>Foreign key linking to repaired vehicle</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Vehicles(id)</td></tr>
+        <tr><td><b>diagnosticId</b></td><td>Foreign key linking to diagnosis</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Diagnostics(id)</td></tr>
+        <tr><td><b>title</b></td><td>Summary title of repair work</td><td>String</td><td>255</td><td>Not Null</td><td>Front Brake Caliper Replacement</td></tr>
+        <tr><td><b>problem</b></td><td>Detailed mechanical malfunction</td><td>Text</td><td>N/A</td><td>Nullable</td><td>Leaking brake fluid</td></tr>
+        <tr><td><b>solution</b></td><td>Corrective mechanical procedure</td><td>Text</td><td>N/A</td><td>Nullable</td><td>Replaced piston seals</td></tr>
+        <tr><td><b>cost</b></td><td>Actual repair cost in PHP</td><td>Decimal</td><td>10,2</td><td>Not Null</td><td>1850.00</td>
+        <tr><td><b>status</b></td><td>Work completion status</td><td>String</td><td>20</td><td>Not Null</td><td>pending, completed</td></tr>
+        <tr><td><b>performedAt</b></td><td>Timestamp when repair occurred</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.15: Data Dictionary of Manual Premium Grants</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for manual grant</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to receiving user</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>adminId</b></td><td>Foreign key linking to grantor admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>billingCycle</b></td><td>Billing cycle length assigned</td><td>String</td><td>20</td><td>Not Null</td><td>monthly, yearly</td></tr>
+        <tr><td><b>reason</b></td><td>Reason for non-payment grant</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Beta tester reward, trial</td></tr>
+        <tr><td><b>status</b></td><td>Active status of grant</td><td>String</td><td>20</td><td>Not Null</td><td>active, expired, revoked</td></tr>
+        <tr><td><b>grantedAt</b></td><td>Timestamp when granted</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+        <tr><td><b>expiresAt</b></td><td>Expiration timestamp</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.16: Data Dictionary of User Notification Preferences</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for preference row</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to user account</td><td>BigInt</td><td>20</td><td>Foreign Key / Unique</td><td>References Users(id)</td></tr>
+        <tr><td><b>pushNotifications</b></td><td>Toggle for push notification channel</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>inAppNotifications</b></td><td>Toggle for in-app bell notifications</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>highSeverityAlerts</b></td><td>Toggle for critical automotive alerts</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>maintenanceReminders</b></td><td>Toggle for inspection task notices</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>quietHoursEnabled</b></td><td>Toggle to mute overnight alerts</td><td>Boolean</td><td>1</td><td>Not Null</td><td>true, false</td></tr>
+        <tr><td><b>quietHoursStart</b></td><td>Time string when quiet hours start</td><td>String</td><td>10</td><td>Not Null</td><td>22:00</td></tr>
+        <tr><td><b>quietHoursEnd</b></td><td>Time string when quiet hours end</td><td>String</td><td>10</td><td>Not Null</td><td>07:00</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.17: Data Dictionary of Notifications</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique UUID for notification record</td><td>String</td><td>36</td><td>Primary Key</td><td>UUID string</td></tr>
+        <tr><td><b>type</b></td><td>Class name of the notification event</td><td>String</td><td>255</td><td>Not Null</td><td>HighSeverityDiagnosticAlert</td></tr>
+        <tr><td><b>notifiableType</b></td><td>Polymorphic model entity type</td><td>String</td><td>255</td><td>Not Null</td><td>App\Models\User</td></tr>
+        <tr><td><b>notifiableId</b></td><td>Foreign key ID of target user</td><td>BigInt</td><td>20</td><td>Not Null</td><td>References Users(id)</td></tr>
+        <tr><td><b>data</b></td><td>JSON text containing message & links</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Serialized JSON text</td></tr>
+        <tr><td><b>readAt</b></td><td>Timestamp when user opened notice</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time, null</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when alert was dispatched</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.18: Data Dictionary of OTP Codes</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for OTP record</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>email</b></td><td>Target email address</td><td>String</td><td>255</td><td>Index / Not Null</td><td>user@example.com</td></tr>
+        <tr><td><b>codeHash</b></td><td>Hashed representation of 6-digit PIN</td><td>String</td><td>255</td><td>Not Null</td><td>Bcrypt hash</td></tr>
+        <tr><td><b>purpose</b></td><td>Verification action</td><td>String</td><td>50</td><td>Not Null</td><td>registration, password_reset</td></tr>
+        <tr><td><b>attempts</b></td><td>Counter for failed entry attempts</td><td>Integer</td><td>10</td><td>Not Null</td><td>0, 1, 2, 3</td></tr>
+        <tr><td><b>expiresAt</b></td><td>Expiration timestamp</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+        <tr><td><b>verifiedAt</b></td><td>Verification timestamp</td><td>Timestamp</td><td>N/A</td><td>Nullable</td><td>Date/Time, null</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.19: Data Dictionary of Announcements</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for announcement</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>title</b></td><td>Headline title of broadcast</td><td>String</td><td>160</td><td>Not Null</td><td>System Maintenance Notice</td></tr>
+        <tr><td><b>body</b></td><td>Full content text of notice</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Detailed text</td></tr>
+        <tr><td><b>audience</b></td><td>Target user group</td><td>String</td><td>20</td><td>Not Null</td><td>all, free, premium</td></tr>
+        <tr><td><b>status</b></td><td>Publication state</td><td>String</td><td>20</td><td>Not Null</td><td>scheduled, published</td></tr>
+        <tr><td><b>scheduledAt</b></td><td>Timestamp when notice is published</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+        <tr><td><b>createdBy</b></td><td>Foreign key linking to admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Not Null</td><td>References Users(id)</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.20: Data Dictionary of Feedback Submissions</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for feedback</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>userId</b></td><td>Foreign key linking to user</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+        <tr><td><b>category</b></td><td>Classification topic</td><td>String</td><td>30</td><td>Not Null</td><td>bug_report, suggestion</td></tr>
+        <tr><td><b>rating</b></td><td>Star rating score</td><td>SmallInt</td><td>3</td><td>Nullable</td><td>1 to 5</td></tr>
+        <tr><td><b>subject</b></td><td>Short summary subject line</td><td>String</td><td>255</td><td>Not Null</td><td>App crashes on scan</td></tr>
+        <tr><td><b>message</b></td><td>Detailed explanation</td><td>Text</td><td>N/A</td><td>Not Null</td><td>Message text</td></tr>
+        <tr><td><b>status</b></td><td>Review workflow state</td><td>String</td><td>20</td><td>Not Null</td><td>new, in_review, resolved</td></tr>
+        <tr><td><b>reviewedBy</b></td><td>Foreign key linking to admin</td><td>BigInt</td><td>20</td><td>Foreign Key / Nullable</td><td>References Users(id)</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.21: Data Dictionary of Admin Action Audits</p>
+    <table>
+      <thead>
+        <tr><th>Field Name</th><th>Data Description</th><th>Data Type</th><th>Field Length</th><th>Constraint</th><th>Possible Values</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>id</b></td><td>Unique identifier for audit log</td><td>BigInt</td><td>20</td><td>Primary Key</td><td>Auto-increment</td></tr>
+        <tr><td><b>adminId</b></td><td>Primary key ID of admin</td><td>BigInt</td><td>20</td><td>Not Null</td><td>Administrator ID</td></tr>
+        <tr><td><b>adminName</b></td><td>Full name of administrator</td><td>String</td><td>255</td><td>Not Null</td><td>Admin Name</td></tr>
+        <tr><td><b>action</b></td><td>Specific action keyword</td><td>String</td><td>80</td><td>Not Null</td><td>approve_payment, grant_premium</td></tr>
+        <tr><td><b>subjectType</b></td><td>Entity class targeted</td><td>String</td><td>40</td><td>Not Null</td><td>Payment, Vehicle, User</td></tr>
+        <tr><td><b>subjectId</b></td><td>Identifier of target record</td><td>String</td><td>64</td><td>Not Null</td><td>Record ID string</td></tr>
+        <tr><td><b>metadata</b></td><td>JSON snapshot of mutation</td><td>JSON</td><td>N/A</td><td>Nullable</td><td>JSON object</td></tr>
+        <tr><td><b>createdAt</b></td><td>Timestamp when action was logged</td><td>Timestamp</td><td>N/A</td><td>Not Null</td><td>Date/Time</td></tr>
+      </tbody>
+    </table>
+
+    <p class="table-caption">Table 2.22: Data Dictionary of Normalized Vehicle Catalog</p>
+    <table>
+      <thead>
+        <tr><th>Table Name</th><th>Primary Key</th><th>Foreign Key Reference</th><th>Key Attributes</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>vehicle_types</b></td><td>id (BigInt)</td><td>None</td><td>name (varchar 255)</td><td>Top category (Sedan, SUV, Motorcycle)</td></tr>
+        <tr><td><b>vehicle_brands</b></td><td>id (BigInt)</td><td>vehicle_type_id &rarr; vehicle_types(id)</td><td>name (varchar 255)</td><td>Manufacturer (Toyota, Honda, Yamaha)</td></tr>
+        <tr><td><b>vehicle_models</b></td><td>id (BigInt)</td><td>vehicle_brand_id &rarr; vehicle_brands(id)</td><td>name (varchar 255)</td><td>Model variant (Civic, Vios, Sniper 150)</td></tr>
+        <tr><td><b>vehicle_years</b></td><td>id (BigInt)</td><td>vehicle_model_id &rarr; vehicle_models(id)</td><td>year (smallint)</td><td>Production year (2018, 2021, 2024)</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <script>
+    async function copyDocumentToClipboard() {
+      const el = document.getElementById('document-content');
+      try {
+        const type = 'text/html';
+        const blob = new Blob([el.innerHTML], { type });
+        const data = [new ClipboardItem({ [type]: blob })];
+        await navigator.clipboard.write(data);
+        alert('All tables have been copied! Go to Google Docs and press Ctrl+V (or Cmd+V) to paste with formatting intact.');
+      } catch (err) {
+        // Fallback for browsers that block clipboard API
+        const range = document.createRange();
+        range.selectNode(el);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+        alert('All tables selected and copied! Go to Google Docs and press Ctrl+V to paste.');
+      }
+    }
+  </script>
+</body>
+</html>

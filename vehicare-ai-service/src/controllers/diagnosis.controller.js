@@ -5,6 +5,13 @@ import logger from '../utils/logger.js';
 export const handleDiagnosis = async (req, res, next) => {
   const requestId = req.headers['x-request-id'] || req.body?.request_id || `req_${Date.now()}`;
 
+  const clientAbortController = new AbortController();
+  req.on('close', () => {
+    if (!res.writableEnded && !res.headersSent) {
+      clientAbortController.abort();
+    }
+  });
+
   try {
     const parseResult = diagnosisInputSchema.safeParse(sanitizeDiagnosisPayload(req.body));
 
@@ -27,11 +34,20 @@ export const handleDiagnosis = async (req, res, next) => {
 
     const validatedPayload = parseResult.data;
     validatedPayload.request_id = requestId;
+    validatedPayload.clientSignal = clientAbortController.signal;
 
     const result = await processDiagnosisRequest(validatedPayload);
 
+    if (res.writableEnded || res.headersSent) {
+      return;
+    }
+
     return res.status(200).json(result);
   } catch (error) {
+    if (clientAbortController.signal.aborted || res.writableEnded || res.headersSent) {
+      logger.info('AI_REQUEST_ABORTED_BY_CLIENT', requestId);
+      return;
+    }
     next(error);
   }
 };

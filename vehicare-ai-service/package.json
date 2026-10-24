@@ -7,10 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node tests/cache.test.js && node tests/entitlements.test.js && node tests/load-test.js && node tests/files-upload.test.js && node tests/voice-video-prompt.test.js && node tests/media-error-handling.test.js && node tests/progressive-diagnosis-dedup.test.js && node tests/gemini-resilience.test.js && node tests/response-parser.test.js && node tests/vehicle-validation.test.js && node tests/intent-classification.test.js && node tests/vehicle-sound-validation.test.js",
-    "test:cache": "node tests/cache.test.js",
-    "test:entitlements": "node tests/entitlements.test.js",
-    "test:load": "node tests/load-test.js",
+    "test": "node tests/cache.test.js && node tests/entitlements.test.js && node tests/load-test.js && node tests/queue-concurrency.test.js && node tests/controlled-load-test.js && node tests/files-upload.test.js && node tests/voice-video-prompt.test.js && node tests/media-error-handling.test.js && node tests/progressive-diagnosis-dedup.test.js && node tests/gemini-resilience.test.js && node tests/response-parser.test.js && node tests/vehicle-validation.test.js && node tests/intent-classification.test.js && node tests/vehicle-sound-validation.test.js",
+    "test:queue": "node tests/queue-concurrency.test.js",
+    "test:load": "node tests/controlled-load-test.js",
     "test:upload": "node tests/files-upload.test.js",
     "test:connectivity": "node tests/test-connectivity.js",
     "test:resilience": "node tests/gemini-resilience.test.js"

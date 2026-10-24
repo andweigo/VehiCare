@@ -6,16 +6,25 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
   const isInvalidJson = err.type === 'entity.parse.failed' || err.code === 'INVALID_REQUEST_SCHEMA';
   const isRangeError = err instanceof RangeError;
 
+  const isQueueFull = err.code === 'QUEUE_FULL' || err.code === 'USER_CONCURRENCY_LIMIT_EXCEEDED';
+  const isQueueTimeout = err.code === 'QUEUE_TIMEOUT';
+  const isClientCancelled = err.code === 'CLIENT_CANCELLED';
+  const isShuttingDown = err.code === 'SERVICE_SHUTTING_DOWN';
+
   const statusCode = isPayloadTooLarge
     ? 413
     : isInvalidJson
       ? 400
       : err.statusCode || (
-        err.code === 'QUEUE_FULL' || err.code === 'QUEUE_TIMEOUT'
+        isQueueFull || isQueueTimeout
           ? 429
-          : isRangeError
-            ? 400
-            : 500
+          : isClientCancelled
+            ? 499
+            : isShuttingDown
+              ? 503
+              : isRangeError
+                ? 400
+                : 500
       );
 
   const errorCode = isPayloadTooLarge
@@ -26,7 +35,7 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
 
   const retryable = typeof err.retryable === 'boolean'
     ? err.retryable
-    : isRangeError
+    : isRangeError || isClientCancelled
       ? false
       : (statusCode === 429 || statusCode >= 500);
 
@@ -75,6 +84,10 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
       exception: err.constructor?.name || 'Error',
       stack: err.stack,
     });
+  }
+
+  if (res.headersSent || res.writableEnded) {
+    return;
   }
 
   res.status(statusCode).json({
