@@ -1469,14 +1469,6 @@ export default function AskVehiCareScreen({
       if (outcome.stale) return;
       if (outcome.error) {
         console.warn('[AskVehiCareScreen] AI request failed:', outcome.error?.message);
-        const errorBody = outcome.error?.response?.data;
-        const errorCode = errorBody?.error?.code || errorBody?.reason;
-        if (currentAudio && errorCode === 'AUDIO_VALIDATION_REJECTED') {
-          Alert.alert(
-            'Record a vehicle sound',
-            errorBody?.message || 'We could not identify a vehicle sound. Record again in a quiet place, close to the source.',
-          );
-        }
         await handleDiagnosticFailure(outcome.error);
         return;
       }
