@@ -10,6 +10,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
+import { resolveProfilePhoto } from '../utils/profilePhoto';
 import useConfirmSignOutModal from '../hooks/useConfirmSignOutModal';
 import useNeedHelpSignInModal from '../hooks/useNeedHelpSignInModal';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
@@ -120,7 +121,7 @@ const Sidebar = ({ navigation, activeScreen = 'Dashboard', onClose, topInset = 0
 
   const profileName = user?.displayName || user?.name || user?.full_name || user?.email?.split('@')[0] || 'VehiCare User';
   const profileEmail = user?.email || 'Sign in to continue';
-  const profilePhoto = user?.photoURL ? { uri: user.photoURL } : null;
+  const profilePhoto = resolveProfilePhoto(user);
   const profileInitial = profileName
     .split(/\s+/)
     .filter(Boolean)
@@ -185,7 +186,7 @@ const Sidebar = ({ navigation, activeScreen = 'Dashboard', onClose, topInset = 0
         username={profileName}
         handle={user?.username || user?.handle || user?.email?.split('@')[0] || '@vehicare'}
         email={profileEmail}
-        avatar={profilePhoto?.uri}
+        avatar={profilePhoto}
         verified={Boolean(user?.email)}
         darkMode={themeName === 'dark'}
         onToggleDarkMode={() => toggleTheme()}

@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Image,
     Modal,
@@ -45,7 +45,12 @@ const UserAccountCard = ({
   const closeSidebar = sidebarContext?.closeSidebar;
 
   const [visible, setVisible] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const isDark = themeName === 'dark';
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [avatar]);
 
   const closeModal = () => {
     setVisible(false);
@@ -137,9 +142,10 @@ const UserAccountCard = ({
         },
       ]}
     >
-      {uri ? (
+      {uri && !avatarLoadFailed ? (
         <Image
           source={{ uri }}
+          onError={() => setAvatarLoadFailed(true)}
           style={{
             width: size,
             height: size,

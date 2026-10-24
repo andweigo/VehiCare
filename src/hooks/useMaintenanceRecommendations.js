@@ -75,6 +75,7 @@ export const useMaintenanceRecommendationsInternal = () => {
   const [initialDiagnosticsLoaded, setInitialDiagnosticsLoaded] = useState(false);
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
   const maintenanceWriteIdsRef = useRef(new Set());
+  const autoSyncedTitlesRef = useRef(new Set());
 
   const vehicleInitialScore = useMemo(() => {
     const vHealth = vehicleProfile?.health || vehicleProfile?.vehicle_health || vehicleProfile?.vehicleHealth || {};
@@ -410,10 +411,17 @@ export const useMaintenanceRecommendationsInternal = () => {
     const pendingRecommendations = allRecommendations.filter(item => {
       const title = typeof item === 'object' ? item.title : item;
       const titleKey = normalizeKey(title);
-      if (!titleKey || existingTitles.has(titleKey) || recommendationTitles.has(titleKey) || isRecommendationCompleted(item)) {
+      if (
+        !titleKey ||
+        existingTitles.has(titleKey) ||
+        recommendationTitles.has(titleKey) ||
+        autoSyncedTitlesRef.current.has(titleKey) ||
+        isRecommendationCompleted(item)
+      ) {
         return false;
       }
       recommendationTitles.add(titleKey);
+      autoSyncedTitlesRef.current.add(titleKey);
       return true;
     });
 
@@ -442,7 +450,9 @@ export const useMaintenanceRecommendationsInternal = () => {
       }));
 
       if (!cancelled && created.some(result => result.status === 'fulfilled')) {
-        DeviceEventEmitter.emit('vehicleHealthChanged');
+        try {
+          DeviceEventEmitter?.emit?.('vehicleHealthChanged');
+        } catch (_) {}
       }
     };
 

@@ -24,6 +24,11 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSidebar } from '../context/SidebarContext';
 import { useTheme } from '../theme/ThemeContext';
+import {
+  PROFILE_PHOTO_PICKER_OPTIONS,
+  resolveProfilePhoto,
+  toPersistablePhoto,
+} from '../utils/profilePhoto';
 
 const ProfileScreen = ({ navigation }) => {
   const { theme } = useTheme();
@@ -68,11 +73,14 @@ const ProfileScreen = ({ navigation }) => {
   const plan = user?.subscription_plan || null;
   const vehicleLimit = user?.vehicle_limit ?? null;
 
-  const profilePhoto =
-    user?.photoURL ||
-    user?.photo_url ||
-    user?.avatar ||
-    null;
+  const profilePhoto = resolveProfilePhoto(user);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [profilePhoto]);
+
+  const showProfilePhoto = Boolean(profilePhoto) && !photoLoadFailed;
 
   const displayName =
     user?.displayName ||
@@ -98,27 +106,24 @@ const ProfileScreen = ({ navigation }) => {
     }
 
     setEditName(user.displayName || user.name || '');
-    setEditPhotoURL(user.photoURL || user.photo_url || user.avatar || '');
+    setEditPhotoURL(resolveProfilePhoto(user) || '');
     setEditModalVisible(true);
   };
 
   const handlePickPhoto = async () => {
     try {
-      const result = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8,
-        selectionLimit: 1,
-      });
+      const result = await launchImageLibrary(PROFILE_PHOTO_PICKER_OPTIONS);
 
       if (result.didCancel) {
         return;
       }
 
-      const firstAsset = result.assets?.[0];
-      const uri = firstAsset?.uri || null;
+      const photo = toPersistablePhoto(result.assets?.[0]);
 
-      if (uri) {
-        setEditPhotoURL(uri);
+      if (photo) {
+        setEditPhotoURL(photo);
+      } else if (result.assets?.length) {
+        Alert.alert('Unable to use photo', 'Please choose a different image.');
       }
     } catch (error) {
       console.error('Image picker error:', error);
@@ -508,10 +513,11 @@ const ProfileScreen = ({ navigation }) => {
 
           <View style={styles.profileTop}>
             <View style={styles.avatarContainer}>
-              {profilePhoto ? (
+              {showProfilePhoto ? (
                 <Image
                   source={{ uri: profilePhoto }}
                   style={styles.avatar}
+                  onError={() => setPhotoLoadFailed(true)}
                 />
               ) : (
                 <View

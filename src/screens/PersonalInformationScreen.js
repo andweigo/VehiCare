@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
@@ -16,6 +16,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import CustomToast from '../components/CustomToast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
+import {
+  PROFILE_PHOTO_PICKER_OPTIONS,
+  resolveProfilePhoto,
+  toPersistablePhoto,
+} from '../utils/profilePhoto';
 
 const PersonalInformationScreen = ({ navigation }) => {
   const { theme } = useTheme();
@@ -29,10 +34,16 @@ const PersonalInformationScreen = ({ navigation }) => {
 
   const [fullName, setFullName] = useState(initialName);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone);
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || '');
+  const savedPhoto = resolveProfilePhoto(user) || '';
+  const [photoURL, setPhotoURL] = useState(savedPhoto);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [photoURL]);
 
   const accountTypeLabel = useMemo(() => {
     return initialSubscription === 'premium'
@@ -61,8 +72,7 @@ const PersonalInformationScreen = ({ navigation }) => {
     return (
       fullName.trim() !== initialName.trim() ||
       phoneNumber.trim() !== initialPhone.trim() ||
-      (photoURL || '').trim() !==
-        (user?.photoURL || '').trim()
+      (photoURL || '').trim() !== savedPhoto.trim()
     );
   }, [
     fullName,
@@ -70,7 +80,7 @@ const PersonalInformationScreen = ({ navigation }) => {
     photoURL,
     initialName,
     initialPhone,
-    user?.photoURL,
+    savedPhoto,
   ]);
 
   const profileInitial = useMemo(() => {
@@ -87,21 +97,18 @@ const PersonalInformationScreen = ({ navigation }) => {
 
   const handlePickPhoto = async () => {
     try {
-      const result = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8,
-        selectionLimit: 1,
-      });
+      const result = await launchImageLibrary(PROFILE_PHOTO_PICKER_OPTIONS);
 
       if (result.didCancel) {
         return;
       }
 
-      const firstAsset = result.assets?.[0];
-      const uri = firstAsset?.uri;
+      const photo = toPersistablePhoto(result.assets?.[0]);
 
-      if (uri) {
-        setPhotoURL(uri);
+      if (photo) {
+        setPhotoURL(photo);
+      } else if (result.assets?.length) {
+        showToast('Unable to use that photo. Please choose a different image.');
       }
     } catch (error) {
       console.error('Photo picker error:', error);
@@ -243,9 +250,10 @@ const PersonalInformationScreen = ({ navigation }) => {
         >
           <View style={styles.profileTop}>
             <View style={styles.avatarWrapper}>
-              {photoURL ? (
+              {photoURL && !photoLoadFailed ? (
                 <Image
                   source={{ uri: photoURL }}
+                  onError={() => setPhotoLoadFailed(true)}
                   style={[
                     styles.avatar,
                     {

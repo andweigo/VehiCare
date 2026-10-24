@@ -61,6 +61,11 @@ import {
 } from '../services/storageService';
 
 import {
+  isDataImageUri,
+  isPersistablePhotoUri,
+} from '../utils/profilePhoto';
+
+import {
   transferGuestVehicleToAccount,
 } from '../services/vehicleService';
 
@@ -73,10 +78,46 @@ const AuthContext =
 |--------------------------------------------------------------------------
 */
 
+/*
+ * Laravel wraps account payloads as `{ user: {...} }` (e.g. GET /user/me).
+ * Call sites must merge the inner user, otherwise fresh server values end up
+ * hidden under a nested `user` key while the root keeps stale data.
+ */
+export const extractBackendUser = payload => {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const nested = payload.user;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    return nested;
+  }
+
+  return payload;
+};
+
+// Drops the nested `user` wrapper that earlier builds persisted by mistake.
+const stripLegacyWrapper = backendUser => {
+  if (!backendUser || typeof backendUser !== 'object') {
+    return null;
+  }
+
+  if ('user' in backendUser && typeof backendUser.user === 'object') {
+    const { user: _legacyWrapper, ...rest } = backendUser;
+    return rest;
+  }
+
+  return backendUser;
+};
+
+const pickPhoto = (...candidates) =>
+  candidates.find(isPersistablePhotoUri) || null;
+
 export const buildAuthUser = (
   firebaseUser,
-  backendUser,
+  rawBackendUser,
 ) => {
+  const backendUser = stripLegacyWrapper(rawBackendUser);
   const firebaseProfile =
     getUserProfile(
       firebaseUser,
@@ -86,10 +127,18 @@ export const buildAuthUser = (
     return null;
   }
 
+  // Firebase leaves unset fields as null; never let those erase real
+  // backend values when spreading.
+  const firebaseValues = Object.fromEntries(
+    Object.entries(firebaseProfile || {}).filter(
+      ([, value]) => value !== null && value !== undefined && value !== '',
+    ),
+  );
+
   return {
     ...(backendUser || {}),
 
-    ...firebaseProfile,
+    ...firebaseValues,
 
     uid:
       firebaseProfile?.uid ||
@@ -114,12 +163,14 @@ export const buildAuthUser = (
       backendUser?.displayName ||
       null,
 
-    photoURL:
-      firebaseProfile?.photoURL ||
-      backendUser?.photoURL ||
-      backendUser?.photo_url ||
-      backendUser?.avatar ||
-      null,
+    // Device-local picker paths (file://, content://) die with the install
+    // that created them, so only remote/data URIs are considered.
+    photoURL: pickPhoto(
+      firebaseProfile?.photoURL,
+      backendUser?.photoURL,
+      backendUser?.photo_url,
+      backendUser?.avatar,
+    ),
 
     phoneNumber:
       backendUser?.phone_number ||
@@ -404,7 +455,7 @@ export const AuthProvider = ({
               if (isMounted && backendUserData) {
                 const updated = buildAuthUser(null, {
                   ...persistedUser,
-                  ...backendUserData,
+                  ...extractBackendUser(backendUserData),
                 });
                 updateUser(updated).catch(() => {});
               }
@@ -500,7 +551,7 @@ export const AuthProvider = ({
                     if (isMounted && backendUserData) {
                       const updated = buildAuthUser(null, {
                         ...currentUser,
-                        ...backendUserData,
+                        ...extractBackendUser(backendUserData),
                       });
                       updateUser(updated).catch(() => {});
                     }
@@ -1168,6 +1219,17 @@ export const AuthProvider = ({
         'photoURL' in changes ||
         'avatar' in changes
       ) {
+        // Never persist a device-only picker path: it breaks on reinstall
+        // and on every other device the account signs in from.
+        if (
+          updatedProfile.photoURL &&
+          !isPersistablePhotoUri(updatedProfile.photoURL)
+        ) {
+          throw new Error(
+            'Please choose the profile photo again so it can be saved to your account.',
+          );
+        }
+
         backendUpdates.avatar =
           updatedProfile.photoURL ||
           null;
@@ -1201,8 +1263,13 @@ export const AuthProvider = ({
           displayName:
             updatedProfile.displayName,
 
+          // Firebase only accepts short URLs. Inline photos live in Laravel,
+          // so clear Firebase's copy instead of leaving a stale photo that
+          // would override the new one on the next session restore.
           photoURL:
-            updatedProfile.photoURL,
+            isDataImageUri(updatedProfile.photoURL)
+              ? null
+              : updatedProfile.photoURL,
         });
       } catch (firebaseError) {
         const firebaseMessage = String(firebaseError?.message || firebaseError || '');
@@ -1320,7 +1387,7 @@ export const AuthProvider = ({
    * stamps a verification locally.
    */
   const verifyUserEmail = async () => {
-    const serverUser = await getMeApi();
+    const serverUser = extractBackendUser(await getMeApi());
     if (!serverUser) {
       throw new Error('Unable to confirm email verification with the server.');
     }
