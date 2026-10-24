@@ -68,6 +68,12 @@ const ProfileScreen = ({ navigation }) => {
   const plan = user?.subscription_plan || null;
   const vehicleLimit = user?.vehicle_limit ?? null;
 
+  const profilePhoto =
+    user?.photoURL ||
+    user?.photo_url ||
+    user?.avatar ||
+    null;
+
   const displayName =
     user?.displayName ||
     user?.name ||
@@ -92,7 +98,7 @@ const ProfileScreen = ({ navigation }) => {
     }
 
     setEditName(user.displayName || user.name || '');
-    setEditPhotoURL(user.photoURL || '');
+    setEditPhotoURL(user.photoURL || user.photo_url || user.avatar || '');
     setEditModalVisible(true);
   };
 
@@ -502,9 +508,9 @@ const ProfileScreen = ({ navigation }) => {
 
           <View style={styles.profileTop}>
             <View style={styles.avatarContainer}>
-              {user?.photoURL ? (
+              {profilePhoto ? (
                 <Image
-                  source={{ uri: user.photoURL }}
+                  source={{ uri: profilePhoto }}
                   style={styles.avatar}
                 />
               ) : (
@@ -557,25 +563,6 @@ const ProfileScreen = ({ navigation }) => {
                   {displayName}
                 </Text>
 
-                {!isGuest && (
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    onPress={handleEdit}
-                    style={[
-                      styles.editIconButton,
-                      {
-                        backgroundColor:
-                          theme.surfaceAlt,
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name="edit"
-                      size={15}
-                      color={theme.textSecondary}
-                    />
-                  </TouchableOpacity>
-                )}
               </View>
 
               <Text
@@ -590,64 +577,6 @@ const ProfileScreen = ({ navigation }) => {
                 {email}
               </Text>
 
-              <View style={styles.badgeRow}>
-                <View
-                  style={[
-                    styles.planBadge,
-                    {
-                      backgroundColor:
-                        isPremium
-                          ? theme.accentSoft
-                          : theme.surfaceAlt,
-                    },
-                  ]}
-                >
-                  <Icon
-                    name={
-                      isPremium
-                        ? 'workspace-premium'
-                        : 'person'
-                    }
-                    size={12}
-                    color={
-                      isPremium
-                        ? theme.accent
-                        : theme.textSecondary
-                    }
-                  />
-
-                  <Text
-                    style={[
-                      styles.planBadgeText,
-                      {
-                        color: isPremium
-                          ? theme.accent
-                          : theme.textSecondary,
-                      },
-                    ]}
-                  >
-                    {isPremium
-                      ? 'Premium'
-                      : isFree
-                      ? 'Free Plan'
-                      : 'Guest'}
-                  </Text>
-                </View>
-
-                {isGuest && (
-                  <Text
-                    style={[
-                      styles.guestLabel,
-                      {
-                        color:
-                          theme.textSecondary,
-                      },
-                    ]}
-                  >
-                    Limited access
-                  </Text>
-                )}
-              </View>
             </View>
           </View>
 
@@ -1328,45 +1257,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  editIconButton: {
-    width: 29,
-    height: 29,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-
   profileEmail: {
     fontFamily: 'Inter-Regular',
     fontSize: 10,
     marginTop: 4,
-  },
-
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 9,
-  },
-
-  planBadge: {
-    height: 25,
-    paddingHorizontal: 9,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  planBadgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    marginLeft: 5,
-  },
-
-  guestLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9,
-    marginLeft: 8,
   },
 
   profileStats: {

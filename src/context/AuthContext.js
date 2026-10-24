@@ -82,8 +82,8 @@ export const buildAuthUser = (
       firebaseUser,
     );
 
-  if (!firebaseProfile) {
-    return backendUser || null;
+  if (!firebaseProfile && !backendUser) {
+    return null;
   }
 
   return {
@@ -117,6 +117,7 @@ export const buildAuthUser = (
     photoURL:
       firebaseProfile.photoURL ||
       backendUser?.photoURL ||
+      backendUser?.photo_url ||
       backendUser?.avatar ||
       null,
 
