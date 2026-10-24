@@ -92,30 +92,30 @@ export const buildAuthUser = (
     ...firebaseProfile,
 
     uid:
-      firebaseProfile.uid ||
+      firebaseProfile?.uid ||
       backendUser?.uid ||
       backendUser?.id ||
       null,
 
     email:
-      firebaseProfile.email ||
+      firebaseProfile?.email ||
       backendUser?.email ||
       null,
 
     displayName:
-      firebaseProfile.displayName ||
+      firebaseProfile?.displayName ||
       backendUser?.name ||
       backendUser?.displayName ||
       null,
 
     name:
-      firebaseProfile.displayName ||
+      firebaseProfile?.displayName ||
       backendUser?.name ||
       backendUser?.displayName ||
       null,
 
     photoURL:
-      firebaseProfile.photoURL ||
+      firebaseProfile?.photoURL ||
       backendUser?.photoURL ||
       backendUser?.photo_url ||
       backendUser?.avatar ||

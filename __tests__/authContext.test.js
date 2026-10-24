@@ -57,4 +57,20 @@ describe('buildAuthUser', () => {
     expect(result.photoURL).toBe('https://cdn.example.com/new.png');
     expect(result.name).toBe('New Google User');
   });
+
+  it('normalizes a backend-only profile when Firebase is not available', () => {
+    const { buildAuthUser } = require('../src/context/AuthContext');
+
+    const result = buildAuthUser(null, {
+      id: 8,
+      email: 'saved@example.com',
+      name: 'Saved Account',
+      avatar: 'https://cdn.example.com/saved.png',
+    });
+
+    expect(result.uid).toBe(8);
+    expect(result.displayName).toBe('Saved Account');
+    expect(result.name).toBe('Saved Account');
+    expect(result.photoURL).toBe('https://cdn.example.com/saved.png');
+  });
 });
