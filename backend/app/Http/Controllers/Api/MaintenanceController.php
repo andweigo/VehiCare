@@ -62,13 +62,20 @@ class MaintenanceController extends Controller
         }
 
         $status = $validated['status'] ?? (! empty($validated['due_date']) ? 'pending' : 'completed');
-        $recentDuplicate = MaintenanceRecord::where('user_id', $user->id)
+        $duplicateQuery = MaintenanceRecord::where('user_id', $user->id)
             ->where('vehicle_id', $validated['vehicle_id'])
             ->where('title', trim($validated['title']))
-            ->where('status', $status)
-            ->where('created_at', '>=', now()->subMinutes(2))
-            ->latest('id')
-            ->first();
+            ->where('status', $status);
+
+        // Recommendations are synchronized whenever the maintenance screen
+        // loads. Keep one pending record per vehicle/title rather than adding
+        // duplicates on every refresh. Completed records retain the original
+        // short duplicate window so users can log the same service again later.
+        if ($status !== 'pending') {
+            $duplicateQuery->where('created_at', '>=', now()->subMinutes(2));
+        }
+
+        $recentDuplicate = $duplicateQuery->latest('id')->first();
 
         if ($recentDuplicate) {
             return response()->json([

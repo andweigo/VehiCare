@@ -391,6 +391,70 @@ export const useMaintenanceRecommendationsInternal = () => {
     [completedIdsSet],
   );
 
+  // Persist generated recommendations as pending maintenance records. This
+  // gives the maintenance history a record as soon as VehiCare recommends a
+  // task; completion later updates that same record instead of creating a
+  // second one.
+  useEffect(() => {
+    if (!isAuthenticated || !activeVehicleId || !Array.isArray(allRecommendations) || allRecommendations.length === 0) {
+      return;
+    }
+
+    const existingTitles = new Set(
+      (maintenanceRecords || [])
+        .filter(record => record?.status !== 'cancelled')
+        .map(record => normalizeKey(record?.title))
+        .filter(Boolean),
+    );
+    const recommendationTitles = new Set();
+    const pendingRecommendations = allRecommendations.filter(item => {
+      const title = typeof item === 'object' ? item.title : item;
+      const titleKey = normalizeKey(title);
+      if (!titleKey || existingTitles.has(titleKey) || recommendationTitles.has(titleKey) || isRecommendationCompleted(item)) {
+        return false;
+      }
+      recommendationTitles.add(titleKey);
+      return true;
+    });
+
+    if (pendingRecommendations.length === 0) return;
+
+    const vehicleId = Number.parseInt(activeVehicleId, 10);
+    if (!Number.isInteger(vehicleId)) return;
+
+    let cancelled = false;
+    const syncRecommendations = async () => {
+      const created = await Promise.allSettled(pendingRecommendations.map(item => {
+        const recommendation = typeof item === 'object' ? item : { title: String(item) };
+        return vehicleApi.createMaintenanceRecord({
+          vehicle_id: vehicleId,
+          diagnostic_id: recommendation.diagnosisId && !isNaN(Number(recommendation.diagnosisId))
+            ? Number(recommendation.diagnosisId)
+            : null,
+          title: String(recommendation.title || 'Maintenance task').trim(),
+          description: recommendation.description || null,
+          service_type: recommendation.serviceType || 'General Inspection',
+          status: 'pending',
+          due_date: recommendation.dueDate || null,
+          urgency: recommendation.priority || 'Routine',
+          is_inspection: Boolean(recommendation.isInspection),
+        });
+      }));
+
+      if (!cancelled && created.some(result => result.status === 'fulfilled')) {
+        DeviceEventEmitter.emit('vehicleHealthChanged');
+      }
+    };
+
+    syncRecommendations().catch(error => {
+      console.warn('Automatic maintenance recommendation sync failed:', error?.message);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeVehicleId, allRecommendations, isAuthenticated, isRecommendationCompleted, maintenanceRecords]);
+
   // Mark item as completed across all screens, AsyncStorage, and backend
   const markAsDone = useCallback(
     async item => {
@@ -408,11 +472,10 @@ export const useMaintenanceRecommendationsInternal = () => {
           if (!Number.isInteger(numVehicleId)) {
             throw new Error('The selected vehicle could not be confirmed.');
           }
-          await vehicleApi.createMaintenanceRecord({
-            vehicle_id: numVehicleId,
-            diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
-              ? parseInt(item.diagnosisId, 10)
-              : null,
+          const existingPending = (maintenanceRecords || []).find(record =>
+            record?.status === 'pending' && normalizeKey(record.title) === normKey,
+          );
+          const completedPayload = {
             title,
             description: typeof item === 'object' ? item.description : null,
             service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
@@ -420,7 +483,18 @@ export const useMaintenanceRecommendationsInternal = () => {
             performed_at: new Date().toISOString(),
             urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
             is_inspection: typeof item === 'object' ? Boolean(item.isInspection) : true,
-          });
+          };
+          if (existingPending?.id) {
+            await vehicleApi.updateMaintenanceRecord(existingPending.id, completedPayload);
+          } else {
+            await vehicleApi.createMaintenanceRecord({
+              vehicle_id: numVehicleId,
+              diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
+                ? parseInt(item.diagnosisId, 10)
+                : null,
+              ...completedPayload,
+            });
+          }
         }
       } catch (error) {
         Alert.alert('Could not save maintenance', 'Your task was not marked complete because it could not be saved. Check your connection and try again.');
@@ -459,7 +533,7 @@ export const useMaintenanceRecommendationsInternal = () => {
 
       return true;
     },
-    [saveCompletedState, activeVehicleId, vehicleProfile, isAuthenticated, userId],
+    [saveCompletedState, activeVehicleId, vehicleProfile, isAuthenticated, userId, maintenanceRecords],
   );
 
   // Undo completed item across all screens and AsyncStorage
