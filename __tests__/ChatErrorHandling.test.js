@@ -62,6 +62,29 @@ describe('ChatErrorHandling & Contextual Messaging', () => {
     expect(result.retryable).toBe(true);
   });
 
+  it('keeps vehicle-sound validation errors specific instead of showing a temporary outage', () => {
+    const error = {
+      code: 'ERR_BAD_REQUEST',
+      response: {
+        status: 422,
+        data: {
+          reason: 'AUDIO_VALIDATION_REJECTED',
+          message: 'This feature analyzes vehicle sounds. Please record a vehicle noise instead of speech, music, or unrelated audio.',
+          error: {
+            code: 'AUDIO_VALIDATION_REJECTED',
+            details: { outcome: 'irrelevant_audio' },
+          },
+        },
+      },
+    };
+
+    const result = getAiErrorMessage({ error, inputType: 'voice' });
+    expect(result.code).toBe('AUDIO_VALIDATION_REJECTED');
+    expect(result.category).toBe('media_validation');
+    expect(result.retryable).toBe(false);
+    expect(result.message).toContain('clearly identifiable vehicle sound');
+  });
+
   it('returns exact network failure message on connection error', () => {
     const networkError = {
       message: 'Network Error',

@@ -11,6 +11,22 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
   const message = data?.message || data?.error?.message;
   const rawBody = typeof data === 'string' ? data : '';
 
+  // Audio is deliberately validated before diagnosis generation. Preserve
+  // that specific guidance instead of letting Axios' generic ERR_BAD_REQUEST
+  // code turn a 422 validation response into a misleading temporary outage.
+  if (reason === 'AUDIO_VALIDATION_REJECTED') {
+    const outcome = data?.error?.details?.outcome || data?.details?.outcome;
+    const isIrrelevant = outcome === 'irrelevant_audio' || /speech|music|unrelated audio/i.test(String(message || ''));
+    return {
+      message: isIrrelevant
+        ? 'This audio does not contain a clearly identifiable vehicle sound. Record the engine, brakes, belt, wheel, or another mechanical noise without speaking or music.'
+        : 'We could not identify a vehicle sound clearly enough. Record again in a quiet place, close to the sound source, and avoid speaking over the recording.',
+      code: reason,
+      retryable: false,
+      category: 'media_validation',
+    };
+  }
+
   // 1. Network / Connectivity Failures
   const isNetworkError =
     error?.code === 'ERR_NETWORK' ||
@@ -103,7 +119,6 @@ export const getAiErrorMessage = ({ error, inputType = 'text', plan = 'free' }) 
     status === 500 ||
     status === 429 ||
     error?.code === 'ERR_BAD_RESPONSE' ||
-    error?.code === 'ERR_BAD_REQUEST' ||
     reason === 'AI_SERVICE_BUSY' ||
     reason === 'AI_SERVICE_UNAVAILABLE' ||
     reason === 'GEMINI_OVERLOADED' ||
