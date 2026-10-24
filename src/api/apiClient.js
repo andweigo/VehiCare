@@ -23,6 +23,32 @@ const apiClient = axios.create({
 let unauthorizedHandler = null;
 let isHandlingUnauthorized = false;
 
+/*
+ * Session epoch: bumped whenever the authenticated session is cleared or
+ * replaced (logout, 401, account switch). Every request is stamped with the
+ * epoch it started in; authenticated responses that arrive after the epoch
+ * changed are rejected so they can never repopulate state for a new session.
+ */
+let sessionEpoch = 0;
+
+export const getSessionEpoch = () => sessionEpoch;
+
+export const bumpSessionEpoch = () => {
+  sessionEpoch += 1;
+  return sessionEpoch;
+};
+
+export const isSessionChangedError = error =>
+  Boolean(error && error.code === 'SESSION_CHANGED');
+
+const createSessionChangedError = config => {
+  const error = new Error('Request cancelled because the session changed.');
+  error.code = 'SESSION_CHANGED';
+  error.config = config;
+  error.isCancel = true;
+  return error;
+};
+
 export const setUnauthorizedHandler = handler => {
   unauthorizedHandler = handler;
 };
@@ -89,6 +115,9 @@ apiClient.interceptors.request.use(
       }
     }
 
+    config.sessionEpoch = sessionEpoch;
+    config.sessionWasAuthenticated = hasToken;
+
     const baseURL = config?.baseURL || apiBaseUrl;
     const requestPath = config?.url || '';
     const fullURL = `${baseURL}${requestPath}`;
@@ -117,6 +146,13 @@ apiClient.interceptors.response.use(
       throw new Error('No response from server');
     }
 
+    if (
+      response.config?.sessionWasAuthenticated &&
+      response.config.sessionEpoch !== sessionEpoch
+    ) {
+      return Promise.reject(createSessionChangedError(response.config));
+    }
+
     const baseURL = response?.config?.baseURL || apiBaseUrl;
     const requestPath = response?.config?.url || '';
     const fullURL = `${baseURL}${requestPath}`;
@@ -130,6 +166,19 @@ apiClient.interceptors.response.use(
     return response;
   },
   error => {
+    if (isSessionChangedError(error)) {
+      return Promise.reject(error);
+    }
+
+    if (
+      error?.config?.sessionWasAuthenticated &&
+      error.config.sessionEpoch !== sessionEpoch
+    ) {
+      // Stale error from a previous session: never trigger the 401 handler
+      // (it would sign out the *new* session) and never surface to the UI.
+      return Promise.reject(createSessionChangedError(error.config));
+    }
+
     const message = error?.message || String(error);
     const status = error?.response?.status;
     const responseData = error?.response?.data;

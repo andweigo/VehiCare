@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { DeviceEventEmitter } from 'react-native';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
@@ -20,11 +20,11 @@ import {
 import activityService from '../services/activity.service';
 
 const DEFAULT_HEALTH_STATUS = {
-  label: 'Looking Good',
-  code: 'HEALTHY',
-  color: '#32D583',
-  icon: 'check-circle',
-  explanation: 'No recent diagnostic issues found. VehiCare will continue to provide preventive maintenance recommendations based on your vehicle.',
+  label: 'No maintenance activity yet',
+  code: 'NO_HISTORY',
+  color: '#64748B',
+  icon: 'info-outline',
+  explanation: 'Log a service or schedule a task to start tracking this vehicle.',
 };
 
 // Global in-memory cache to prevent flickering during vehicle switching
@@ -69,10 +69,12 @@ export const useMaintenanceRecommendationsInternal = () => {
 
   const [diagnostics, setDiagnostics] = useState([]);
   const [serviceHistory, setServiceHistory] = useState([]);
+  const [maintenanceRecords, setMaintenanceRecords] = useState([]);
   const [repairRecords, setRepairRecords] = useState([]);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(() => Boolean(activeVehicleId));
   const [initialDiagnosticsLoaded, setInitialDiagnosticsLoaded] = useState(false);
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
+  const maintenanceWriteIdsRef = useRef(new Set());
 
   const vehicleInitialScore = useMemo(() => {
     const vHealth = vehicleProfile?.health || vehicleProfile?.vehicle_health || vehicleProfile?.vehicleHealth || {};
@@ -176,6 +178,7 @@ export const useMaintenanceRecommendationsInternal = () => {
       setDiagnostics([]);
       setServiceHistory([]);
       setRepairRecords([]);
+      setMaintenanceRecords([]);
       setLoadingDiagnostics(false);
       setInitialDiagnosticsLoaded(true);
       return;
@@ -199,6 +202,14 @@ export const useMaintenanceRecommendationsInternal = () => {
         return true;
       });
 
+    const filterMaintenanceByVehicle = list =>
+      (list || []).filter(item => {
+        const itemVid = item.vehicle_id ?? item.vehicleId ?? item.vehicle?.id ?? item.vehicle?.vehicle_id ?? null;
+        return activeVehicleId !== null && itemVid !== null && String(itemVid) === String(activeVehicleId);
+      });
+
+    setMaintenanceRecords([]);
+
     try {
       // Step 1: Read local history INSTANTLY (< 5ms)
       let localRecords = [];
@@ -221,7 +232,7 @@ export const useMaintenanceRecommendationsInternal = () => {
       }
 
       const initialFiltered = filterByVehicle(localRecords);
-      const initialServices = filterByVehicle(localServices);
+      const initialServices = filterMaintenanceByVehicle(localServices);
 
       setServiceHistory(initialServices);
       setDiagnostics(initialFiltered);
@@ -248,22 +259,22 @@ export const useMaintenanceRecommendationsInternal = () => {
           if (Array.isArray(apiRepairs) && apiRepairs.length > 0) {
             setRepairRecords(filterByVehicle(apiRepairs));
           }
-          if (Array.isArray(apiMaintenance) && apiMaintenance.length > 0) {
-            const completedBackendServices = filterByVehicle(apiMaintenance).filter(
+          if (Array.isArray(apiMaintenance)) {
+            const vehicleMaintenance = filterMaintenanceByVehicle(apiMaintenance);
+            setMaintenanceRecords(vehicleMaintenance);
+            const completedBackendServices = vehicleMaintenance.filter(
               m => (m.status || 'completed') === 'completed'
             );
-            if (completedBackendServices.length > 0) {
-              setServiceHistory(prev => {
-                const combined = [...prev, ...completedBackendServices];
-                const seenIds = new Set();
-                return combined.filter(item => {
-                  const id = item.id || `${item.title}-${item.created_at}`;
-                  if (seenIds.has(id)) return false;
-                  seenIds.add(id);
-                  return true;
-                });
+            setServiceHistory(prev => {
+              const combined = [...prev.filter(item => !item.id), ...completedBackendServices];
+              const seenIds = new Set();
+              return combined.filter(item => {
+                const id = item.id || `${item.title}-${item.created_at}`;
+                if (seenIds.has(id)) return false;
+                seenIds.add(id);
+                return true;
               });
-            }
+            });
           }
         } catch (err) {
           console.warn('Silent API diagnostics check:', err?.message);
@@ -388,15 +399,46 @@ export const useMaintenanceRecommendationsInternal = () => {
       const title = typeof item === 'object' ? item.title : String(item);
       const normKey = title ? normalizeKey(title) : null;
 
+      const writeKey = `${activeVehicleId || 'guest'}:${String(id)}`;
+      if (maintenanceWriteIdsRef.current.has(writeKey)) return false;
+      maintenanceWriteIdsRef.current.add(writeKey);
+      try {
+        if (isAuthenticated && activeVehicleId) {
+          const numVehicleId = Number.parseInt(activeVehicleId, 10);
+          if (!Number.isInteger(numVehicleId)) {
+            throw new Error('The selected vehicle could not be confirmed.');
+          }
+          await vehicleApi.createMaintenanceRecord({
+            vehicle_id: numVehicleId,
+            diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
+              ? parseInt(item.diagnosisId, 10)
+              : null,
+            title,
+            description: typeof item === 'object' ? item.description : null,
+            service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
+            status: 'completed',
+            performed_at: new Date().toISOString(),
+            urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
+            is_inspection: typeof item === 'object' ? Boolean(item.isInspection) : true,
+          });
+        }
+      } catch (error) {
+        Alert.alert('Could not save maintenance', 'Your task was not marked complete because it could not be saved. Check your connection and try again.');
+        console.warn('Backend maintenance record persistence failed:', error?.message);
+        return false;
+      } finally {
+        maintenanceWriteIdsRef.current.delete(writeKey);
+      }
+
       const keysToAdd = [String(id)];
       if (normKey) keysToAdd.push(normKey);
 
       setLocalCompletedIds(prev => {
         const next = Array.from(new Set([...prev, ...keysToAdd]));
         saveCompletedState(next);
-        DeviceEventEmitter.emit('vehicleHealthChanged');
         return next;
       });
+      DeviceEventEmitter.emit('vehicleHealthChanged');
 
       const isDiag = typeof item === 'object' && item.source === 'diagnostic';
       activityService.addActivity({
@@ -415,35 +457,14 @@ export const useMaintenanceRecommendationsInternal = () => {
         },
       });
 
-      if (isAuthenticated && activeVehicleId) {
-        try {
-          const numVehicleId = parseInt(activeVehicleId, 10);
-          if (!isNaN(numVehicleId)) {
-            await vehicleApi.createMaintenanceRecord({
-              vehicle_id: numVehicleId,
-              diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
-                ? parseInt(item.diagnosisId, 10)
-                : null,
-              title: title,
-              description: typeof item === 'object' ? item.description : null,
-              service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
-              status: 'completed',
-              performed_at: new Date().toISOString(),
-              urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
-              is_inspection: typeof item === 'object' ? Boolean(item.isInspection) : true,
-            });
-          }
-        } catch (backendErr) {
-          console.warn('Backend maintenance record persistence notice:', backendErr?.message);
-        }
-      }
+      return true;
     },
     [saveCompletedState, activeVehicleId, vehicleProfile, isAuthenticated, userId],
   );
 
   // Undo completed item across all screens and AsyncStorage
   const undo = useCallback(
-    itemOrId => {
+    async itemOrId => {
       if (!itemOrId) return;
       const id = typeof itemOrId === 'object' ? itemOrId.id : itemOrId;
       const title = typeof itemOrId === 'object' ? itemOrId.title : null;
@@ -451,12 +472,26 @@ export const useMaintenanceRecommendationsInternal = () => {
         ? normalizeKey(title)
         : (typeof itemOrId === 'string' ? normalizeKey(itemOrId) : null);
 
+      if (isAuthenticated && activeVehicleId && title) {
+        const record = maintenanceRecords
+          .filter(entry => String(entry.title || '').trim().toLowerCase() === String(title).trim().toLowerCase() && entry.status === 'completed')
+          .sort((a, b) => new Date(b.performed_at || b.created_at || 0).getTime() - new Date(a.performed_at || a.created_at || 0).getTime())[0];
+        if (record?.id) {
+          try {
+            await vehicleApi.updateMaintenanceRecord(record.id, { status: 'pending', performed_at: null });
+          } catch (error) {
+            Alert.alert('Could not reopen task', 'The completed maintenance record could not be updated. Please try again.');
+            return false;
+          }
+        }
+      }
+
       setLocalCompletedIds(prev => {
         const next = prev.filter(key => key !== String(id) && key !== normKey);
         saveCompletedState(next);
-        DeviceEventEmitter.emit('vehicleHealthChanged');
         return next;
       });
+      DeviceEventEmitter.emit('vehicleHealthChanged');
 
       activityService.addActivity({
         type: 'maintenance_undone',
@@ -467,7 +502,7 @@ export const useMaintenanceRecommendationsInternal = () => {
         userId,
       });
     },
-    [saveCompletedState, activeVehicleId, vehicleProfile, userId],
+    [saveCompletedState, activeVehicleId, vehicleProfile, userId, isAuthenticated, maintenanceRecords],
   );
 
   // Categorized Items
@@ -696,15 +731,16 @@ export const useMaintenanceRecommendationsInternal = () => {
     urgentDiagnosticItems: Array.isArray(urgentDiagnosticItems) ? urgentDiagnosticItems : [],
     historyItems: Array.isArray(historyItems) ? historyItems : [],
     serviceHistory: Array.isArray(serviceHistory) ? serviceHistory : [],
+    maintenanceRecords: Array.isArray(maintenanceRecords) ? maintenanceRecords : [],
     groupedCategories: Array.isArray(groupedCategories) ? groupedCategories : [],
     diagnostics: Array.isArray(diagnostics) ? diagnostics : [],
     dueSoonCount: Number.isInteger(dueSoonCount) ? dueSoonCount : 0,
     overdueCount: Number.isInteger(overdueCount) ? overdueCount : 0,
     completedCount: Number.isInteger(completedCount) ? completedCount : 0,
     healthStatus: healthStatus || DEFAULT_HEALTH_STATUS,
-    maintenanceHealth: typeof maintenanceHealth === 'number' ? maintenanceHealth : 100,
-    healthScore: typeof maintenanceHealth === 'number' ? maintenanceHealth : 100,
-    healthPercentage: typeof maintenanceHealth === 'number' ? Math.min(100, Math.max(0, Math.round(maintenanceHealth))) : 100,
+    maintenanceHealth: typeof maintenanceHealth === 'number' ? maintenanceHealth : null,
+    healthScore: typeof maintenanceHealth === 'number' ? maintenanceHealth : null,
+    healthPercentage: typeof maintenanceHealth === 'number' ? Math.min(100, Math.max(0, Math.round(maintenanceHealth))) : null,
     loading,
     initialDiagnosticsLoaded: !!initialDiagnosticsLoaded,
     loadingDiagnostics: !!loadingDiagnostics,
@@ -717,16 +753,13 @@ export const useMaintenanceRecommendationsInternal = () => {
   };
 };
 
-/**
- * Public hook: prefers centralized context when inside VehicleHealthProvider,
- * falls back to internal hook when rendered in isolation (e.g. unit tests).
- */
+/** Read the shared vehicle-health state provided by the app shell. */
 export const useMaintenanceRecommendations = () => {
   const context = useContext(VehicleHealthContext);
-  if (context && context.allRecommendations !== undefined) {
-    return context;
+  if (!context || context.allRecommendations === undefined) {
+    throw new Error('useMaintenanceRecommendations must be used inside VehicleHealthProvider');
   }
-  return useMaintenanceRecommendationsInternal();
+  return context;
 };
 
 export default useMaintenanceRecommendations;

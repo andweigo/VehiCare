@@ -48,7 +48,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
     error,
     userLocation,
     deviceGpsLocation,
-    useCurrentGpsLocation,
+    acquireCurrentGpsLocation,
     selectedShopId,
     setSelectedShopId,
     activeShopModal,
@@ -103,12 +103,14 @@ const RepairShopsScreen = ({ navigation, route }) => {
   };
 
   const handleSetLocationPin = async (coords) => {
-    if (!coords || !coords.latitude || !coords.longitude) return;
-    const geocodedName = await LocationService.reverseGeocode(coords.latitude, coords.longitude);
+    const latitude = Number(coords?.latitude);
+    const longitude = Number(coords?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+      || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+    const geocodedName = await LocationService.reverseGeocode(latitude, longitude);
     setManualLocation({
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      accuracy: 10,
+      latitude,
+      longitude,
       name: geocodedName || 'Selected Location',
     });
   };
@@ -155,7 +157,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
                 GPS Location Access Needed
               </Text>
               <Text style={[styles.permissionSubtitle, { color: theme.textSecondary }]}>
-                VehiCare requires location access to find real repair shops near your position.
+                Allow location access to search near your current position, or choose a city manually.
               </Text>
             </View>
           </View>
@@ -197,10 +199,10 @@ const RepairShopsScreen = ({ navigation, route }) => {
             <View style={styles.locationTextWrap}>
               <View style={styles.locationLabelRow}>
                 <Text style={[styles.locationLabel, { color: theme.textSecondary }]}>
-                  {userLocation?.isManual ? 'Preset Location' : 'Verified GPS'}
+                  {userLocation?.isManual ? 'Selected Location' : 'Device Location'}
                 </Text>
                 {/* ACCURACY STATUS CHIP */}
-                {userLocation?.accuracy !== undefined && (
+                {Number.isFinite(Number(userLocation?.accuracy)) && Number(userLocation?.accuracy) > 0 && (
                   <View style={[styles.accuracyChip, { backgroundColor: `${userLocation?.accuracyColor || BRAND}1A` }]}>
                     <View style={[styles.accuracyDot, { backgroundColor: userLocation?.accuracyColor || BRAND }]} />
                     <Text style={[styles.accuracyText, { color: userLocation?.accuracyColor || BRAND }]}>
@@ -246,7 +248,8 @@ const RepairShopsScreen = ({ navigation, route }) => {
       )}
 
       {/* POOR ACCURACY WARNING BANNER */}
-      {userLocation && !userLocation.isGoodAccuracy && !userLocation.isManual && !acquiringLocation && (
+      {userLocation && Number.isFinite(Number(userLocation.accuracy)) && Number(userLocation.accuracy) > 0
+        && !userLocation.isGoodAccuracy && !userLocation.isManual && !acquiringLocation && (
         <View style={[styles.accuracyWarningBanner, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7', borderColor: '#F59E0B' }]}>
           <Icon name="warning" size={16} color="#F59E0B" />
           <Text style={[styles.accuracyWarningText, { color: isDark ? '#FBBF24' : '#D97706' }]}>
@@ -375,7 +378,8 @@ const RepairShopsScreen = ({ navigation, route }) => {
               selectedShopId={selectedShopId}
               onSelectShop={selectShop}
               onSetLocationPin={handleSetLocationPin}
-              onRecenterGps={useCurrentGpsLocation}
+              onRecenterGps={requestPermissionAndAcquire}
+              onOpenLocationSearch={() => setLocationModalVisible(true)}
               isExpanded={isMapExpanded}
               onToggleExpand={() => setIsMapExpanded(prev => !prev)}
             />
@@ -565,7 +569,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
                 activeOpacity={0.8}
                 onPress={async () => {
                   setLocationModalVisible(false);
-                  const fix = await useCurrentGpsLocation();
+                  const fix = await acquireCurrentGpsLocation();
                   if (!fix) {
                     showPermissionModal({
                       badgeLabel: 'LOCATION ACCESS',

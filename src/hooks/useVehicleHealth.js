@@ -3,7 +3,6 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { VehicleHealthContext } from '../context/VehicleHealthContext';
 import {
   healthFactorsMemoryCache,
-  useMaintenanceRecommendations,
 } from './useMaintenanceRecommendations';
 
 /**
@@ -13,9 +12,10 @@ import {
  */
 const useVehicleHealth = () => {
   const context = useContext(VehicleHealthContext);
-  const maintenance = (context && context.allRecommendations !== undefined)
-    ? context
-    : useMaintenanceRecommendations();
+  if (!context || context.allRecommendations === undefined) {
+    throw new Error('useVehicleHealth must be used inside VehicleHealthProvider');
+  }
+  const maintenance = context;
 
   const {
     activeVehicle,

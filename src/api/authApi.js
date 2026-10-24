@@ -14,12 +14,13 @@ const normalizeAuthResponse = response => {
   return body;
 };
 
-export const register = async (name, email, password, firebaseUid = null) => {
+export const register = async (name, email, password, firebaseUid = null, legalMeta = null) => {
   const payload = {
     name,
     email,
     password,
     password_confirmation: password,
+    ...(legalMeta || {}),
   };
   if (firebaseUid) {
     payload.firebase_uid = firebaseUid;
@@ -52,9 +53,10 @@ export const googleLogin = async idToken => {
   return normalizeAuthResponse(response);
 };
 
-export const googleRegister = async idToken => {
+export const googleRegister = async (idToken, legalMeta = null) => {
   const response = await apiClient.post('/google-register', {
     id_token: idToken,
+    ...(legalMeta || {}),
   });
 
   return normalizeAuthResponse(response);
@@ -63,6 +65,14 @@ export const googleRegister = async idToken => {
 export const updateProfile = async profile => {
   const response = await apiClient.patch('/user', profile);
   return normalizeAuthResponse(response);
+};
+
+export const setGooglePassword = async password => {
+  const response = await apiClient.post('/user/google-password', {
+    password,
+    password_confirmation: password,
+  });
+  return response?.data;
 };
 
 export const sendOtp = async (email, purpose = 'registration') => {

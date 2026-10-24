@@ -2,7 +2,6 @@ import auth from '@react-native-firebase/auth';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,6 +16,9 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { useAuth } from '../context/AuthContext';
+import { setGooglePassword } from '../api/authApi';
+import CustomToast from './CustomToast';
+import useToast from '../hooks/useToast';
 import {
   reauthenticateWithEmail,
   updatePassword as updateFirebasePassword,
@@ -45,13 +47,21 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
   const [saving, setSaving] = useState(false);
   const [authMode, setAuthMode] = useState('guest'); // 'guest' | 'google' | 'password'
   const [userEmail, setUserEmail] = useState('');
+  const { toast, showToast, hideToast } = useToast();
 
-  const isPasswordProvider = authMode === 'password';
+  const isPasswordProvider = authMode === 'password' || authMode === 'google';
 
   /*
    * PASSWORD VALIDATION
    */
   const passwordRequirements = getPasswordRequirements(newPassword);
+  const passwordRequirementFlags = {
+    length: passwordRequirements[0]?.valid,
+    uppercase: passwordRequirements[1]?.valid,
+    lowercase: passwordRequirements[2]?.valid,
+    number: passwordRequirements[3]?.valid,
+    special: passwordRequirements[4]?.valid,
+  };
   const passwordScore = getPasswordScore(newPassword);
   const passwordStrength = getPasswordStrengthLabel(newPassword);
   const passwordStrong = isPasswordStrong(newPassword);
@@ -136,38 +146,38 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
       return;
     }
 
-    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
-      Alert.alert('Missing fields', 'Please complete all password fields.');
+    if ((authMode === 'password' && !currentPassword.trim()) || !newPassword.trim() || !confirmPassword.trim()) {
+      showToast({ type: 'warning', title: 'Missing fields', message: 'Please complete all password fields.' });
       return;
     }
 
     if (!passwordStrong) {
-      Alert.alert('Weak password', 'Your new password does not meet all password requirements.');
+      showToast({ type: 'warning', title: 'Weak password', message: 'Your new password does not meet all password requirements.' });
       return;
     }
 
     if (!passwordsMatch) {
-      Alert.alert('Passwords do not match', 'Please make sure your new password and confirmation match.');
+      showToast({ type: 'warning', title: 'Passwords do not match', message: 'Please make sure your new password and confirmation match.' });
       return;
     }
 
     if (currentPassword === newPassword) {
-      Alert.alert('Password unchanged', 'Your new password must be different from your current password.');
+      showToast({ type: 'warning', title: 'Password unchanged', message: 'Your new password must be different from your current password.' });
       return;
     }
 
     setSaving(true);
 
     try {
-      await reauthenticateWithEmail(currentPassword);
-      await updateFirebasePassword(newPassword);
+      if (authMode === 'google') {
+        await setGooglePassword(newPassword);
+      } else {
+        await reauthenticateWithEmail(currentPassword);
+        await updateFirebasePassword(newPassword);
+      }
 
-      Alert.alert('Password updated', 'Your password has been changed successfully.', [
-        {
-          text: 'OK',
-          onPress: closeModal,
-        },
-      ]);
+      showToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed successfully.', duration: 1800 });
+      setTimeout(closeModal, 1800);
     } catch (error) {
       const code = String(error?.code || '').toLowerCase();
       let errorMessage = 'Unable to update password. Please try again.';
@@ -180,7 +190,8 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
         errorMessage = 'A network error occurred. Please check your internet connection.';
       }
 
-      Alert.alert('Update failed', errorMessage);
+      const serverMessage = error?.response?.data?.message;
+      showToast({ type: 'error', title: 'Update failed', message: serverMessage || errorMessage });
     } finally {
       setSaving(false);
     }
@@ -212,7 +223,8 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
   }
 
   return (
-    <Modal
+    <>
+      <Modal
       visible={visible}
       animationType="fade"
       transparent
@@ -358,45 +370,11 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                     </Text>
                   </View>
                 </View>
-              ) : authMode === 'google' ? (
-                /* GOOGLE ACCOUNT CARD */
-                <View
-                  style={[
-                    styles.infoCard,
-                    {
-                      backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                      borderColor: isDark ? '#2B2B30' : '#E2E8F0',
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.infoIconCircle,
-                      { backgroundColor: isDark ? 'rgba(246, 59, 5, 0.16)' : '#FFF2EE' },
-                    ]}
-                  >
-                    <Icon name="account-circle" size={22} color={theme.accent || '#F63B05'} />
-                  </View>
-
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.infoTitle, { color: theme.text }]}>
-                      Google Account Detected
-                    </Text>
-
-                    <Text style={[styles.infoDescription, { color: theme.textSecondary }]}>
-                      This profile is authenticated via Google Sign-In. VehiCare does not manage a separate password for this account.
-                    </Text>
-
-                    <Text style={[styles.infoDescription, { color: theme.textSecondary, marginTop: 6 }]}>
-                      To update your password, visit your Google Account Security settings.
-                    </Text>
-                  </View>
-                </View>
               ) : (
-                /* EMAIL PASSWORD FORM */
+                /* PASSWORD FORM */
                 <View style={styles.formContainer}>
                   {/* CURRENT PASSWORD */}
-                  <View style={styles.field}>
+                  {authMode === 'password' && <View style={styles.field}>
                     <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                       CURRENT PASSWORD
                     </Text>
@@ -440,7 +418,7 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                         />
                       </TouchableOpacity>
                     </View>
-                  </View>
+                  </View>}
 
                   {/* NEW PASSWORD */}
                   <View style={styles.field}>
@@ -510,7 +488,7 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                             style={[
                               styles.strengthBar,
                               {
-                                width: `${(passwordScore / 4) * 100}%`,
+                                width: `${Math.min((passwordScore / 5) * 100, 100)}%`,
                                 backgroundColor: getStrengthColor(),
                               },
                             ]}
@@ -523,25 +501,25 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                             style={[
                               styles.requirementChip,
                               {
-                                backgroundColor: passwordRequirements.length
+                                backgroundColor: passwordRequirementFlags.length
                                   ? 'rgba(16, 185, 129, 0.12)'
                                   : (isDark ? '#222226' : '#F1F5F9'),
-                                borderColor: passwordRequirements.length
+                                borderColor: passwordRequirementFlags.length
                                   ? 'rgba(16, 185, 129, 0.3)'
                                   : 'transparent',
                               },
                             ]}
                           >
                             <Icon
-                              name={passwordRequirements.length ? 'check' : 'remove'}
+                              name={passwordRequirementFlags.length ? 'check' : 'remove'}
                               size={12}
-                              color={passwordRequirements.length ? '#10B981' : theme.textSecondary}
+                              color={passwordRequirementFlags.length ? '#10B981' : theme.textSecondary}
                             />
                             <Text
                               style={[
                                 styles.requirementText,
                                 {
-                                  color: passwordRequirements.length ? '#10B981' : theme.textSecondary,
+                                  color: passwordRequirementFlags.length ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
@@ -553,25 +531,52 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                             style={[
                               styles.requirementChip,
                               {
-                                backgroundColor: passwordRequirements.uppercase
+                                backgroundColor: passwordRequirementFlags.lowercase
                                   ? 'rgba(16, 185, 129, 0.12)'
                                   : (isDark ? '#222226' : '#F1F5F9'),
-                                borderColor: passwordRequirements.uppercase
+                                borderColor: passwordRequirementFlags.lowercase
                                   ? 'rgba(16, 185, 129, 0.3)'
                                   : 'transparent',
                               },
                             ]}
                           >
                             <Icon
-                              name={passwordRequirements.uppercase ? 'check' : 'remove'}
+                              name={passwordRequirementFlags.lowercase ? 'check' : 'remove'}
                               size={12}
-                              color={passwordRequirements.uppercase ? '#10B981' : theme.textSecondary}
+                              color={passwordRequirementFlags.lowercase ? '#10B981' : theme.textSecondary}
+                            />
+                            <Text
+                              style={[styles.requirementText, {
+                                color: passwordRequirementFlags.lowercase ? '#10B981' : theme.textSecondary,
+                              }]}
+                            >
+                              1 lowercase
+                            </Text>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.requirementChip,
+                              {
+                                backgroundColor: passwordRequirementFlags.uppercase
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : (isDark ? '#222226' : '#F1F5F9'),
+                                borderColor: passwordRequirementFlags.uppercase
+                                  ? 'rgba(16, 185, 129, 0.3)'
+                                  : 'transparent',
+                              },
+                            ]}
+                          >
+                            <Icon
+                              name={passwordRequirementFlags.uppercase ? 'check' : 'remove'}
+                              size={12}
+                              color={passwordRequirementFlags.uppercase ? '#10B981' : theme.textSecondary}
                             />
                             <Text
                               style={[
                                 styles.requirementText,
                                 {
-                                  color: passwordRequirements.uppercase ? '#10B981' : theme.textSecondary,
+                                  color: passwordRequirementFlags.uppercase ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
@@ -583,25 +588,25 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                             style={[
                               styles.requirementChip,
                               {
-                                backgroundColor: passwordRequirements.number
+                                backgroundColor: passwordRequirementFlags.number
                                   ? 'rgba(16, 185, 129, 0.12)'
                                   : (isDark ? '#222226' : '#F1F5F9'),
-                                borderColor: passwordRequirements.number
+                                borderColor: passwordRequirementFlags.number
                                   ? 'rgba(16, 185, 129, 0.3)'
                                   : 'transparent',
                               },
                             ]}
                           >
                             <Icon
-                              name={passwordRequirements.number ? 'check' : 'remove'}
+                              name={passwordRequirementFlags.number ? 'check' : 'remove'}
                               size={12}
-                              color={passwordRequirements.number ? '#10B981' : theme.textSecondary}
+                              color={passwordRequirementFlags.number ? '#10B981' : theme.textSecondary}
                             />
                             <Text
                               style={[
                                 styles.requirementText,
                                 {
-                                  color: passwordRequirements.number ? '#10B981' : theme.textSecondary,
+                                  color: passwordRequirementFlags.number ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
@@ -613,25 +618,25 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                             style={[
                               styles.requirementChip,
                               {
-                                backgroundColor: passwordRequirements.special
+                                backgroundColor: passwordRequirementFlags.special
                                   ? 'rgba(16, 185, 129, 0.12)'
                                   : (isDark ? '#222226' : '#F1F5F9'),
-                                borderColor: passwordRequirements.special
+                                borderColor: passwordRequirementFlags.special
                                   ? 'rgba(16, 185, 129, 0.3)'
                                   : 'transparent',
                               },
                             ]}
                           >
                             <Icon
-                              name={passwordRequirements.special ? 'check' : 'remove'}
+                              name={passwordRequirementFlags.special ? 'check' : 'remove'}
                               size={12}
-                              color={passwordRequirements.special ? '#10B981' : theme.textSecondary}
+                              color={passwordRequirementFlags.special ? '#10B981' : theme.textSecondary}
                             />
                             <Text
                               style={[
                                 styles.requirementText,
                                 {
-                                  color: passwordRequirements.special ? '#10B981' : theme.textSecondary,
+                                  color: passwordRequirementFlags.special ? '#10B981' : theme.textSecondary,
                                 },
                               ]}
                             >
@@ -744,21 +749,6 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                       <Text style={[styles.actionText, { color: '#FFFFFF' }]}>Create Account</Text>
                     </TouchableOpacity>
                   </>
-                ) : authMode === 'google' ? (
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={closeModal}
-                    style={[
-                      styles.actionButton,
-                      {
-                        backgroundColor: isDark ? '#1C1C1F' : '#F1F5F9',
-                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
-                        borderWidth: 1,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.actionText, { color: theme.text }]}>Close</Text>
-                  </TouchableOpacity>
                 ) : (
                   <>
                     <TouchableOpacity
@@ -784,10 +774,10 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
                         styles.actionButton,
                         {
                           backgroundColor: theme.accent || '#F63B05',
-                          opacity: saving || !currentPassword || !passwordStrong || !passwordsMatch ? 0.45 : 1,
+                          opacity: saving || (authMode === 'password' && !currentPassword) || !passwordStrong || !passwordsMatch ? 0.45 : 1,
                         },
                       ]}
-                      disabled={saving || !currentPassword || !passwordStrong || !passwordsMatch}
+                      disabled={saving || (authMode === 'password' && !currentPassword) || !passwordStrong || !passwordsMatch}
                     >
                       {saving ? (
                         <ActivityIndicator color="#FFFFFF" size="small" />
@@ -802,7 +792,9 @@ const PasswordSecurityCard = ({ visible, onClose, navigation }) => {
           </View>
         </KeyboardAvoidingView>
       </View>
-    </Modal>
+      </Modal>
+      <CustomToast toast={toast} onHide={hideToast} />
+    </>
   );
 };
 

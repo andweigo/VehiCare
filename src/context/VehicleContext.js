@@ -7,6 +7,7 @@ import {
 } from 'react';
 
 import vehicleApi from '../api/vehicleApi';
+import { isSessionChangedError } from '../api/apiClient';
 import activityService from '../services/activity.service';
 import {
   clearGuestVehicle,
@@ -154,6 +155,10 @@ export const VehicleProvider = ({ children }) => {
 
       return vehicleList;
     } catch (error) {
+      if (isSessionChangedError(error)) {
+        return [];
+      }
+
       console.warn(
         'Unable to load account vehicles:',
         error?.message || error,

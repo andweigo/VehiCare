@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   Image,
+  Modal,
   PanResponder,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import MAP_CONFIG from '../config/mapConfig';
 import { useTheme } from '../theme/ThemeContext';
 
 const BRAND = '#F63B05';
@@ -53,7 +56,7 @@ const getTileUrl = (x, y, z) => {
  */
 const RepairShopMap = ({
   shops = [],
-  userLocation = { latitude: 14.6500, longitude: 121.0300, name: 'Selected Location' },
+  userLocation = null,
   deviceGpsLocation = null,
   selectedShopId = null,
   onSelectShop = () => {},
@@ -61,7 +64,12 @@ const RepairShopMap = ({
   onRecenterGps = () => {},
   isExpanded = false,
   onToggleExpand = () => {},
+  onOpenLocationSearch = null,
 }) => {
+  // ---------------------------------------------------------------------------
+  // 1. HOOK DECLARATIONS (unchanged)
+  // ---------------------------------------------------------------------------
+
   // ---------------------------------------------------------------------------
   // 1. HOOK DECLARATIONS
   // ---------------------------------------------------------------------------
@@ -69,18 +77,20 @@ const RepairShopMap = ({
   const { theme } = useTheme();
 
   // Active selected location coordinates
-  const selLat = Number(userLocation?.latitude) || 14.6500;
-  const selLng = Number(userLocation?.longitude) || 121.0300;
-
-  // Hardware GPS coordinates
-  const gpsLat = deviceGpsLocation ? Number(deviceGpsLocation.latitude) : selLat;
-  const gpsLng = deviceGpsLocation ? Number(deviceGpsLocation.longitude) : selLng;
-  const hasGpsFix = Boolean(deviceGpsLocation);
+  const hasSelectedCoordinateValues = userLocation?.latitude !== null && userLocation?.latitude !== undefined && userLocation?.latitude !== ''
+    && userLocation?.longitude !== null && userLocation?.longitude !== undefined && userLocation?.longitude !== '';
+  const parsedSelLat = Number(userLocation?.latitude);
+  const parsedSelLng = Number(userLocation?.longitude);
+  const hasSelectedCoordinates = hasSelectedCoordinateValues && Number.isFinite(parsedSelLat) && Number.isFinite(parsedSelLng)
+    && parsedSelLat >= -90 && parsedSelLat <= 90 && parsedSelLng >= -180 && parsedSelLng <= 180;
+  const selLat = hasSelectedCoordinates ? parsedSelLat : 0;
+  const selLng = hasSelectedCoordinates ? parsedSelLng : 0;
 
   const containerRef = useRef(null);
   const containerPagePosRef = useRef({ x: 0, y: 0 });
 
   const [zoom, setZoom] = useState(14);
+  const [showShopPicker, setShowShopPicker] = useState(false);
   const [containerDimensions, setContainerDimensions] = useState({ width: 340, height: 250 });
 
   // Camera map view center (independent of selected location pin)
@@ -204,7 +214,7 @@ const RepairShopMap = ({
 
           const z = currentZoomRef.current;
           const containerW = containerDimensions.width || 340;
-          const containerH = isExpanded ? 380 : 250;
+          const containerH = isExpanded ? (containerDimensions.height || Dimensions.get('window').height - 100) : 250;
 
           const cExactX = lon2tileExact(mapCenterRef.current.longitude, z);
           const cExactY = lat2tileExact(mapCenterRef.current.latitude, z);
@@ -222,6 +232,12 @@ const RepairShopMap = ({
               longitude: tappedLng,
             });
           }
+        } else if ((dx > 4 || dy > 4) && onSetLocationPin) {
+          // A moved map selects its new center as the single user location mark.
+          onSetLocationPin({
+            latitude: mapCenterRef.current.latitude,
+            longitude: mapCenterRef.current.longitude,
+          });
         }
         touchStartCountRef.current = 0;
       },
@@ -231,7 +247,7 @@ const RepairShopMap = ({
   // Synchronize camera mapCenter whenever selected location coordinates change
   const prevCoordsRef = useRef({ lat: selLat, lng: selLng });
   useEffect(() => {
-    if (selLat && selLng) {
+    if (hasSelectedCoordinates) {
       if (
         !initialCenterSetRef.current ||
         prevCoordsRef.current.lat !== selLat ||
@@ -245,7 +261,7 @@ const RepairShopMap = ({
         });
       }
     }
-  }, [selLat, selLng]);
+  }, [hasSelectedCoordinates, selLat, selLng]);
 
   // Handle layout & initial container position measurement
   const handleLayout = (e) => {
@@ -262,7 +278,9 @@ const RepairShopMap = ({
 
   // Calculations for map rendering
   const containerWidth = containerDimensions.width || 340;
-  const containerHeight = isExpanded ? 380 : 250;
+  const containerHeight = isExpanded
+    ? (containerDimensions.height || Dimensions.get('window').height - 100)
+    : 250;
 
   const centerExactX = lon2tileExact(mapCenter.longitude, zoom);
   const centerExactY = lat2tileExact(mapCenter.latitude, zoom);
@@ -302,17 +320,19 @@ const RepairShopMap = ({
   const selLeftPixel = (containerWidth / 2) + (selExactX - centerExactX) * TILE_SIZE;
   const selTopPixel = (containerHeight / 2) + (selExactY - centerExactY) * TILE_SIZE;
 
-  // Project Hardware GPS ◎ position relative to camera mapCenter
-  const gpsExactX = lon2tileExact(gpsLng, zoom);
-  const gpsExactY = lat2tileExact(gpsLat, zoom);
-  const gpsLeftPixel = (containerWidth / 2) + (gpsExactX - centerExactX) * TILE_SIZE;
-  const gpsTopPixel = (containerHeight / 2) + (gpsExactY - centerExactY) * TILE_SIZE;
-
   // Memoize projected shop markers
   const projectedShops = useMemo(() => {
-    return shops.map((shop, idx) => {
-      const shopLat = Number(shop.latitude) || selLat;
-      const shopLng = Number(shop.longitude) || selLng;
+    return shops.flatMap((shop, idx) => {
+      if (shop.latitude === null || shop.latitude === undefined || shop.latitude === ''
+        || shop.longitude === null || shop.longitude === undefined || shop.longitude === '') {
+        return [];
+      }
+      const shopLat = Number(shop.latitude);
+      const shopLng = Number(shop.longitude);
+      if (!Number.isFinite(shopLat) || shopLat < -90 || shopLat > 90
+        || !Number.isFinite(shopLng) || shopLng < -180 || shopLng > 180) {
+        return [];
+      }
 
       const shopExactX = lon2tileExact(shopLng, zoom);
       const shopExactY = lat2tileExact(shopLat, zoom);
@@ -320,13 +340,13 @@ const RepairShopMap = ({
       const left = (containerWidth / 2) + (shopExactX - centerExactX) * TILE_SIZE;
       const top = (containerHeight / 2) + (shopExactY - centerExactY) * TILE_SIZE;
 
-      return {
+      return [{
         ...shop,
         left,
         top,
-      };
+      }];
     });
-  }, [shops, selLat, selLng, centerExactX, centerExactY, zoom, containerWidth, containerHeight]);
+  }, [shops, centerExactX, centerExactY, zoom, containerWidth, containerHeight]);
 
   // ---------------------------------------------------------------------------
   // 2. EVENT HANDLERS
@@ -347,29 +367,24 @@ const RepairShopMap = ({
     });
   };
 
-  const handleUseGps = () => {
-    if (onRecenterGps) {
-      onRecenterGps();
-    } else if (onSetLocationPin) {
-      onSetLocationPin({
-        latitude: gpsLat,
-        longitude: gpsLng,
-      });
-    }
-    setMapCenter({
-      latitude: gpsLat,
-      longitude: gpsLng,
-    });
+  const handleUseGps = async () => {
+    const freshFix = onRecenterGps ? await onRecenterGps() : null;
+    if (!freshFix || freshFix.isManual || freshFix.hasPermission !== true) return;
+    if (freshFix.latitude === null || freshFix.latitude === undefined || freshFix.latitude === ''
+      || freshFix.longitude === null || freshFix.longitude === undefined || freshFix.longitude === '') return;
+    const latitude = Number(freshFix?.latitude);
+    const longitude = Number(freshFix?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    setMapCenter({ latitude, longitude });
   };
 
   const isCameraPannedAwayFromPin = Math.abs(mapCenter.latitude - selLat) > 0.0008 || Math.abs(mapCenter.longitude - selLng) > 0.0008;
-
   // ---------------------------------------------------------------------------
   // 3. RENDER JSX
   // ---------------------------------------------------------------------------
 
-  return (
-    <View style={styles.outerContainer}>
+  const mapContent = (
+    <View style={[styles.outerContainer, isExpanded && styles.expandedOuterContainer]}>
       {/* 1. CLEAN MAP VIEWPORT CANVAS */}
       <View
         ref={containerRef}
@@ -378,7 +393,9 @@ const RepairShopMap = ({
           {
             backgroundColor: '#E5E7EB',
             borderColor: theme.border || '#292929',
-            height: containerHeight,
+            height: isExpanded ? undefined : 250,
+            flex: isExpanded ? 1 : undefined,
+            borderRadius: isExpanded ? 0 : 16,
           },
         ]}
         onLayout={handleLayout}
@@ -403,18 +420,7 @@ const RepairShopMap = ({
             />
           ))}
 
-          {/* DEVICE HARDWARE GPS INDICATOR ◎ */}
-          {hasGpsFix && gpsLeftPixel > -50 && gpsLeftPixel < containerWidth + 50 && gpsTopPixel > -50 && gpsTopPixel < containerHeight + 50 && (
-            <View style={[styles.userLocationMarker, { left: gpsLeftPixel - 14, top: gpsTopPixel - 14 }]}>
-              <View style={styles.userPulseRingOuter} />
-              <View style={styles.userPulseRingInner} />
-              <View style={styles.userDotCenter}>
-                <Icon name="navigation" size={10} color="#FFFFFF" />
-              </View>
-            </View>
-          )}
-
-          {/* REPAIR SHOP PINS 🔧 (Clean pins for unselected, rich callout for selected) */}
+          {/* REPAIR SHOP PINS 🔧 */}
           {projectedShops.map((shop, index) => {
             const isSelected = selectedShopId === shop.id;
 
@@ -428,29 +434,11 @@ const RepairShopMap = ({
                 activeOpacity={0.85}
                 style={[
                   styles.shopPinWrapper,
-                  {
-                    left: shop.left - 100,
-                    top: shop.top - 26,
-                    width: 200,
-                    alignItems: 'center',
-                  },
+                  { left: shop.left - 22, top: shop.top - 28, width: 44, height: 48 },
                   isSelected ? styles.shopPinWrapperSelected : styles.shopPinWrapperNormal,
                 ]}
                 onPress={() => onSelectShop(shop)}
               >
-                {isSelected && (
-                  <View style={styles.pinCalloutSelected}>
-                    <Text style={styles.pinShopNameSelected} numberOfLines={1}>
-                      {shop.name}
-                    </Text>
-                    {shop.distance_formatted && (
-                      <View style={styles.pinDistBadgeSelected}>
-                        <Text style={styles.pinDistTextSelected}>{shop.distance_formatted}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
                 <View
                   style={[
                     styles.pinIconContainer,
@@ -470,7 +458,7 @@ const RepairShopMap = ({
           })}
 
           {/* SELECTED LOCATION PIN 📍 */}
-          {selLeftPixel > -60 && selLeftPixel < containerWidth + 60 && selTopPixel > -60 && selTopPixel < containerHeight + 60 && (
+          {hasSelectedCoordinates && selLeftPixel > -60 && selLeftPixel < containerWidth + 60 && selTopPixel > -60 && selTopPixel < containerHeight + 60 && (
             <View
               style={[
                 styles.selectedPinMarkerWrapper,
@@ -485,21 +473,67 @@ const RepairShopMap = ({
             >
               <View style={styles.selectedPinCalloutPill}>
                 <Text style={styles.selectedPinCalloutText} numberOfLines={1}>
-                  {userLocation?.name || 'Selected Location'}
+                  You
                 </Text>
               </View>
 
-              <View style={styles.selectedPinIconCircle}>
-                <Icon name="place" size={20} color="#FFFFFF" />
-              </View>
+              <View style={styles.selectedPinIconCircle} />
               <View style={styles.selectedPinTipTriangle} />
             </View>
           )}
         </View>
 
+        {isExpanded && showShopPicker && (
+          <View style={styles.shopPickerSheet}>
+            <View style={styles.shopPickerHeader}>
+              <Text style={styles.shopPickerTitle}>Nearby repair shops</Text>
+              <TouchableOpacity
+                onPress={() => setShowShopPicker(false)}
+                accessibilityLabel="Close shop list"
+                hitSlop={8}
+              >
+                <Icon name="close" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {shops.map((shop, index) => {
+                const selected = selectedShopId === shop.id;
+                return (
+                  <TouchableOpacity
+                    key={shop.id || index}
+                    style={[styles.shopPickerRow, selected && styles.shopPickerRowSelected]}
+                    onPress={() => {
+                      setShowShopPicker(false);
+                      onSelectShop(shop);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shopPickerName} numberOfLines={1}>{shop.name || 'Repair shop'}</Text>
+                      {shop.distance_formatted ? <Text style={styles.shopPickerMeta}>{shop.distance_formatted}</Text> : null}
+                    </View>
+                    <Icon name={selected ? 'radio-button-checked' : 'chevron-right'} size={19} color={selected ? BRAND : '#94A3B8'} />
+                  </TouchableOpacity>
+                );
+              })}
+              {shops.length === 0 && <Text style={styles.shopPickerEmpty}>No listed shops for this location yet.</Text>}
+            </ScrollView>
+          </View>
+        )}
+
         {/* MINIMAL IN-MAP FLOATING HUD CONTROLS */}
         {/* TOP-RIGHT: SLEEK FULLSCREEN TOGGLE BUTTON */}
         <View style={styles.hudTopRight} pointerEvents="box-none">
+          {onOpenLocationSearch && (
+            <TouchableOpacity
+              style={styles.minimalIconBtn}
+              activeOpacity={0.8}
+              onPress={onOpenLocationSearch}
+              accessibilityLabel="Search or choose a map location"
+            >
+              <Icon name="search" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.minimalIconBtn}
             activeOpacity={0.8}
@@ -549,6 +583,31 @@ const RepairShopMap = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        {isExpanded && (
+          <View style={styles.hudBottomLeft} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[styles.minimalIconBtn, styles.shopListButton]}
+              activeOpacity={0.85}
+              onPress={() => setShowShopPicker(value => !value)}
+              accessibilityLabel={`Show nearby repair shops, ${shops.length} results`}
+            >
+              <Icon name="format-list-bulleted" size={18} color="#FFFFFF" />
+              <Text style={styles.shopListButtonText}>{shops.length}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.mapLegend} pointerEvents="none">
+          <View style={styles.mapLegendItem}>
+            <View style={styles.mapLegendUserDot} />
+            <Text style={styles.mapLegendText}>You</Text>
+          </View>
+          <View style={styles.mapLegendItem}>
+            <View style={styles.mapLegendShopDot} />
+            <Text style={styles.mapLegendText}>Repair shops</Text>
+          </View>
+        </View>
       </View>
 
       {/* 2. SELECTED SEARCH LOCATION ACTION CARD (OUTSIDE / AT BOTTOM OF MAP CONTAINER) */}
@@ -569,7 +628,7 @@ const RepairShopMap = ({
             </Text>
           </View>
           <Text style={[styles.locationCardName, { color: theme.text || '#FFFFFF' }]} numberOfLines={1}>
-            {userLocation?.name || 'Socorro, Oriental Mindoro'}
+            {userLocation?.name || 'Choose a location'}
           </Text>
         </View>
 
@@ -596,12 +655,37 @@ const RepairShopMap = ({
       </Text>
     </View>
   );
+
+  if (!isExpanded) return mapContent;
+
+  return (
+    <Modal
+      visible
+      animationType="fade"
+      statusBarTranslucent={false}
+      onRequestClose={onToggleExpand}
+    >
+      <SafeAreaView
+        edges={['top', 'bottom']}
+        style={[styles.expandedModal, { backgroundColor: theme.background || '#0A0A0A' }]}
+      >
+        {mapContent}
+      </SafeAreaView>
+    </Modal>
+  );
 };
 
 const styles = StyleSheet.create({
   outerContainer: {
     width: '100%',
     marginVertical: 10,
+  },
+  expandedModal: {
+    flex: 1,
+  },
+  expandedOuterContainer: {
+    flex: 1,
+    marginVertical: 0,
   },
   mapViewport: {
     width: '100%',
@@ -616,43 +700,6 @@ const styles = StyleSheet.create({
   },
   tileImage: {
     position: 'absolute',
-  },
-
-  /* Device Hardware GPS Indicator ◎ */
-  userLocationMarker: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 15,
-    width: 28,
-    height: 28,
-  },
-  userPulseRingOuter: {
-    position: 'absolute',
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(56, 189, 248, 0.22)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(2, 132, 199, 0.5)',
-  },
-  userPulseRingInner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(56, 189, 248, 0.35)',
-  },
-  userDotCenter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#0284C7',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 5,
   },
 
   /* Selected Location Pin 📍 */
@@ -678,14 +725,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   selectedPinIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: BRAND,
-    borderWidth: 2.5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#0284C7',
+    borderWidth: 2,
     borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
     elevation: 6,
   },
   selectedPinTipTriangle: {
@@ -698,7 +743,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: BRAND,
+    borderTopColor: '#0284C7',
     marginTop: -1,
   },
 
@@ -706,44 +751,13 @@ const styles = StyleSheet.create({
   shopPinWrapper: {
     position: 'absolute',
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   shopPinWrapperNormal: {
     zIndex: 5,
   },
   shopPinWrapperSelected: {
     zIndex: 50,
-  },
-  pinCalloutSelected: {
-    position: 'absolute',
-    bottom: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: BRAND,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-    elevation: 6,
-    maxWidth: 160,
-  },
-  pinShopNameSelected: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 11,
-    color: '#FFFFFF',
-    flexShrink: 1,
-  },
-  pinDistBadgeSelected: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  pinDistTextSelected: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 8,
-    color: '#FFEDD5',
   },
   pinIconContainer: {
     borderRadius: 12,
@@ -784,6 +798,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     right: 10,
+    flexDirection: 'row',
+    gap: 6,
     zIndex: 30,
   },
   hudBottomRight: {
@@ -793,6 +809,120 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     zIndex: 30,
+  },
+  hudBottomLeft: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    zIndex: 30,
+  },
+  mapLegend: {
+    position: 'absolute',
+    left: 12,
+    right: 80,
+    bottom: 10,
+    minHeight: 32,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    borderRadius: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    zIndex: 28,
+  },
+  mapLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  mapLegendUserDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#0284C7',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  mapLegendShopDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: BRAND,
+  },
+  mapLegendText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  shopListButton: {
+    width: 'auto',
+    minWidth: 58,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  shopListButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  shopPickerSheet: {
+    position: 'absolute',
+    left: 12,
+    right: 72,
+    bottom: 12,
+    maxHeight: '55%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(15, 23, 42, 0.97)',
+    zIndex: 26,
+    overflow: 'hidden',
+  },
+  shopPickerHeader: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  shopPickerTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shopPickerRow: {
+    minHeight: 50,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  shopPickerRowSelected: {
+    backgroundColor: 'rgba(246, 59, 5, 0.18)',
+  },
+  shopPickerName: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  shopPickerMeta: {
+    marginTop: 2,
+    color: '#CBD5E1',
+    fontSize: 11,
+  },
+  shopPickerEmpty: {
+    padding: 14,
+    color: '#CBD5E1',
+    fontSize: 13,
   },
   minimalIconBtn: {
     width: 34,

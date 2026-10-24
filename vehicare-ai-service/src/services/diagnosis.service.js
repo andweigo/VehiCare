@@ -11,6 +11,7 @@ import { cacheService } from './cache.service.js';
 import { dedupService } from './dedup.service.js';
 import { callGemini, resolveTotalBudgetMs } from './gemini.service.js';
 import { queueService } from './queue.service.js';
+import { classifyVehicleSound } from './vehicle-sound-validation.service.js';
 
 const PROMPT_POLICY_VERSION = 'diagnosis-v2';
 
@@ -44,12 +45,53 @@ export const processDiagnosisRequest = async (payload) => {
   const {
     symptoms,
     root_symptom: rootSymptom,
-    input_type: inputType,
+    input_type: rawInputType,
     media_base64: mediaBase64,
     media_mime: mediaMime,
     history,
   } = diagnosis;
+  const inputType = rawInputType === 'voice' ? 'audio' : rawInputType;
   const language = userContext?.language || 'en';
+
+  // Audio is always validated before cache lookup, deduplication, text
+  // fallback, or diagnosis generation. A cached diagnosis can never bypass
+  // the vehicle-sound gate.
+  if (inputType === 'audio') {
+    if (!mediaBase64) {
+      const error = new Error('Record and attach a vehicle sound before requesting audio analysis.');
+      error.code = 'AUDIO_VALIDATION_REJECTED';
+      error.statusCode = 422;
+      error.retryable = false;
+      error.details = {
+        outcome: 'inconclusive_audio',
+        retry_guidance: 'Record a short vehicle noise and attach the clip before submitting.',
+      };
+      throw error;
+    }
+
+    // Keep the classifier inside the same concurrency queue as diagnosis calls.
+    // It still runs before cache and deduplication, so neither can bypass it.
+    const validation = await queueService.enqueue(
+      () => classifyVehicleSound({ mediaBase64, mediaMime, requestId }),
+      `${requestId}_sound_validation`,
+      'audio_validation',
+    );
+    if (validation.outcome !== 'valid_vehicle_sound') {
+      const error = new Error(
+        validation.outcome === 'irrelevant_audio'
+          ? 'This feature analyzes vehicle sounds. Please record a vehicle noise instead of speech, music, or unrelated audio.'
+          : 'We could not identify a vehicle sound clearly enough. Please record again in a quieter place, closer to the sound source.',
+      );
+      error.code = 'AUDIO_VALIDATION_REJECTED';
+      error.statusCode = 422;
+      error.retryable = false;
+      error.details = {
+        outcome: validation.outcome,
+        retry_guidance: validation.retry_guidance,
+      };
+      throw error;
+    }
+  }
 
   const isGeneral = !mediaBase64 && isGeneralQuestion(symptoms, history, diagnosticState);
   const isRepair = !mediaBase64 && !isGeneral && isRepairGuideIntent(symptoms);
@@ -215,7 +257,8 @@ export const processDiagnosisRequest = async (payload) => {
           const remainingOverallMs = (startTime + originalTotalBudgetMs) - Date.now();
           const minViableTextBudgetMs = 8000;
 
-          if (isMediaError && hasUsableSymptoms && remainingOverallMs >= minViableTextBudgetMs) {
+          const isVehicleSoundInput = inputType === 'audio' || inputType === 'voice';
+          if (!isVehicleSoundInput && isMediaError && hasUsableSymptoms && remainingOverallMs >= minViableTextBudgetMs) {
             logger.warn('AI_MEDIA_FALLBACK_TO_TEXT', requestId, {
               originalErrorCode: geminiError.code,
               originalError: geminiError.message,

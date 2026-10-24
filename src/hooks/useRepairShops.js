@@ -13,9 +13,9 @@ const SAVED_LOCATION_STORAGE_KEY = '@vehicare_last_location';
  * Common Philippines City Presets for Manual Map Exploration
  */
 export const LOCATION_PRESETS = [
-  { id: 'mindoro_socorro', name: 'Socorro, Oriental Mindoro', latitude: 13.0642, longitude: 121.4089, accuracy: 15 },
-  { id: 'mindoro_pinamalayan', name: 'Pinamalayan, Oriental Mindoro', latitude: 13.0475, longitude: 121.4939, accuracy: 15 },
-  { id: 'mindoro_oriental', name: 'Oriental Mindoro (Province)', latitude: 13.1500, longitude: 121.3500, accuracy: 25 },
+  { id: 'mindoro_socorro', name: 'Socorro, Oriental Mindoro', latitude: 13.0642, longitude: 121.4089, isManual: true },
+  { id: 'mindoro_pinamalayan', name: 'Pinamalayan, Oriental Mindoro', latitude: 13.0475, longitude: 121.4939, isManual: true },
+  { id: 'mindoro_oriental', name: 'Oriental Mindoro (Province)', latitude: 13.1500, longitude: 121.3500, isManual: true },
 ];
 
 export const DEFAULT_FALLBACK_LOCATION = LOCATION_PRESETS[0];
@@ -25,16 +25,19 @@ export const DEFAULT_FALLBACK_LOCATION = LOCATION_PRESETS[0];
  */
 export const saveLastLocation = async (locationObj) => {
   try {
-    if (!locationObj || locationObj.latitude === undefined || locationObj.longitude === undefined) return;
+    if (!locationObj || locationObj.latitude === undefined || locationObj.latitude === null || locationObj.latitude === ''
+      || locationObj.longitude === undefined || locationObj.longitude === null || locationObj.longitude === '') return;
     const lat = Number(locationObj.latitude);
     const lng = Number(locationObj.longitude);
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
 
+    const accuracy = Number(locationObj.accuracy);
     const payload = {
       latitude: lat,
       longitude: lng,
       name: locationObj.name || 'Selected Location',
-      accuracy: locationObj.accuracy || 15,
+      ...(locationObj.isManual !== true && Number.isFinite(accuracy) && accuracy > 0 ? { accuracy } : {}),
+      isManual: locationObj.isManual === true,
       updatedAt: new Date().toISOString(),
     };
     await AsyncStorage.setItem(SAVED_LOCATION_STORAGE_KEY, JSON.stringify(payload));
@@ -143,22 +146,28 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
 
   // Update selected location state & persist to AsyncStorage
   const setSelectedLocation = useCallback((locationObj, shouldSave = true) => {
-    if (!locationObj || locationObj.latitude === undefined || locationObj.longitude === undefined) return;
+    if (!locationObj || locationObj.latitude === undefined || locationObj.latitude === null || locationObj.latitude === ''
+      || locationObj.longitude === undefined || locationObj.longitude === null || locationObj.longitude === '') return;
 
     const lat = Number(locationObj.latitude);
     const lng = Number(locationObj.longitude);
-    const accInfo = getAccuracyStatus(locationObj.accuracy || 15);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+    const accuracy = Number(locationObj.accuracy);
+    const hasMeasuredAccuracy = locationObj.isManual !== true && Number.isFinite(accuracy) && accuracy > 0;
+    const accInfo = hasMeasuredAccuracy ? getAccuracyStatus(accuracy) : null;
 
     const formattedObj = {
       latitude: lat,
       longitude: lng,
-      accuracy: locationObj.accuracy || 15,
-      accuracyStatus: accInfo.status,
-      accuracyLabel: accInfo.label,
-      accuracyShortLabel: accInfo.shortLabel || accInfo.label,
-      accuracyColor: accInfo.color,
-      isGoodAccuracy: true,
-      isPrecise: true,
+      ...(hasMeasuredAccuracy ? {
+        accuracy,
+        accuracyStatus: accInfo.status,
+        accuracyLabel: accInfo.label,
+        accuracyShortLabel: accInfo.shortLabel || accInfo.label,
+        accuracyColor: accInfo.color,
+        isGoodAccuracy: accInfo.isGood,
+        isPrecise: Boolean(locationObj.isPrecise),
+      } : {}),
       name: locationObj.name || 'Selected Location',
       hasPermission: locationObj.hasPermission ?? false,
       isManual: locationObj.isManual ?? true,
@@ -173,7 +182,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
   }, []);
 
   // Action: "Use My Current Location" button press
-  const useCurrentGpsLocation = useCallback(async () => {
+  const acquireCurrentGpsLocation = useCallback(async () => {
     const gpsFix = await acquireFreshGps();
     if (gpsFix) {
       setSelectedLocation(gpsFix, true);
@@ -188,7 +197,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       const perm = await LocationService.requestPermissions();
       if (perm.isGranted) {
         setPermissionState(perm.isPrecise ? 'GRANTED_PRECISE' : 'GRANTED_APPROXIMATE');
-        const gpsObj = await useCurrentGpsLocation();
+        const gpsObj = await acquireCurrentGpsLocation();
         return gpsObj;
       } else {
         setPermissionState(perm.isPermanentlyDenied ? 'PERMANENTLY_DENIED' : 'DENIED');
@@ -206,7 +215,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
         if (!selectedLocation) {
           setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);
         }
-        return DEFAULT_FALLBACK_LOCATION;
+        return null;
       }
     } catch (err) {
       console.warn('[useRepairShops] Request permission error:', err);
@@ -214,7 +223,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
       if (!selectedLocation) {
         setSelectedLocation(DEFAULT_FALLBACK_LOCATION, false);
       }
-      return DEFAULT_FALLBACK_LOCATION;
+      return null;
     }
   };
 
@@ -263,12 +272,13 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
   useEffect(() => {
     const filtered = filterShopsByCategory(rawShops, categoryFilter);
     setShops(filtered);
-    if (filtered.length > 0 && !filtered.some(s => s.id === selectedShopId)) {
+      if (filtered.length > 0 && !filtered.some(s => s.id === selectedShopId)) {
       setSelectedShopId(filtered[0].id);
     }
-  }, [categoryFilter, rawShops]);
+  }, [categoryFilter, rawShops, selectedShopId]);
 
-  // Initial load priority: 1) Saved location -> 2) Current GPS -> 3) Default Preset
+  // Initial load priority: 1) Saved location -> 2) existing GPS permission -> 3) city preset.
+  // Ask for location permission only after the user activates a location action.
   useEffect(() => {
     let cancelled = false;
 
@@ -282,13 +292,6 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
           latitude: saved.latitude,
           longitude: saved.longitude,
           name: saved.name || 'Saved Location',
-          accuracy: saved.accuracy || 15,
-          accuracyStatus: 'HIGH',
-          accuracyLabel: 'Saved Location',
-          accuracyShortLabel: 'Saved',
-          accuracyColor: BRAND,
-          isGoodAccuracy: true,
-          isPrecise: true,
           hasPermission: false,
           isManual: true,
           isSaved: true,
@@ -318,25 +321,10 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
           // Priority 3: Fallback preset
           setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         }
-      } else if (perm.state === 'NOT_REQUESTED') {
-        const reqResult = await LocationService.requestPermissions();
-        if (cancelled) return;
-        if (reqResult.isGranted) {
-          setPermissionState(reqResult.isPrecise ? 'GRANTED_PRECISE' : 'GRANTED_APPROXIMATE');
-          const gpsFix = await acquireFreshGps();
-          if (cancelled) return;
-          if (gpsFix) {
-            setSelectedLocationState(gpsFix);
-          } else {
-            setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
-          }
-        } else {
-          setPermissionState(reqResult.isPermanentlyDenied ? 'PERMANENTLY_DENIED' : 'DENIED');
-          setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
-          setLoading(false);
-        }
       } else {
-        setPermissionState(perm.state === 'PERMANENTLY_DENIED' ? 'PERMANENTLY_DENIED' : 'DENIED');
+        setPermissionState(perm.state === 'PERMANENTLY_DENIED'
+          ? 'PERMANENTLY_DENIED'
+          : perm.state === 'NOT_REQUESTED' ? 'NOT_REQUESTED' : 'DENIED');
         setSelectedLocationState(DEFAULT_FALLBACK_LOCATION);
         setLoading(false);
       }
@@ -351,10 +339,8 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
 
   // Fetch shops whenever selectedLocation changes
   useEffect(() => {
-    if (selectedLocation && selectedLocation.latitude !== undefined && selectedLocation.longitude !== undefined) {
-      loadShops();
-    }
-  }, [selectedLocation?.latitude, selectedLocation?.longitude, loadShops]);
+    loadShops();
+  }, [loadShops]);
 
   const selectShop = (shop) => {
     if (!shop) return;
@@ -373,7 +359,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
     deviceGpsLocation,
     selectedLocation,
     setSelectedLocation,
-    useCurrentGpsLocation,
+    acquireCurrentGpsLocation,
     selectedShopId,
     setSelectedShopId,
     activeShopModal,
@@ -383,7 +369,7 @@ export const useRepairShops = (vehicleTypeInput = 'car') => {
     selectShop,
     setManualLocation: (loc) => setSelectedLocation(loc, true),
     requestPermissionAndAcquire,
-    acquireFreshLocation: useCurrentGpsLocation,
+    acquireFreshLocation: acquireCurrentGpsLocation,
     categoryFilter,
     setCategoryFilter,
     reload: loadShops,

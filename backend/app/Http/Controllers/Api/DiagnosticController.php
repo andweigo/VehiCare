@@ -724,7 +724,13 @@ class DiagnosticController extends Controller
                     );
                     $aiSource = $analysis['ai_source'] ?? 'gemini';
                 } catch (AIServiceException $microserviceException) {
-                    if ($isGeminiConfigured) {
+                    // Audio must never fall through to Laravel's direct Gemini
+                    // path because that would bypass the vehicle-sound gate.
+                    if (in_array($inputType, ['audio', 'voice'], true)) {
+                        throw $microserviceException;
+                    }
+
+                    if ($isGeminiConfigured && $microserviceException->retryable && $microserviceException->httpStatus >= 500) {
                         Log::warning('[DiagnosticController] Node.js AI service unavailable, attempting Gemini direct fallback', [
                             'request_id' => $requestId,
                             'reason' => $microserviceException->errorCode,

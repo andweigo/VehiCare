@@ -61,6 +61,22 @@ class MaintenanceController extends Controller
             return response()->json(['message' => 'Vehicle ownership verification failed.'], 403);
         }
 
+        $status = $validated['status'] ?? (! empty($validated['due_date']) ? 'pending' : 'completed');
+        $recentDuplicate = MaintenanceRecord::where('user_id', $user->id)
+            ->where('vehicle_id', $validated['vehicle_id'])
+            ->where('title', trim($validated['title']))
+            ->where('status', $status)
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->latest('id')
+            ->first();
+
+        if ($recentDuplicate) {
+            return response()->json([
+                'message' => 'Maintenance record already saved.',
+                'data' => $recentDuplicate->load(['vehicle.vehicleBrand', 'vehicle.vehicleModel', 'vehicle.vehicleYear']),
+            ], 200);
+        }
+
         $record = MaintenanceRecord::create([
             'user_id' => $user->id,
             'vehicle_id' => $validated['vehicle_id'],
@@ -68,8 +84,10 @@ class MaintenanceController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'service_type' => $validated['service_type'] ?? 'General Inspection',
-            'status' => $validated['status'] ?? 'completed',
-            'performed_at' => $validated['performed_at'] ?? now(),
+            'status' => $status,
+            'performed_at' => $status === 'completed'
+                ? ($validated['performed_at'] ?? now())
+                : ($validated['performed_at'] ?? null),
             'due_date' => $validated['due_date'] ?? null,
             'cost' => $validated['cost'] ?? 0,
             'odometer' => $validated['odometer'] ?? null,
@@ -135,6 +153,14 @@ class MaintenanceController extends Controller
             'is_inspection' => 'nullable|boolean',
             'urgency' => 'nullable|string|max:30',
         ]);
+
+        if (array_key_exists('status', $validated)) {
+            if ($validated['status'] === 'completed' && empty($validated['performed_at'])) {
+                $validated['performed_at'] = now();
+            } elseif ($validated['status'] !== 'completed') {
+                $validated['performed_at'] = null;
+            }
+        }
 
         $record->update($validated);
         $record->load(['vehicle.vehicleBrand', 'vehicle.vehicleModel', 'vehicle.vehicleYear']);

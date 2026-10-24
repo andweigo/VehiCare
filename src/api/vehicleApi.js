@@ -1,5 +1,5 @@
 import { getToken } from '../services/storageService';
-import apiClient from './apiClient';
+import apiClient, { isSessionChangedError } from './apiClient';
 
 /*
 |--------------------------------------------------------------------------
@@ -296,7 +296,7 @@ const vehicleApi = {
 
         return normalized || [];
       } catch (error) {
-        if (error?.response?.status !== 401) {
+        if (error?.response?.status !== 401 && !isSessionChangedError(error)) {
           console.error(
             'API Error in getMyVehicles:',
             error,

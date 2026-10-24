@@ -200,6 +200,25 @@ const LoginScreen = ({ navigation, route }) => {
     try {
       const result = await login(email.trim(), password);
 
+      if (result?.requiresOtp) {
+        // Server refused a session: this account never completed email
+        // verification. Continue at OTP verification (a new code was sent).
+        showToast({
+          type: 'info',
+          title: 'Verify Your Email',
+          message: 'Please enter the verification code we just sent to your email.',
+          duration: 2500,
+        });
+        navigation.replace('OtpVerification', {
+          email: result.email,
+          purpose: 'registration',
+          cooldown_seconds: result.cooldownSeconds,
+          expires_in_seconds: result.expiresInSeconds,
+          redirectTo,
+        });
+        return;
+      }
+
       showToast({
         type: 'success',
         title: 'Signed In',

@@ -5,7 +5,7 @@ const { VehiCareLocation } = NativeModules;
 
 /**
  * Location Accuracy Status Thresholds (in meters)
- * <= 20m: Excellent (Precise GNSS/GPS)
+ * <= 20m: Excellent
  * <= 50m: Good
  * <= 100m: Acceptable
  * > 100m: Poor / Low Accuracy
@@ -24,7 +24,7 @@ export const getAccuracyStatus = (accuracyMeters) => {
   const acc = Number(accuracyMeters);
 
   if (acc <= ACCURACY_THRESHOLDS.EXCELLENT) {
-    return { label: 'Excellent (Precise GPS)', shortLabel: 'Precise', status: 'excellent', color: '#32D583', isGood: true };
+    return { label: 'Excellent', shortLabel: 'Excellent', status: 'excellent', color: '#32D583', isGood: true };
   }
   if (acc <= ACCURACY_THRESHOLDS.GOOD) {
     return { label: 'Good', shortLabel: 'Good', status: 'good', color: '#38BDF8', isGood: true };
@@ -35,10 +35,21 @@ export const getAccuracyStatus = (accuracyMeters) => {
   return { label: 'Low Accuracy', shortLabel: 'Low', status: 'poor', color: '#EF4444', isGood: false };
 };
 
+const hasValidCoordinates = (latitude, longitude) => {
+  if (latitude === null || latitude === undefined || latitude === ''
+    || longitude === null || longitude === undefined || longitude === '') {
+    return false;
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+};
+
 /**
  * LocationService Class (OOP Service Layer)
- * Strictly enforces Android FINE/COARSE location permission checks,
- * fresh GNSS/GPS fix acquisition, stale reading rejection, and zero IP-guessing fallbacks.
+ * Enforces platform location permission checks, fresh device-fix acquisition,
+ * stale reading rejection, and zero IP-guessing fallbacks.
  */
 export class LocationService {
   /**
@@ -60,7 +71,10 @@ export class LocationService {
       } else {
         const fineStatus = await check(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
         if (fineStatus === RESULTS.GRANTED) {
-          return { state: 'GRANTED_PRECISE', isGranted: true, isPrecise: true };
+          // RNPermissions exposes permission status but not iOS's precise vs
+          // reduced-accuracy authorization here. Avoid claiming precision;
+          // the measured coordinate accuracy is still reported separately.
+          return { state: 'GRANTED_APPROXIMATE', isGranted: true, isPrecise: false };
         }
         return { state: 'NOT_REQUESTED', isGranted: false, isPrecise: false };
       }
@@ -71,7 +85,7 @@ export class LocationService {
   }
 
   /**
-   * Request explicit Android FINE/COARSE location permissions from user
+   * Request explicit location permission from the user for the current platform
    */
   static async requestPermissions() {
     try {
@@ -104,7 +118,7 @@ export class LocationService {
       } else {
         const fineRequest = await request(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
         if (fineRequest === RESULTS.GRANTED) {
-          return { state: 'GRANTED_PRECISE', isGranted: true, isPrecise: true };
+          return { state: 'GRANTED_APPROXIMATE', isGranted: true, isPrecise: false };
         }
         return {
           state: fineRequest === RESULTS.BLOCKED ? 'PERMANENTLY_DENIED' : 'DENIED',
@@ -161,12 +175,12 @@ export class LocationService {
     targetAccuracyMeters = 25,
     acquisitionTimeoutMs = 10000,
   } = {}) {
-    const perm = await this.checkPermissionState();
-    if (!perm.isGranted) {
-      const requested = await this.requestPermissions();
-      if (!requested.isGranted) {
-        const err = new Error(requested.isPermanentlyDenied ? 'PERMISSION_PERMANENTLY_DENIED' : 'PERMISSION_DENIED');
-        err.isPermanentlyDenied = requested.isPermanentlyDenied;
+    let permission = await this.checkPermissionState();
+    if (!permission.isGranted) {
+      permission = await this.requestPermissions();
+      if (!permission.isGranted) {
+        const err = new Error(permission.isPermanentlyDenied ? 'PERMISSION_PERMANENTLY_DENIED' : 'PERMISSION_DENIED');
+        err.isPermanentlyDenied = permission.isPermanentlyDenied;
         throw err;
       }
     }
@@ -175,22 +189,24 @@ export class LocationService {
     if (VehiCareLocation?.getCurrentLocation) {
       try {
         const loc = await VehiCareLocation.getCurrentLocation({ timeout: acquisitionTimeoutMs });
-        if (loc && loc.latitude && loc.longitude) {
-          const accuracyInfo = getAccuracyStatus(loc.accuracy);
+        if (loc && hasValidCoordinates(loc.latitude, loc.longitude)) {
+          const rawAccuracy = Number(loc.accuracy);
+          const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy > 0 ? rawAccuracy : null;
+          const accuracyInfo = getAccuracyStatus(accuracy);
           const geocodedName = await LocationService.reverseGeocode(loc.latitude, loc.longitude);
           return {
             latitude: Number(loc.latitude),
             longitude: Number(loc.longitude),
-            accuracy: Number(loc.accuracy || 15),
+            accuracy,
             accuracyStatus: accuracyInfo.status,
             accuracyLabel: accuracyInfo.label,
             accuracyShortLabel: accuracyInfo.shortLabel,
             accuracyColor: accuracyInfo.color,
             isGoodAccuracy: accuracyInfo.isGood,
             timestamp: loc.timestamp || Date.now(),
-            isPrecise: perm.isPrecise,
+            isPrecise: permission.isPrecise,
             source: loc.provider || 'gps',
-            name: geocodedName || (perm.isPrecise ? 'Verified GPS Location' : 'Approximate Location'),
+            name: geocodedName || 'Device Location',
           };
         }
       } catch (nativeErr) {
@@ -223,7 +239,7 @@ export class LocationService {
             } catch (e) {}
           }
 
-          if (bestFix && bestFix.latitude && bestFix.longitude) {
+          if (bestFix && hasValidCoordinates(bestFix.latitude, bestFix.longitude)) {
             const accuracyInfo = getAccuracyStatus(bestFix.accuracy);
             const geocodedName = await LocationService.reverseGeocode(bestFix.latitude, bestFix.longitude);
 
@@ -237,9 +253,9 @@ export class LocationService {
               accuracyColor: accuracyInfo.color,
               isGoodAccuracy: accuracyInfo.isGood,
               timestamp: bestFix.timestamp,
-              isPrecise: perm.isPrecise,
+              isPrecise: permission.isPrecise,
               source: 'gps_fused',
-              name: geocodedName || (perm.isPrecise ? 'Verified GPS Location' : 'Approximate Location'),
+              name: geocodedName || 'Device Location',
             });
           } else {
             reject(new Error('LOCATION_UNAVAILABLE'));
@@ -256,8 +272,10 @@ export class LocationService {
           const ageMs = now - readingTime;
 
           if (ageMs > maxAgeMs) return;
+          if (!hasValidCoordinates(coords.latitude, coords.longitude)) return;
 
-          const accuracy = Number(coords.accuracy ?? 150);
+          const rawAccuracy = Number(coords.accuracy);
+          const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy > 0 ? rawAccuracy : null;
           const fix = {
             latitude: Number(coords.latitude),
             longitude: Number(coords.longitude),
@@ -265,11 +283,15 @@ export class LocationService {
             timestamp: readingTime,
           };
 
-          if (!bestFix || fix.accuracy < bestFix.accuracy) {
+          if (
+            hasValidCoordinates(fix.latitude, fix.longitude)
+            && (!bestFix
+              || (Number.isFinite(fix.accuracy) && (!Number.isFinite(bestFix.accuracy) || fix.accuracy < bestFix.accuracy)))
+          ) {
             bestFix = fix;
           }
 
-          if (fix.accuracy <= targetAccuracyMeters) {
+          if (Number.isFinite(fix.accuracy) && fix.accuracy <= targetAccuracyMeters) {
             clearTimeout(timer);
             finishAcquisition();
           }

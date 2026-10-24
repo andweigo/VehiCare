@@ -55,7 +55,7 @@ export const formatApiMessage = msg => {
 
 const OtpVerificationScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
-  const { verifyUserEmail, completeRegistrationAuth } = useAuth();
+  const { completeRegistrationAuth } = useAuth();
   const { pendingVehicle, setActiveVehicle, clearPendingVehicle } = useVehicle();
 
   const email = route?.params?.email || '';
@@ -76,6 +76,7 @@ const OtpVerificationScreen = ({ route, navigation }) => {
   const [toast, setToast] = useState(null);
 
   const inputRef = useRef(null);
+  const submittingRef = useRef(false);
   const timerRef = useRef(null);
   const expiryTimerRef = useRef(null);
 
@@ -143,6 +144,12 @@ const OtpVerificationScreen = ({ route, navigation }) => {
 
   const handleVerify = async (submittedOtp = null) => {
     Keyboard.dismiss();
+
+    // Block duplicate submissions (auto-submit on 6th digit + manual button).
+    if (submittingRef.current) {
+      return;
+    }
+
     const code = submittedOtp !== null && typeof submittedOtp === 'string' ? submittedOtp : otp;
 
     if (isCodeExpired) {
@@ -163,12 +170,15 @@ const OtpVerificationScreen = ({ route, navigation }) => {
       return;
     }
 
+    submittingRef.current = true;
+    let codeAccepted = false;
     setLoading(true);
 
     try {
       const response = await verifyOtp(email, purpose, code);
 
       if (response?.success) {
+        codeAccepted = true;
         showToast({
           type: 'success',
           title: 'Code Verified',
@@ -234,29 +244,31 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                   }
                 }
               } catch (authErr) {
-                console.error('[OtpVerificationScreen] Registration completion error:', authErr);
-                await verifyUserEmail();
-                try {
-                  navigation.replace('Dashboard');
-                } catch (navErr) {
-                  // Handled automatically by auth state transition
-                }
+                // The code WAS accepted by the server but the session could not
+                // be completed (network/server error). Never fall through to
+                // the dashboard: stay here so the user can retry; the server
+                // accepts the same code again for a short window.
+                console.error('[OtpVerificationScreen] Registration completion error:', authErr?.message || authErr);
+                submittingRef.current = false;
+                showToast({
+                  type: 'error',
+                  title: 'Almost There',
+                  message:
+                    'Your email is verified, but we could not finish signing you in. Check your connection and tap Verify again.',
+                  duration: 5000,
+                });
               }
             } else {
-              await verifyUserEmail();
-              if (redirectTo?.name && redirectTo.name !== 'VehicleDetails') {
-                try {
-                  navigation.replace(redirectTo.name, redirectTo.params);
-                } catch (navErr) {
-                  // Handled automatically by auth state transition
-                }
-              } else {
-                try {
-                  navigation.replace('Dashboard');
-                } catch (navErr) {
-                  // Handled automatically by auth state transition
-                }
-              }
+              // No session returned by the server: verification cannot be
+              // treated as complete on the client's say-so.
+              submittingRef.current = false;
+              showToast({
+                type: 'error',
+                title: 'Verification Incomplete',
+                message:
+                  'We could not confirm your account with the server. Please tap Verify again or request a new code.',
+                duration: 5000,
+              });
             }
           } else if (purpose === 'password_reset') {
             try {
@@ -291,6 +303,9 @@ const OtpVerificationScreen = ({ route, navigation }) => {
         message: formattedMsg,
       });
     } finally {
+      if (!codeAccepted) {
+        submittingRef.current = false;
+      }
       setLoading(false);
     }
   };

@@ -171,6 +171,37 @@ class VehicleController extends Controller
         $user = $request->user();
         $result = DB::transaction(function () use ($user, $validated) {
             $lockedUser = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            // Idempotency: a retry (lost response, double tap, navigating back
+            // and saving again) of the SAME vehicle must return the vehicle that
+            // was just created instead of creating a duplicate or tripping the
+            // plan limit. Checked before the allowance test on purpose.
+            $recentDuplicate = $lockedUser->vehicles()
+                ->where('created_at', '>=', now()->subMinutes(2))
+                ->where(function ($query) use ($validated) {
+                    foreach ($validated as $column => $value) {
+                        if ($value === null || $value === '') {
+                            $query->whereNull($column);
+                        } else {
+                            $query->where($column, $value);
+                        }
+                    }
+                })
+                ->latest('id')
+                ->first();
+
+            if ($recentDuplicate) {
+                return [
+                    'allowed' => true,
+                    'vehicle' => $recentDuplicate->load([
+                        'vehicleType',
+                        'vehicleBrand',
+                        'vehicleModel',
+                        'vehicleYear',
+                    ]),
+                ];
+            }
+
             $lockedUser->checkSubscriptionStatus();
             $vehicleAllowance = $lockedUser->vehicleAllowance();
             $isPremium = $lockedUser->isPremium();

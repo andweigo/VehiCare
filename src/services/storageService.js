@@ -451,11 +451,110 @@ export const clearActiveChatSessions = async (userId = null) => {
 
 /*
 |--------------------------------------------------------------------------
+| PENDING VEHICLE SETUP (per account)
+|--------------------------------------------------------------------------
+| Persists the "email verified, vehicle setup not finished yet" onboarding
+| stage so an app restart resumes at vehicle setup. It is only a hint: the
+| navigator always reconciles it against the real vehicle list from Laravel.
+*/
+
+const PENDING_VEHICLE_SETUP_KEY_PREFIX = '@vehicare_pending_vehicle_setup_';
+
+export const getPendingVehicleSetupKey = userId =>
+  `${PENDING_VEHICLE_SETUP_KEY_PREFIX}${userId}`;
+
+export const savePendingVehicleSetup = async (userId, pending = true) => {
+  if (!userId) return;
+  try {
+    if (!pending) {
+      await AsyncStorage.removeItem(getPendingVehicleSetupKey(userId));
+      return;
+    }
+    await AsyncStorage.setItem(getPendingVehicleSetupKey(userId), 'true');
+  } catch (error) {
+    console.error('Failed to save pending vehicle setup flag:', error?.message || error);
+  }
+};
+
+export const getPendingVehicleSetup = async userId => {
+  if (!userId) return false;
+  try {
+    return (await AsyncStorage.getItem(getPendingVehicleSetupKey(userId))) === 'true';
+  } catch (error) {
+    return false;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| CENTRALIZED SESSION CLEANUP
+|--------------------------------------------------------------------------
+| Single audited list of everything that belongs to an account/session.
+| Non-sensitive global preferences (theme, language, notification prefs,
+| onboarding-seen flag, device guest UUID) are intentionally NOT listed.
+*/
+
+const SESSION_EXACT_KEYS = [
+  TOKEN_KEY,
+  USER_KEY,
+  GUEST_DIAGNOSIS_COUNT_KEY,
+  '@vehicare_guest_vehicle',
+  '@vehicare_guest_mode',
+  // Account-specific caches/drafts written by individual screens & contexts.
+  '@vehicare_ai_usage_v2', // AIUsageContext: per-account consultation counters
+  '@vehicare_last_location', // useRepairShops: last selected search location
+  '@vehicare_vehicles', // MyVehiclesScreen vehicle cache
+  '@vehicare_plan', // MyVehiclesScreen plan cache
+  '@vehicare_problem_reports', // ReportProblemScreen local submissions
+  '@vehicare_feedback_submissions', // SendFeedbackScreen local submissions
+  '@vehicare_notification_preferences', // notificationService local copy
+  '@vehicare_completed_maintenance', // legacy un-scoped completion cache
+];
+
+const SESSION_KEY_PREFIXES = [
+  '@vehicare_active_chats_',
+  '@vehicare_history_',
+  '@vehicare_recent_activities_',
+  '@vehicare_vehicles_',
+  '@vehicare_completed_maintenance_',
+  '@vehicare_cached_health_',
+  '@vehicare_cached_factors_',
+  PENDING_VEHICLE_SETUP_KEY_PREFIX,
+];
+
+// Intentionally preserved across logout (non-sensitive, device-level):
+//   @vehicare_theme, @vehicare_theme_<uid>, @vehicare_language,
+//   @vehicare_onboarding_completed, @vehicare_guest_uuid
+
+export const clearSessionData = async () => {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const scopedKeys = (allKeys || []).filter(key =>
+      SESSION_KEY_PREFIXES.some(prefix => String(key).startsWith(prefix)),
+    );
+    const keysToRemove = [...new Set([...SESSION_EXACT_KEYS, ...scopedKeys])];
+
+    if (typeof AsyncStorage.multiRemove === 'function') {
+      await AsyncStorage.multiRemove(keysToRemove);
+    } else {
+      await Promise.all(keysToRemove.map(key => AsyncStorage.removeItem(key)));
+    }
+  } catch (error) {
+    console.error('Failed to clear session data:', error?.message || error);
+    throw error;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
 | DEFAULT EXPORT
 |--------------------------------------------------------------------------
 */
 
 export default {
+  clearSessionData,
+  savePendingVehicleSetup,
+  getPendingVehicleSetup,
   saveToken,
   getToken,
   removeToken,

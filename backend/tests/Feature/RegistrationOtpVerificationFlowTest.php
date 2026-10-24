@@ -24,6 +24,9 @@ class RegistrationOtpVerificationFlowTest extends TestCase
             'email' => 'jane@example.com',
             'password' => 'SecurePass123!',
             'password_confirmation' => 'SecurePass123!',
+            'accepted_terms' => true,
+            'terms_version' => config('legal.terms_version'),
+            'privacy_version' => config('legal.privacy_version'),
         ]);
 
         $response->assertStatus(201)

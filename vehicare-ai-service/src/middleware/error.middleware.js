@@ -84,6 +84,7 @@ export const errorHandlerMiddleware = (err, req, res, next) => {
       message,
       retryable,
       request_id: requestId,
+      ...(err.details && typeof err.details === 'object' ? { details: err.details } : {}),
     },
   });
 };

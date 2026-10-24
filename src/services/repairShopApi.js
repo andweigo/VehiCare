@@ -61,11 +61,21 @@ export const filterShopsByCategory = (shops = [], selectedCategory = 'all') => {
  * @returns {Promise<Array>} Array of normalized repair shop DTOs
  */
 export const fetchNearbyRepairShops = async ({
-  latitude = 14.6500,
-  longitude = 121.0300,
+  latitude,
+  longitude,
   radius = 5000,
   vehicleType = 'all',
 } = {}) => {
+  if (latitude === null || latitude === undefined || latitude === ''
+    || longitude === null || longitude === undefined || longitude === '') {
+    throw new Error('Choose a valid map location before searching for nearby repair shops.');
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    throw new Error('Choose a valid map location before searching for nearby repair shops.');
+  }
+
   const vehicleTypeStr = typeof vehicleType === 'object' && vehicleType !== null
     ? (vehicleType.name || vehicleType.type || 'all')
     : String(vehicleType || 'all');
@@ -73,8 +83,8 @@ export const fetchNearbyRepairShops = async ({
   try {
     const response = await apiClient.get('/repair-shops/nearby', {
       params: {
-        latitude,
-        longitude,
+        latitude: lat,
+        longitude: lng,
         radius,
         vehicle_type: vehicleTypeStr,
       },

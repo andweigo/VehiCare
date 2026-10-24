@@ -177,18 +177,21 @@ class OtpService
             ];
         }
 
-        // Handle idempotent verification call if code was already verified recently (within 15 mins)
+        // Idempotent verification: if this code was already verified recently
+        // (e.g. the first response was lost to a network failure) the SAME code
+        // must be presented again. A different/missing code never succeeds.
         if ($otpRecord->isVerified()) {
-            if ($otpRecord->updated_at && $otpRecord->updated_at->gt(now()->subMinutes(15))) {
-                return [
-                    'success' => true,
-                    'message' => 'Verification code verified successfully.',
-                ];
+            $withinWindow = $otpRecord->updated_at && $otpRecord->updated_at->gt(now()->subMinutes(15));
+
+            if ($withinWindow && Hash::check($submittedCode, $otpRecord->code_hash)) {
+                return $this->buildVerifiedResult($normalizedEmail, $purpose);
             }
 
             return [
                 'success' => false,
-                'message' => 'This verification code has already been used. Please request a new code.',
+                'message' => $withinWindow
+                    ? 'The verification code is incorrect.'
+                    : 'This verification code has already been used. Please request a new code.',
             ];
         }
 
@@ -225,6 +228,16 @@ class OtpService
             'expires_at' => now()->addMinutes(15),
         ]);
 
+        return $this->buildVerifiedResult($normalizedEmail, $purpose);
+    }
+
+    /**
+     * Result payload for a successfully verified code. For registration this
+     * marks the account verified in the database (the authoritative record)
+     * and issues the first API token.
+     */
+    private function buildVerifiedResult(string $normalizedEmail, string $purpose): array
+    {
         // If registration verification, mark user as verified in DB
         $user = null;
         $token = null;

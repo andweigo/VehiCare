@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Animated,
   ScrollView,
@@ -7,9 +8,12 @@ import {
   Text,
   TouchableOpacity,
   View,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import vehicleApi from '../api/vehicleApi';
+import MaintenanceRecordModal from '../components/MaintenanceRecordModal';
 
 import { useSidebar } from '../context/SidebarContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
@@ -19,15 +23,6 @@ import {
   getVehicleDisplayDetails,
   getVehicleDisplayName,
 } from '../utils/vehicleDisplay';
-
-const DEFAULT_HEALTH_STATUS = {
-  label: 'Looking Good',
-  code: 'HEALTHY',
-  color: '#32D583',
-  icon: 'check-circle',
-  explanation:
-    'No recent diagnostic issues found. VehiCare will continue to provide preventive maintenance recommendations based on your vehicle.',
-};
 
 /**
  * Category-specific icon fill mapping for Light & Dark mode polish
@@ -85,11 +80,8 @@ const MaintenanceScreen = ({ navigation }) => {
     diagnostics,
     diagnosticItems,
     historyItems,
-    dueSoonCount,
-    overdueCount,
-    completedCount,
-    healthStatus,
-    maintenanceHealth,
+    maintenanceRecords,
+    activeVehicleId,
     loading,
   } = useMaintenanceRecommendations();
 
@@ -98,7 +90,53 @@ const MaintenanceScreen = ({ navigation }) => {
   const safeDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
   const safeDiagnosticItems = Array.isArray(diagnosticItems) ? diagnosticItems : [];
   const safeHistoryItems = Array.isArray(historyItems) ? historyItems : [];
-  const safeHealthStatus = healthStatus || DEFAULT_HEALTH_STATUS;
+  const safeMaintenanceRecords = Array.isArray(maintenanceRecords) ? maintenanceRecords : [];
+  const now = Date.now();
+  const soonLimit = now + (30 * 24 * 60 * 60 * 1000);
+  const scheduledRecords = safeMaintenanceRecords.filter(record => ['pending', 'in_progress'].includes(record.status));
+  const overdueRecords = scheduledRecords.filter(record => record.due_date && new Date(record.due_date).getTime() < now);
+  const dueSoonRecords = scheduledRecords.filter(record => {
+    if (!record.due_date) return false;
+    const due = new Date(record.due_date).getTime();
+    return due >= now && due <= soonLimit;
+  });
+  const completedRecords = safeMaintenanceRecords.filter(record => record.status === 'completed');
+
+  const [recordModal, setRecordModal] = useState({ visible: false, record: null, status: 'pending' });
+
+  const openRecordForm = (status = 'pending', record = null) => setRecordModal({ visible: true, record, status });
+  const closeRecordForm = () => setRecordModal({ visible: false, record: null, status: 'pending' });
+  const notifyRecordsChanged = () => DeviceEventEmitter.emit('vehicleHealthChanged');
+
+  const completeScheduledRecord = async record => {
+    try {
+      await vehicleApi.updateMaintenanceRecord(record.id, {
+        status: 'completed',
+        performed_at: new Date().toISOString(),
+      });
+      notifyRecordsChanged();
+    } catch (error) {
+      Alert.alert('Could not update maintenance', 'This task was not marked complete. Check your connection and try again.');
+    }
+  };
+
+  const deleteMaintenanceRecord = record => {
+    Alert.alert('Delete maintenance record?', 'This record will be removed from this vehicle’s maintenance history.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await vehicleApi.deleteMaintenanceRecord(record.id);
+            notifyRecordsChanged();
+          } catch (error) {
+            Alert.alert('Could not delete record', 'The maintenance record could not be deleted. Please try again.');
+          }
+        },
+      },
+    ]);
+  };
 
   const CAT_PAGE_SIZE = 15;
   const [categoryPage, setCategoryPage] = useState(1);
@@ -166,8 +204,7 @@ const MaintenanceScreen = ({ navigation }) => {
     );
   }
 
-  const scoreColor = safeHealthStatus.color || '#32D583';
-  const scorePercent = Math.min(100, Math.max(0, maintenanceHealth || 100));
+  const hasMaintenanceRecords = safeMaintenanceRecords.length > 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -249,42 +286,18 @@ const MaintenanceScreen = ({ navigation }) => {
 
             <View style={[styles.heroDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB' }]} />
 
-            {/* Bottom Row: Vehicle Health Score Gauge */}
-            <View style={styles.healthGaugeRow}>
-              <View style={styles.healthScoreBlock}>
-                <Text style={[styles.healthScoreLabel, { color: theme.textSecondary }]}>HEALTH SCORE</Text>
-                <Text style={[styles.healthScoreBig, { color: scoreColor }]}>
-                  {scorePercent}
-                  <Text style={[styles.healthPercentSymbol, { color: scoreColor }]}>%</Text>
+            <View style={styles.recordSummaryRow}>
+              <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
+                <Icon name="build-circle" size={20} color={theme.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.summaryTitle, { color: theme.text }]}>Maintenance log</Text>
+                <Text style={[styles.summaryDescription, { color: theme.textSecondary }]}>
+                  {hasMaintenanceRecords
+                    ? `${safeMaintenanceRecords.length} record${safeMaintenanceRecords.length === 1 ? '' : 's'} saved for this vehicle`
+                    : 'No service history has been logged for this vehicle yet.'}
                 </Text>
               </View>
-
-              <View style={styles.healthStatusWrap}>
-                <View style={styles.statusBadgeRow}>
-                  <View style={[styles.statusBadgePill, { backgroundColor: `${scoreColor}1B` }]}>
-                    <Icon name={safeHealthStatus.icon || 'check-circle'} size={13} color={scoreColor} />
-                    <Text style={[styles.statusBadgePillText, { color: scoreColor }]}>
-                      {(safeHealthStatus.label || 'LOOKING GOOD').toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.healthExplanation, { color: theme.textSecondary }]} numberOfLines={2}>
-                  {safeHealthStatus.explanation}
-                </Text>
-              </View>
-            </View>
-
-            {/* Health Progress Line */}
-            <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB' }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min(100, Math.max(6, scorePercent))}%`,
-                    backgroundColor: scoreColor,
-                  },
-                ]}
-              />
             </View>
           </View>
 
@@ -293,26 +306,113 @@ const MaintenanceScreen = ({ navigation }) => {
           ========================================================= */}
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: '#D6A23A' }]}>{dueSoonCount || 0}</Text>
+              <Text style={[styles.statNumberText, { color: '#D6A23A' }]}>{dueSoonRecords.length}</Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Due Soon</Text>
-              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Routine Checks</Text>
+              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Scheduled records</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: (overdueCount || 0) > 0 ? '#FF5A5F' : theme.textSecondary }]}>
-                {overdueCount || 0}
+              <Text style={[styles.statNumberText, { color: overdueRecords.length > 0 ? '#FF5A5F' : theme.textSecondary }]}>
+                {overdueRecords.length}
               </Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Overdue</Text>
-              <Text style={[styles.statSubText, { color: (overdueCount || 0) > 0 ? '#FF5A5F' : theme.textSecondary }]}>
-                {(overdueCount || 0) > 0 ? 'Fix First' : 'Clear'}
+              <Text style={[styles.statSubText, { color: overdueRecords.length > 0 ? '#FF5A5F' : theme.textSecondary }]}>
+                {overdueRecords.length > 0 ? 'Past due date' : 'No overdue records'}
               </Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: isDark ? '#32D583' : '#15803D' }]}>{completedCount || 0}</Text>
+              <Text style={[styles.statNumberText, { color: isDark ? '#32D583' : '#15803D' }]}>{completedRecords.length}</Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Completed</Text>
               <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Logged</Text>
             </View>
+          </View>
+
+          <View style={[styles.recordsCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.recordsHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.recordsTitle, { color: theme.text }]}>This vehicle’s maintenance</Text>
+                <Text style={[styles.recordsSubtitle, { color: theme.textSecondary }]}>Scheduled tasks and completed services</Text>
+              </View>
+              {hasMaintenanceRecords && (
+                <TouchableOpacity
+                  style={[styles.smallAddButton, { backgroundColor: theme.accentSoft }]}
+                  onPress={() => openRecordForm('completed')}
+                  accessibilityLabel="Add a completed maintenance service"
+                >
+                  <Icon name="add" size={18} color={theme.accent} />
+                  <Text style={[styles.smallAddText, { color: theme.accent }]}>Add</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {!hasMaintenanceRecords ? (
+              <View style={[styles.maintenanceEmptyState, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
+                  <Icon name="event-note" size={27} color={theme.accent} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>Start your maintenance log</Text>
+                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                  Add a service you have completed, schedule upcoming work, and keep each vehicle’s history in one place.
+                </Text>
+                <View style={styles.emptyActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.primaryActionButton, { backgroundColor: theme.accent }]}
+                    onPress={() => openRecordForm('completed')}
+                    activeOpacity={0.85}
+                  >
+                    <Icon name="check-circle" size={16} color="#FFFFFF" />
+                    <Text style={styles.primaryActionText}>Log service</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryActionButton, { borderColor: theme.accent }]}
+                    onPress={() => openRecordForm('pending')}
+                    activeOpacity={0.85}
+                  >
+                    <Icon name="schedule" size={16} color={theme.accent} />
+                    <Text style={[styles.secondaryActionText, { color: theme.accent }]}>Schedule</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.recordsList}>
+                {[...safeMaintenanceRecords]
+                  .sort((a, b) => new Date(a.due_date || a.performed_at || a.created_at || 0).getTime() - new Date(b.due_date || b.performed_at || b.created_at || 0).getTime())
+                  .map(record => {
+                    const dueTime = record.due_date ? new Date(record.due_date).getTime() : null;
+                    const isOverdue = record.status !== 'completed' && dueTime !== null && dueTime < now;
+                    const statusLabel = record.status === 'completed' ? 'Completed' : isOverdue ? 'Overdue' : record.status === 'in_progress' ? 'In progress' : 'Scheduled';
+                    const statusColor = record.status === 'completed' ? '#32D583' : isOverdue ? '#EF4444' : '#D6A23A';
+                    const shownDate = record.status === 'completed' ? (record.performed_at || record.created_at) : record.due_date;
+                    const dateLabel = shownDate && !Number.isNaN(new Date(shownDate).getTime())
+                      ? new Date(shownDate).toLocaleDateString()
+                      : (record.status === 'completed' ? 'Completion date not recorded' : 'No due date set');
+
+                    return (
+                      <View key={record.id} style={[styles.recordRow, { borderTopColor: theme.border }]}>
+                        <View style={[styles.recordStatusDot, { backgroundColor: statusColor }]} />
+                        <TouchableOpacity style={styles.recordMain} onPress={() => openRecordForm(record.status || 'pending', record)} activeOpacity={0.8}>
+                          <Text style={[styles.recordName, { color: theme.text }]} numberOfLines={1}>{record.title || 'Maintenance task'}</Text>
+                          <Text style={[styles.recordMeta, { color: theme.textSecondary }]} numberOfLines={2}>
+                            {statusLabel} · {record.status === 'completed' ? 'Serviced' : 'Due'} {dateLabel}
+                          </Text>
+                        </TouchableOpacity>
+                        {record.status !== 'completed' && (
+                          <TouchableOpacity style={styles.recordIconButton} onPress={() => completeScheduledRecord(record)} accessibilityLabel={`Mark ${record.title} completed`}>
+                            <Icon name="check-circle-outline" size={19} color="#32D583" />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={styles.recordIconButton} onPress={() => openRecordForm(record.status || 'pending', record)} accessibilityLabel={`Edit ${record.title}`}>
+                          <Icon name="edit" size={18} color={theme.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.recordIconButton} onPress={() => deleteMaintenanceRecord(record)} accessibilityLabel={`Delete ${record.title}`}>
+                          <Icon name="delete-outline" size={19} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+              </View>
+            )}
           </View>
 
           {/* =========================================================
@@ -577,10 +677,10 @@ const MaintenanceScreen = ({ navigation }) => {
               <Icon name="info-outline" size={18} color={theme.accent} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.noDiagsNoticeTitle, { color: theme.text }]}>
-                  No recent diagnostic issues found
+                  No diagnostic history yet
                 </Text>
                 <Text style={[styles.noDiagsNoticeSub, { color: theme.textSecondary }]}>
-                  VehiCare provides preventive maintenance recommendations based on your vehicle specifications.
+                  Diagnostic status is unavailable until this vehicle has diagnostic records. You can still schedule and log maintenance above.
                 </Text>
               </View>
             </View>
@@ -642,6 +742,14 @@ const MaintenanceScreen = ({ navigation }) => {
 
         </ScrollView>
       </Animated.View>
+      <MaintenanceRecordModal
+        visible={recordModal.visible}
+        vehicleId={activeVehicleId || vehicleProfile?.id || vehicleProfile?.vehicle_id}
+        record={recordModal.record}
+        initialStatus={recordModal.status}
+        onClose={closeRecordForm}
+        onSaved={notifyRecordsChanged}
+      />
     </SafeAreaView>
   );
 };
@@ -1236,6 +1344,133 @@ const styles = StyleSheet.create({
   pagePillText: {
     fontFamily: 'Inter-Bold',
     fontSize: 12,
+  },
+  recordSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  summaryIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  summaryDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  recordsCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 18,
+  },
+  recordsHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  recordsTitle: {
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+  },
+  recordsSubtitle: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+  smallAddButton: {
+    minHeight: 34,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  smallAddText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  maintenanceEmptyState: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+  },
+  emptyActionsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+  },
+  primaryActionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  primaryActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  secondaryActionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  secondaryActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  recordsList: {
+    marginTop: -3,
+  },
+  recordRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  recordStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  recordMain: {
+    flex: 1,
+  },
+  recordName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  recordMeta: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3,
+  },
+  recordIconButton: {
+    width: 30,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

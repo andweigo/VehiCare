@@ -19,6 +19,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import CustomToast from '../components/CustomToast';
 import TermsAndConditionsModal from '../components/TermsAndConditionsModal';
 
+import { LEGAL_VERSIONS } from '../data/legalDocuments';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
 
@@ -615,7 +616,12 @@ const RegisterScreen = ({
 
       if (!acceptedTerms) {
         triggerTermsWarning();
-
+        showToast({
+          type: 'warning',
+          title: 'Agreement Required',
+          message:
+            'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
+        });
         return;
       }
 
@@ -659,12 +665,19 @@ const RegisterScreen = ({
         const normalizedName =
           nameValidation.normalized || name.trim();
 
+        const legalMeta = {
+          accepted_terms: true,
+          terms_version: LEGAL_VERSIONS.terms,
+          privacy_version: LEGAL_VERSIONS.privacy,
+        };
+
         const result =
           await register(
             normalizedName,
             email.trim(),
             password,
             vehicleToSave,
+            legalMeta,
           );
 
         showToast({
@@ -708,6 +721,17 @@ const RegisterScreen = ({
         return;
       }
 
+      if (!acceptedTerms) {
+        triggerTermsWarning();
+        showToast({
+          type: 'warning',
+          title: 'Agreement Required',
+          message:
+            'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
+        });
+        return;
+      }
+
       if (
         typeof registerGoogle !==
         'function'
@@ -744,9 +768,16 @@ const RegisterScreen = ({
           activeVehicle ||
           null;
 
+        const legalMeta = {
+          accepted_terms: true,
+          terms_version: LEGAL_VERSIONS.terms,
+          privacy_version: LEGAL_VERSIONS.privacy,
+        };
+
         const result =
           await registerGoogle(
             vehicleToSave,
+            legalMeta,
           );
 
         if (
@@ -1516,29 +1547,21 @@ const RegisterScreen = ({
             ],
           }}
         >
-          <TouchableOpacity
-            style={
-              styles.termsRow
-            }
-            onPress={() => {
-              setAcceptedTerms(
-                previous =>
-                  !previous,
-              );
-
-              setTermsError(
-                false,
-              );
-            }}
-            activeOpacity={0.7}
-          >
-            <View
+          <View style={styles.termsRow}>
+            <TouchableOpacity
               style={[
                 styles.checkbox,
-
-                acceptedTerms &&
-                  styles.checkboxActive,
+                acceptedTerms && styles.checkboxActive,
               ]}
+              onPress={() => {
+                setAcceptedTerms(previous => !previous);
+                setTermsError(false);
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: acceptedTerms }}
+              accessibilityLabel="I have read and agree to the Terms and Conditions and acknowledge the Privacy Policy"
             >
               {acceptedTerms && (
                 <Ionicons
@@ -1547,41 +1570,42 @@ const RegisterScreen = ({
                   color="#FFFFFF"
                 />
               )}
-            </View>
+            </TouchableOpacity>
 
             <Text
               style={[
                 styles.termsText,
-
-                {
-                  color:
-                    theme.textSecondary,
-                },
-
-                termsError &&
-                  styles.termsTextError,
+                { color: theme.textSecondary },
+                termsError && styles.termsTextError,
               ]}
             >
-              I agree to the{' '}
-
+              I have read and agree to the{' '}
               <Text
                 style={[
                   styles.termsLink,
-                  {
-                    color:
-                      theme.accent,
-                  },
+                  { color: theme.accent },
                 ]}
-                onPress={() =>
-                  setTermsVisible(
-                    true,
-                  )
-                }
+                onPress={() => navigation.navigate('Terms')}
+                accessibilityRole="link"
+                accessibilityLabel="Open Terms and Conditions"
               >
                 Terms and Conditions
               </Text>
+              {' '}and acknowledge the{' '}
+              <Text
+                style={[
+                  styles.termsLink,
+                  { color: theme.accent },
+                ]}
+                onPress={() => navigation.navigate('Privacy')}
+                accessibilityRole="link"
+                accessibilityLabel="Open Privacy Policy"
+              >
+                Privacy Policy
+              </Text>
+              .
             </Text>
-          </TouchableOpacity>
+          </View>
         </Animated.View>
 
         <TouchableOpacity
@@ -2068,6 +2092,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
+    marginTop: 2,
   },
 
   checkboxActive: {

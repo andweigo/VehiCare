@@ -563,7 +563,10 @@ export default function AskVehiCareScreen({
   const setAttachedAudio = useCallback(value => setConversationField('attachedAudio', value), [setConversationField]);
   const selectedQuestion = activeConversationUiState.selectedQuestion || null;
   const setSelectedQuestion = useCallback(value => setConversationField('selectedQuestion', value), [setConversationField]);
-  const answeredQuestionIds = activeConversationUiState.answeredQuestionIds || [];
+  const answeredQuestionIds = useMemo(
+    () => activeConversationUiState.answeredQuestionIds || [],
+    [activeConversationUiState.answeredQuestionIds],
+  );
   const setAnsweredQuestionIds = useCallback(value => setConversationField('answeredQuestionIds', value), [setConversationField]);
   const isRequestPending = Object.values(requestStates).some(
     request => request.sessionId === currentSessionId && request.status === 'pending',
@@ -1393,7 +1396,7 @@ export default function AskVehiCareScreen({
 
       const rootComplaint = findRootComplaint(chatMessages, trimmed);
 
-      const activeSymptoms = trimmed || (currentAudio ? 'Voice consultation or audio recording of vehicle symptoms' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
+      const activeSymptoms = trimmed || (currentAudio ? 'Vehicle sound recording; no written symptoms provided' : currentVideo ? 'Visual and audio vehicle video analysis' : 'Visual component analysis');
       const payload = {
         vehicle_id: vehicleId,
         vehicle_name: safeVehicleName,
@@ -1404,7 +1407,7 @@ export default function AskVehiCareScreen({
         ...(safeModelNumber ? { model_number: safeModelNumber } : {}),
         symptoms: activeSymptoms,
         root_symptom: rootComplaint,
-        input_type: currentAudio ? 'voice' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
+        input_type: currentAudio ? 'audio' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
         video_duration: currentVideo?.durationSec || 0,
         audio_duration: currentAudio?.durationSec || 0,
         history,
@@ -1434,7 +1437,7 @@ export default function AskVehiCareScreen({
         const mediaField = currentAudio ? 'audio' : currentVideo ? 'video' : 'image';
         requestPayload.append(mediaField, {
           uri: media.uri,
-          name: media.fileName || (currentAudio ? 'voice_note.mp4' : currentVideo ? 'video.mp4' : 'photo.jpg'),
+          name: media.fileName || (currentAudio ? 'vehicle_sound.mp4' : currentVideo ? 'video.mp4' : 'photo.jpg'),
           type: media.mime || (currentAudio ? 'audio/mp4' : currentVideo ? 'video/mp4' : 'image/jpeg'),
         });
       }
@@ -1457,6 +1460,14 @@ export default function AskVehiCareScreen({
       if (outcome.stale) return;
       if (outcome.error) {
         console.warn('[AskVehiCareScreen] AI request failed:', outcome.error?.message);
+        const errorBody = outcome.error?.response?.data;
+        const errorCode = errorBody?.error?.code || errorBody?.reason;
+        if (currentAudio && errorCode === 'AUDIO_VALIDATION_REJECTED') {
+          Alert.alert(
+            'Record a vehicle sound',
+            errorBody?.message || 'We could not identify a vehicle sound. Record again in a quiet place, close to the source.',
+          );
+        }
         await handleDiagnosticFailure(outcome.error);
         return;
       }
@@ -1802,7 +1813,7 @@ export default function AskVehiCareScreen({
         setAttachedAudio({
           uri,
           durationSec: recordingSeconds || 1,
-          fileName: 'voice_note.mp4',
+          fileName: 'vehicle_sound.mp4',
           mime: 'audio/mp4',
         });
       }
@@ -3070,6 +3081,9 @@ export default function AskVehiCareScreen({
         {attachedAudio && !isRecording && (
           <View style={[styles.draftImageBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
             <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 4 }}>
+                Vehicle sound clip · Record a mechanical noise, not a spoken question
+              </Text>
               <VoiceMessagePlayer
                 audioUri={attachedAudio.uri}
                 isPlaying={playingAudioId === 'draft-audio'}
@@ -3204,6 +3218,8 @@ export default function AskVehiCareScreen({
               onPress={
                 toggleRecording
               }
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? 'Stop vehicle sound recording' : 'Record a vehicle sound for diagnosis'}
             >
               <Feather
                 name={

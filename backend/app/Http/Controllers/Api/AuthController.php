@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\FirebaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +20,24 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
+        /*
+         * Retry of an interrupted registration: the account exists but its
+         * email was never verified (OTP not completed). Allow the same person
+         * (proven by the password) to resume instead of failing with
+         * "email already taken" or creating a duplicate account.
+         */
+        $existingUnverified = User::where('email', strtolower(trim((string) $request->input('email'))))
+            ->whereNull('email_verified_at')
+            ->first();
+
+        $resumingUnverified = $existingUnverified
+            && Hash::check((string) $request->input('password'), $existingUnverified->password);
+
+        $emailRules = ['required', 'email', 'max:255'];
+        if (! $resumingUnverified) {
+            $emailRules[] = 'unique:users,email';
+        }
+
         $validated = $request->validate([
             'name' => [
                 'required',
@@ -28,18 +47,17 @@ class AuthController extends Controller
                 'regex:/^[\p{L}][\p{L}\s.\'\-]+$/u',
             ],
 
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                'unique:users,email',
-            ],
+            'email' => $emailRules,
 
             'password' => [
                 'required',
                 'string',
                 'min:8',
                 'confirmed',
+                'regex:/[A-Z]/',
+                'regex:/[a-z]/',
+                'regex:/[0-9]/',
+                'regex:/[^A-Za-z0-9]/',
             ],
 
             'firebase_uid' => [
@@ -47,42 +65,87 @@ class AuthController extends Controller
                 'string',
                 'max:191',
             ],
+
+            // Explicit agreement to the Terms and acknowledgement of the Privacy
+            // Policy. Required to create an account; never inferred.
+            'accepted_terms' => ['required', 'accepted'],
+            'terms_version' => ['required', 'string', 'max:32'],
+            'privacy_version' => ['required', 'string', 'max:32'],
         ], [
             'name.required' => 'Please enter your full name.',
             'name.min' => 'Name must be at least 2 characters long.',
             'name.max' => 'Name cannot exceed 100 characters.',
             'name.regex' => 'Name can only contain letters, spaces, hyphens, apostrophes, and periods, and must start with a letter.',
+            'accepted_terms.required' => 'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
+            'accepted_terms.accepted' => 'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
         ]);
 
-        $user = User::create([
-            'name' => trim((string) preg_replace('/\s+/', ' ', $validated['name'])),
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'firebase_uid' => $validated['firebase_uid'] ?? null,
-            'role' => User::ROLE_USER,
-            'subscription_plan' => User::SUBSCRIPTION_FREE,
-            'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
-            'is_active' => true,
-            'email_verified_at' => null,
-        ]);
+        if (
+            $validated['terms_version'] !== (string) config('legal.terms_version')
+            || $validated['privacy_version'] !== (string) config('legal.privacy_version')
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'code' => 'policy_version_mismatch',
+                'message' => 'The Terms and Privacy Policy have been updated. Please review the latest versions and try again.',
+                'data' => [
+                    'terms_version' => (string) config('legal.terms_version'),
+                    'privacy_version' => (string) config('legal.privacy_version'),
+                ],
+            ], 409);
+        }
+
+        $cleanName = trim((string) preg_replace('/\s+/', ' ', $validated['name']));
+
+        if ($resumingUnverified) {
+            $user = $existingUnverified;
+            $user->name = $cleanName;
+            if (! empty($validated['firebase_uid'])) {
+                $user->firebase_uid = $validated['firebase_uid'];
+            }
+            $user->save();
+        } else {
+            $user = User::create([
+                'name' => $cleanName,
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'firebase_uid' => $validated['firebase_uid'] ?? null,
+                'role' => User::ROLE_USER,
+                'subscription_plan' => User::SUBSCRIPTION_FREE,
+                'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
+                'is_active' => true,
+                'email_verified_at' => null,
+            ]);
+        }
 
         /** @var \App\Services\OtpService $otpService */
         $otpService = app(\App\Services\OtpService::class);
         $otpResult = $otpService->generateOtp($user->email, \App\Services\OtpService::PURPOSE_REGISTRATION);
 
-        if (! ($otpResult['success'] ?? false)) {
-            Log::warning('[AuthController] Failed to dispatch registration OTP email, rolling back user creation', [
-                'email' => $user->email,
-                'message' => $otpResult['message'] ?? 'Unknown error',
+        // A resumed registration that is still inside the resend cooldown
+        // already has a valid code in the user's inbox: not a failure.
+        $cooldownOnly = $resumingUnverified && isset($otpResult['cooldown_seconds']);
+
+        if (! ($otpResult['success'] ?? false) && ! $cooldownOnly) {
+            Log::warning('[AuthController] Failed to dispatch registration OTP email', [
+                'user_id' => $user->id,
+                'resumed' => $resumingUnverified,
             ]);
 
-            $user->delete();
+            // Only roll back accounts created by THIS request.
+            if (! $resumingUnverified) {
+                $user->delete();
+            }
 
             return response()->json([
                 'status' => 'error',
                 'message' => $otpResult['message'] ?? 'Failed to send verification email. Please try again.',
             ], 400);
         }
+
+        // Idempotent: repeated submissions never create duplicate consent rows.
+        // The account stays unverified until the OTP is confirmed.
+        \App\Models\UserConsent::recordCurrentVersions($user, \App\Models\UserConsent::SOURCE_REGISTRATION);
 
         return response()->json([
             'status' => 'success',
@@ -95,7 +158,7 @@ class AuthController extends Controller
                 'expires_in_seconds' => $otpResult['expires_in_seconds'] ?? 600,
                 'token' => null,
             ],
-        ], 201);
+        ], $resumingUnverified ? 200 : 201);
     }
 
     /**
@@ -130,6 +193,37 @@ class AuthController extends Controller
                     'The provided credentials are incorrect or the account is disabled.',
                 ],
             ]);
+        }
+
+        // Email verification is owned by the OTP service. An account created
+        // through the OTP registration flow whose email was never verified
+        // (it still has an unverified registration code on file) must not
+        // receive an API token: send a fresh code and tell the client to
+        // continue at OTP verification. Legacy accounts that pre-date the OTP
+        // flow have no such record and keep logging in normally.
+        $awaitingRegistrationOtp = $user->role === User::ROLE_USER
+            && ! $user->email_verified_at
+            && \App\Models\OtpCode::where('email', strtolower($user->email))
+                ->where('purpose', \App\Services\OtpService::PURPOSE_REGISTRATION)
+                ->whereNull('verified_at')
+                ->exists();
+
+        if ($awaitingRegistrationOtp) {
+            /** @var \App\Services\OtpService $otpService */
+            $otpService = app(\App\Services\OtpService::class);
+            $otpResult = $otpService->generateOtp($user->email, \App\Services\OtpService::PURPOSE_REGISTRATION);
+
+            return response()->json([
+                'status' => 'error',
+                'code' => 'email_not_verified',
+                'message' => 'Please verify your email address to continue. We sent you a verification code.',
+                'data' => [
+                    'requires_otp' => true,
+                    'email' => $user->email,
+                    'cooldown_seconds' => $otpResult['cooldown_seconds'] ?? 60,
+                    'expires_in_seconds' => $otpResult['expires_in_seconds'] ?? 600,
+                ],
+            ], 403);
         }
 
         $token = $user->createToken(
@@ -201,6 +295,7 @@ class AuthController extends Controller
         }
 
         $user->firebase_uid = $user->firebase_uid ?? $firebaseUid;
+        $user->auth_provider = 'google';
         $user->avatar = $avatar ?? $user->avatar;
         $user->name = $user->name ?: $name;
         $user->save();
@@ -221,7 +316,24 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'id_token' => ['required', 'string'],
+            'accepted_terms' => ['required', 'accepted'],
+            'terms_version' => ['required', 'string', 'max:32'],
+            'privacy_version' => ['required', 'string', 'max:32'],
+        ], [
+            'accepted_terms.required' => 'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
+            'accepted_terms.accepted' => 'You must agree to the Terms and Conditions and acknowledge the Privacy Policy to create an account.',
         ]);
+
+        if (
+            $validated['terms_version'] !== (string) config('legal.terms_version')
+            || $validated['privacy_version'] !== (string) config('legal.privacy_version')
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'code' => 'policy_version_mismatch',
+                'message' => 'The Terms and Privacy Policy have been updated. Please review the latest versions and try again.',
+            ], 409);
+        }
 
         $idToken = $validated['id_token'];
 
@@ -261,6 +373,7 @@ class AuthController extends Controller
             'email' => $resolvedEmail,
             'password' => Hash::make(Str::random(24)),
             'firebase_uid' => $firebaseUid,
+            'auth_provider' => 'google',
             'avatar' => $avatar,
             'role' => User::ROLE_USER,
             'subscription_plan' => User::SUBSCRIPTION_FREE,
@@ -268,6 +381,8 @@ class AuthController extends Controller
             'is_active' => true,
             'email_verified_at' => $emailVerified ? now() : null,
         ]);
+
+        \App\Models\UserConsent::recordCurrentVersions($user, \App\Models\UserConsent::SOURCE_REGISTRATION);
 
         $token = $user->createToken('vehicare-mobile')->plainTextToken;
 
@@ -327,6 +442,44 @@ class AuthController extends Controller
             'message' => 'Profile updated successfully.',
             'data' => ['user' => $user],
         ]);
+    }
+
+    /** Set a password for a Google-linked account without requiring an old password. */
+    public function setGooglePassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+                'regex:/[A-Z]/',
+                'regex:/[a-z]/',
+                'regex:/[0-9]/',
+                'regex:/[^A-Za-z0-9]/',
+            ],
+        ]);
+        $user = $request->user();
+
+        if ($user->auth_provider !== 'google') {
+            return response()->json([
+                'message' => 'This endpoint is only available for Google-linked accounts.',
+            ], 403);
+        }
+
+        $firebaseResult = app(FirebaseService::class)->updateUserPassword($user, $validated['password']);
+        if (! ($firebaseResult['success'] ?? false)) {
+            Log::error('[AuthController] Failed to update Google-linked Firebase password', [
+                'user_id' => $user->id,
+                'error' => $firebaseResult['message'] ?? 'Unknown error',
+            ]);
+            return response()->json(['message' => 'Unable to update authentication credentials. Please try again later.'], 500);
+        }
+
+        $user->password = Hash::make($validated['password']);
+        $user->save();
+
+        return response()->json(['success' => true, 'message' => 'Password updated successfully.']);
     }
 
     private function verifyFirebaseIdToken(string $idToken): array

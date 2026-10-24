@@ -9,7 +9,9 @@ import {
 import { AppState } from 'react-native';
 
 import {
+  bumpSessionEpoch,
   clearUnauthorizedHandler,
+  isSessionChangedError,
   setAuthToken,
   setUnauthorizedHandler,
 } from '../api/apiClient';
@@ -19,6 +21,7 @@ import {
   googleLogin,
   googleRegister,
   login as loginWithBackend,
+  logout as logoutWithBackend,
   register as registerWithBackend,
   sendOtp as sendOtpApi,
   updateProfile as updateProfileApi,
@@ -45,13 +48,16 @@ import {
   clearGuestDiagnosisCount,
   clearGuestMode,
   clearGuestVehicle,
+  clearSessionData,
   getGuestMode,
   getGuestVehicle,
+  getPendingVehicleSetup,
   getToken,
   getUser,
   saveAuthData,
   saveGuestMode,
   saveOnboardingCompleted,
+  savePendingVehicleSetup,
 } from '../services/storageService';
 
 import {
@@ -137,6 +143,10 @@ const fetchAccountVehicles =
         ? vehicles
         : [];
     } catch (error) {
+      if (isSessionChangedError(error)) {
+        return [];
+      }
+
       console.warn(
         'Unable to load account vehicles:',
         error?.message || error,
@@ -180,8 +190,28 @@ export const AuthProvider = ({
   const [isGuest, setIsGuest] =
     useState(false);
 
-  const [isNewRegistration, setIsNewRegistration] =
+  const [isNewRegistration, setIsNewRegistrationState] =
     useState(false);
+
+  const refreshUserRef = useRef(null);
+
+  /*
+   * Onboarding stage setter. Besides updating state it persists the
+   * "vehicle setup still pending" hint for the account so an app restart
+   * resumes at vehicle setup. The hint is reconciled against the real
+   * vehicle list by the navigator, never trusted on its own.
+   */
+  const setIsNewRegistration = useCallback((value, accountId = null) => {
+    const pending = Boolean(value);
+    setIsNewRegistrationState(pending);
+
+    const resolvedId =
+      accountId ?? userRef.current?.id ?? userRef.current?.uid ?? null;
+
+    if (resolvedId) {
+      savePendingVehicleSetup(resolvedId, pending).catch(() => {});
+    }
+  }, []);
 
   const [logoutSignal, setLogoutSignal] =
     useState(0);
@@ -225,6 +255,12 @@ export const AuthProvider = ({
         nextUser,
       );
 
+      // Switching from one authenticated session to another: drop responses
+      // that are still in flight for the previous account.
+      if (tokenRef.current && tokenRef.current !== resolvedToken) {
+        bumpSessionEpoch();
+      }
+
       if (typeof clearGuestMode === 'function') {
         await clearGuestMode();
       }
@@ -267,6 +303,52 @@ export const AuthProvider = ({
 
   /*
   |--------------------------------------------------------------------------
+  | LOCAL SESSION RESET
+  |--------------------------------------------------------------------------
+  | Single code path used by explicit logout and by server-side rejection
+  | (401). It invalidates in-flight requests, removes every account-scoped
+  | AsyncStorage entry via the centralized list, and resets React state.
+  */
+
+  const resetLocalSession = async () => {
+    // 1. Anything still in flight belongs to the old session: invalidate it.
+    bumpSessionEpoch();
+    setAuthToken(null);
+
+    // 2. Third-party session + persisted account data.
+    try {
+      await logoutFirebase();
+    } catch (error) {
+      console.warn(
+        'Firebase sign-out during session reset failed:',
+        error?.message || error,
+      );
+    }
+
+    try {
+      await clearSessionData();
+    } catch (error) {
+      // Fall back to the minimum: never leave credentials behind.
+      try {
+        await clearAuthData();
+      } catch (innerError) {
+        console.error(
+          'Auth storage cleanup failed:',
+          innerError?.message || innerError,
+        );
+      }
+    }
+
+    // 3. React state; contexts keyed on logoutSignal reset themselves.
+    setToken(null);
+    setUser(null);
+    setIsGuest(false);
+    setIsNewRegistrationState(false);
+    setLogoutSignal(current => current + 1);
+  };
+
+  /*
+  |--------------------------------------------------------------------------
   | RESTORE AUTH
   |--------------------------------------------------------------------------
   */
@@ -284,22 +366,8 @@ export const AuthProvider = ({
     }
 
     setUnauthorizedHandler(async () => {
-      console.warn('[AuthContext] Session expired or revoked by server (401). Performing clean logout...');
-      try {
-        await logoutFirebase();
-      } catch (e) {
-        // ignore
-      }
-      try {
-        await clearAuthData();
-      } catch (e) {
-        // ignore
-      }
-      setAuthToken(null);
-      setToken(null);
-      setUser(null);
-      setIsGuest(false);
-      setLogoutSignal(c => c + 1);
+      console.warn('[AuthContext] Session expired or revoked by server (401). Clearing local session.');
+      await resetLocalSession();
     });
 
     // Immediate synchronous storage bootstrap to prevent login flash on app restart
@@ -313,9 +381,20 @@ export const AuthProvider = ({
         const persistedUser = await getUser();
 
         if (persistedToken && persistedUser && isMounted) {
+          // Resume the onboarding stage (vehicle setup still pending?) before
+          // any authenticated screen renders. The navigator reconciles this
+          // hint against the real vehicle list.
+          const pendingSetup = await getPendingVehicleSetup(
+            persistedUser?.id ?? persistedUser?.uid ?? null,
+          );
+          if (!isMounted) {
+            return;
+          }
+
           setAuthToken(persistedToken);
           setToken(persistedToken);
           setUser(persistedUser);
+          setIsNewRegistrationState(pendingSetup);
           setIsGuest(false);
 
           // Validate existing session in background
@@ -468,7 +547,7 @@ export const AuthProvider = ({
   useEffect(() => {
     const appStateSub = AppState.addEventListener('change', nextState => {
       if (nextState === 'active' && token) {
-        refreshUser().catch(() => {});
+        refreshUserRef.current?.().catch(() => {});
       }
     });
 
@@ -488,6 +567,7 @@ export const AuthProvider = ({
     email,
     password,
     guestVehicle = null,
+    legalMeta = null,
   ) => {
     let firebaseUser = null;
     let isExistingFirebaseUser = false;
@@ -540,6 +620,7 @@ export const AuthProvider = ({
           email,
           password,
           firebaseUser?.uid || null,
+          legalMeta,
         );
 
       // Temporarily sign out of Firebase on this device so onAuthStateChanged doesn't restore session before OTP is entered!
@@ -649,7 +730,7 @@ export const AuthProvider = ({
     } = await loadAccountVehicles();
 
     const finalHasVehicles = Boolean(claimedVehicle || hasAccountVehicles);
-    setIsNewRegistration(!finalHasVehicles);
+    setIsNewRegistration(!finalHasVehicles, authUser?.id ?? authUser?.uid ?? null);
 
     await persistAuthState(
       verifiedToken,
@@ -702,6 +783,27 @@ export const AuthProvider = ({
           password,
         );
     } catch (backendErr) {
+      // The server (authoritative for email verification) refused to issue a
+      // token because this account never completed OTP verification.
+      const backendBody = backendErr?.response?.data;
+      if (
+        backendErr?.response?.status === 403 &&
+        backendBody?.code === 'email_not_verified'
+      ) {
+        try {
+          await logoutFirebase();
+        } catch (e) {
+          // non-fatal
+        }
+
+        return {
+          requiresOtp: true,
+          email: backendBody?.data?.email || String(email).trim(),
+          cooldownSeconds: backendBody?.data?.cooldown_seconds || 60,
+          expiresInSeconds: backendBody?.data?.expires_in_seconds || 600,
+        };
+      }
+
       if (firebaseError) {
         throw firebaseError;
       }
@@ -858,6 +960,7 @@ export const AuthProvider = ({
   const registerGoogle =
     async (
       guestVehicle = null,
+      legalMeta = null,
     ) => {
       try {
         configureGoogleSignIn();
@@ -887,6 +990,7 @@ export const AuthProvider = ({
         const backendAuth =
           await googleRegister(
             idToken,
+            legalMeta,
           );
 
         const authToken =
@@ -1139,6 +1243,8 @@ export const AuthProvider = ({
     }
   }, []);
 
+  refreshUserRef.current = refreshUser;
+
   /*
   |--------------------------------------------------------------------------
   | LOGOUT
@@ -1147,62 +1253,72 @@ export const AuthProvider = ({
 
   const logout =
     async () => {
-      try {
-        await logoutFirebase();
-      } catch (error) {
-        console.error(
-          'Firebase logout error:',
-          error?.message || error,
-        );
-      } finally {
-        /*
-         * Clear authentication.
-         */
+      const tokenSnapshot =
+        (tokenRef.current && String(tokenRef.current).trim()) ||
+        (await getToken().catch(() => null));
+
+      /*
+       * Attempt to revoke the Sanctum token on the server BEFORE wiping it.
+       * The result is reported honestly: `remoteRevoked` is true only when
+       * the server confirmed the revocation.
+       */
+      let remoteRevoked = false;
+      let remoteError = null;
+
+      if (tokenSnapshot) {
         try {
-          await clearAuthData();
+          await Promise.race([
+            logoutWithBackend(),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error('Logout request timed out.')),
+                8000,
+              ),
+            ),
+          ]);
+          remoteRevoked = true;
         } catch (error) {
-          console.error(
-            'Auth storage cleanup failed:',
-            error?.message || error,
-          );
+          if (error?.response?.status === 401) {
+            // Token was already invalid/revoked server-side: nothing to revoke.
+            remoteRevoked = true;
+          } else {
+            remoteError = error;
+            console.warn(
+              'Server-side logout could not be confirmed:',
+              error?.message || error,
+            );
+          }
         }
-
-        /*
-         * Reset guest diagnosis counter and guest mode/vehicle on explicit logout.
-         */
-        await clearGuestDiagnosisCount();
-        if (typeof clearGuestMode === 'function') {
-          await clearGuestMode();
-        }
-        if (typeof clearGuestVehicle === 'function') {
-          await clearGuestVehicle();
-        }
-
-        /*
-         * Clear API token.
-         */
-        setAuthToken(null);
-
-        /*
-         * Clear React state.
-         */
-        setToken(null);
-        setUser(null);
-        setIsGuest(false);
-        setLogoutSignal(
-          current => current + 1,
-        );
       }
+
+      // Local cleanup always runs, even when the network is unavailable.
+      await resetLocalSession();
+
+      return {
+        remoteRevoked,
+        // true when the user had a token but the server did not confirm.
+        revocationUnconfirmed: Boolean(tokenSnapshot) && !remoteRevoked,
+        error: remoteError,
+      };
     };
 
+  /*
+   * Refreshes the account from Laravel. Email verification state is owned by
+   * the server (`email_verified_at`, set by the OTP service); this never
+   * stamps a verification locally.
+   */
   const verifyUserEmail = async () => {
-    if (user) {
-      const updatedUser = {
-        ...user,
-        email_verified_at: new Date().toISOString(),
-      };
-      await updateUser(updatedUser);
+    const serverUser = await getMeApi();
+    if (!serverUser) {
+      throw new Error('Unable to confirm email verification with the server.');
     }
+
+    const updatedUser = buildAuthUser(null, {
+      ...(userRef.current || {}),
+      ...serverUser,
+    });
+    await updateUser(updatedUser);
+    return updatedUser;
   };
 
   /*

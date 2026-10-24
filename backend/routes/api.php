@@ -107,6 +107,11 @@ Route::match(
     [NotificationPreferenceController::class, 'update']
 )->middleware('auth:sanctum');
 
+Route::post(
+    '/user/google-password',
+    [AuthController::class, 'setGooglePassword']
+)->middleware('auth:sanctum');
+
 Route::get(
     '/vehicles/{id}',
     [VehicleController::class, 'show']
@@ -129,6 +134,19 @@ Route::post(
 )->middleware('auth:sanctum');
 
 use App\Http\Controllers\Auth\OtpController;
+use App\Http\Controllers\Api\LegalConsentController;
+
+Route::get('/legal/versions', [LegalConsentController::class, 'versions']);
+
+Route::get(
+    '/user/consents/status',
+    [LegalConsentController::class, 'status']
+)->middleware('auth:sanctum');
+
+Route::post(
+    '/user/consents',
+    [LegalConsentController::class, 'accept']
+)->middleware(['auth:sanctum', 'throttle:10,1']);
 
 Route::prefix('auth')->group(function () {
     Route::post('/send-otp', [OtpController::class, 'sendOtp'])->middleware('throttle:10,1');

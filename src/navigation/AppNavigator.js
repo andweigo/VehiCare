@@ -213,7 +213,6 @@ const AppNavigator = () => {
   const { activeVehicle, vehicles, loading: vehicleLoading, pendingVehicle } = useVehicle();
 
   const [initialBootstrapDone, setInitialBootstrapDone] = useState(false);
-
   useEffect(() => {
     if (!authLoading && (!isAuthenticated || !vehicleLoading)) {
       setInitialBootstrapDone(true);
@@ -221,7 +220,10 @@ const AppNavigator = () => {
   }, [authLoading, isAuthenticated, vehicleLoading]);
 
   // Show clean branded splash screen strictly during initial launch session bootstrap
-  const isInitialLoading = !initialBootstrapDone && (authLoading || (isAuthenticated && vehicleLoading));
+  const isInitialLoading = !initialBootstrapDone && (
+    authLoading ||
+    (isAuthenticated && vehicleLoading)
+  );
 
   if (isInitialLoading) {
     return (

@@ -30,14 +30,14 @@ class RepairShopController extends Controller
     {
         try {
             $validated = $request->validate([
-                'latitude' => 'nullable|numeric|between:-90,90',
-                'longitude' => 'nullable|numeric|between:-180,180',
+                'latitude' => 'required|numeric|between:-90,90',
+                'longitude' => 'required|numeric|between:-180,180',
                 'radius' => 'nullable|numeric|min:0.1|max:100000',
                 'vehicle_type' => 'nullable|string|max:50',
             ]);
 
-            $userLat = (float) ($validated['latitude'] ?? 14.6500);
-            $userLng = (float) ($validated['longitude'] ?? 121.0300);
+            $userLat = (float) $validated['latitude'];
+            $userLng = (float) $validated['longitude'];
             $radius = (float) ($validated['radius'] ?? 10);
             $vehicleType = $validated['vehicle_type'] ?? null;
 
