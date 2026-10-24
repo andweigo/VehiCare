@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -295,7 +296,9 @@ class AuthController extends Controller
         }
 
         $user->firebase_uid = $user->firebase_uid ?? $firebaseUid;
-        $user->auth_provider = 'google';
+        if (Schema::hasColumn('users', 'auth_provider')) {
+            $user->auth_provider = 'google';
+        }
         $user->avatar = $avatar ?? $user->avatar;
         $user->name = $user->name ?: $name;
         $user->save();
@@ -368,19 +371,22 @@ class AuthController extends Controller
             ]);
         }
 
-        $user = User::create([
+        $googleUserAttributes = [
             'name' => $name,
             'email' => $resolvedEmail,
             'password' => Hash::make(Str::random(24)),
             'firebase_uid' => $firebaseUid,
-            'auth_provider' => 'google',
             'avatar' => $avatar,
             'role' => User::ROLE_USER,
             'subscription_plan' => User::SUBSCRIPTION_FREE,
             'vehicle_limit' => User::VEHICLE_LIMIT_FREE,
             'is_active' => true,
             'email_verified_at' => $emailVerified ? now() : null,
-        ]);
+        ];
+        if (Schema::hasColumn('users', 'auth_provider')) {
+            $googleUserAttributes['auth_provider'] = 'google';
+        }
+        $user = User::create($googleUserAttributes);
 
         \App\Models\UserConsent::recordCurrentVersions($user, \App\Models\UserConsent::SOURCE_REGISTRATION);
 
