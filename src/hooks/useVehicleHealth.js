@@ -94,7 +94,7 @@ const useVehicleHealth = () => {
 
   // Dynamic maintenanceHealth derived from active diagnostic records and maintenance history
   // is authoritative across the entire application to prevent score divergence.
-  const hasLoadedHealth = typeof maintenanceHealth === 'number';
+  const hasLoadedHealth = typeof maintenanceHealth === 'number' && Boolean(maintenance.initialDiagnosticsLoaded);
   const healthScore = hasLoadedHealth ? maintenanceHealth : (isDiagnosticsLoading ? null : 100);
 
   const healthPercentage = (typeof healthScore === 'number' && Number.isFinite(healthScore))

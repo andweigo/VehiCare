@@ -57,6 +57,7 @@ import { useVehicle } from '../context/VehicleContext';
 import {
   clearGuestDiagnosisCount,
   getGuestDiagnosisCount,
+  getHistoryStorageKey,
   incrementGuestDiagnosisCount,
 } from '../services/storageService';
 
@@ -1196,6 +1197,35 @@ export default function AskVehiCareScreen({
           imageVehicleMatch: resultData?.image_vehicle_match || 'not_applicable',
         },
       });
+
+      // Save diagnosis to local history storage so maintenance and health screens reflect it instantly
+      try {
+        const historyKey = getHistoryStorageKey(ownerUserId);
+        const storedStr = await AsyncStorage.getItem(historyKey);
+        const historyList = storedStr ? JSON.parse(storedStr) : [];
+        if (Array.isArray(historyList)) {
+          const newHistoryItem = {
+            id: resultData?.id || `diag-${Date.now()}`,
+            type: 'diagnosis',
+            vehicle_id: targetVehId,
+            vehicleId: targetVehId,
+            vehicleName: targetVehName,
+            title: diagProblem,
+            problem: diagProblem,
+            summary: diagSummary,
+            severity: resultData?.diagnosis?.severity || resultData?.severity || 'moderate',
+            urgency: resultData?.diagnosis?.urgency || resultData?.urgency || 'Routine',
+            possible_causes: resultData?.diagnosis?.possible_causes || resultData?.possible_causes || [],
+            recommended_actions: resultData?.diagnosis?.recommended_actions || resultData?.recommended_actions || [],
+            maintenance_tasks: resultData?.diagnosis?.maintenance_tasks || resultData?.maintenance_tasks || [],
+            createdAt: new Date().toISOString(),
+          };
+          historyList.unshift(newHistoryItem);
+          await AsyncStorage.setItem(historyKey, JSON.stringify(historyList.slice(0, 50)));
+        }
+      } catch (e) {
+        console.warn('[AskVehiCareScreen] Could not save diagnosis to local history:', e?.message);
+      }
 
       if (resultData?.image_vehicle_match === 'possible_mismatch') {
         const details = resultData?.image_vehicle_details;

@@ -283,22 +283,6 @@ const MaintenanceScreen = ({ navigation }) => {
                 <Icon name="chevron-right" size={14} color={theme.textSecondary} />
               </View>
             </TouchableOpacity>
-
-            <View style={[styles.heroDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E7EB' }]} />
-
-            <View style={styles.recordSummaryRow}>
-              <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-                <Icon name="build-circle" size={20} color={theme.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.summaryTitle, { color: theme.text }]}>Maintenance log</Text>
-                <Text style={[styles.summaryDescription, { color: theme.textSecondary }]}>
-                  {hasMaintenanceRecords
-                    ? `${safeMaintenanceRecords.length} record${safeMaintenanceRecords.length === 1 ? '' : 's'} saved for this vehicle`
-                    : 'No service history has been logged for this vehicle yet.'}
-                </Text>
-              </View>
-            </View>
           </View>
 
           {/* =========================================================
@@ -324,7 +308,7 @@ const MaintenanceScreen = ({ navigation }) => {
             <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={[styles.statNumberText, { color: isDark ? '#32D583' : '#15803D' }]}>{completedRecords.length}</Text>
               <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Completed</Text>
-              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Logged</Text>
+              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Tasks completed</Text>
             </View>
           </View>
 

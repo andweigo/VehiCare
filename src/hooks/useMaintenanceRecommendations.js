@@ -5,7 +5,7 @@ import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
 import { VehicleHealthContext } from '../context/VehicleHealthContext';
-import { getHistoryStorageKey } from '../services/storageService';
+import { getHistoryStorageKey, loadActiveChatSessions } from '../services/storageService';
 import {
   extractDiagnosticRecommendations,
   extractMaintenanceTasks,
@@ -212,21 +212,51 @@ export const useMaintenanceRecommendationsInternal = () => {
     setMaintenanceRecords([]);
 
     try {
-      // Step 1: Read local history INSTANTLY (< 5ms)
+      // Step 1: Read local history and active diagnostic sessions INSTANTLY (< 5ms)
       let localRecords = [];
       let localServices = [];
       try {
-        const localStr = await AsyncStorage.getItem(getHistoryStorageKey(userId));
+        const [localStr, activeSessions] = await Promise.all([
+          AsyncStorage.getItem(getHistoryStorageKey(userId)).catch(() => null),
+          loadActiveChatSessions(userId).catch(() => null),
+        ]);
+
         if (localStr) {
           const parsed = JSON.parse(localStr);
           if (Array.isArray(parsed)) {
-            localRecords = parsed.filter(
+            localRecords.push(...parsed.filter(
               item => item.type === 'diagnosis' || item.diagnosisData || item.symptoms,
-            );
-            localServices = parsed.filter(
+            ));
+            localServices.push(...parsed.filter(
               item => item.type === 'maintenance' || item.type === 'service' || item.serviceType || item.cost,
-            );
+            ));
           }
+        }
+
+        if (activeSessions && typeof activeSessions === 'object') {
+          Object.values(activeSessions).forEach(session => {
+            if (session && Array.isArray(session.messages)) {
+              session.messages.forEach(msg => {
+                if (msg?.diagnosisData) {
+                  const dData = msg.diagnosisData;
+                  const diagVehicleId = dData.vehicle?.id || dData.vehicle_id || session.vehicleId || null;
+                  localRecords.push({
+                    id: dData.id || `diag-${msg.id}`,
+                    vehicle_id: diagVehicleId,
+                    problem: dData.summary || dData.problem || 'Vehicle Issue',
+                    summary: dData.summary || dData.problem || 'Vehicle Issue',
+                    severity: dData.severity || 'moderate',
+                    urgency: dData.urgency || 'Inspection recommended.',
+                    possible_causes: dData.possible_causes || [],
+                    recommended_actions: dData.recommended_actions || [],
+                    maintenance_tasks: dData.maintenance_tasks || [],
+                    created_at: dData.created_at || session.updatedAt || session.createdAt || new Date().toISOString(),
+                    type: 'diagnosis',
+                  });
+                }
+              });
+            }
+          });
         }
       } catch (err) {
         console.warn('Local storage error reading history:', err?.message);
@@ -238,11 +268,11 @@ export const useMaintenanceRecommendationsInternal = () => {
       setServiceHistory(initialServices);
       setDiagnostics(initialFiltered);
 
-      // Step 2: Background API sync (2.0s timeout)
+      // Step 2: Background API sync (8.0s timeout to accommodate mobile network/Render latency)
       if (isAuthenticated) {
         try {
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Diagnostics sync timeout')), 2000),
+            setTimeout(() => reject(new Error('Diagnostics sync timeout')), 8000),
           );
 
           const [apiDiags, apiRepairs, apiMaintenance] = await Promise.race([
@@ -756,25 +786,33 @@ export const useMaintenanceRecommendationsInternal = () => {
   }, [urgentDiagnosticItems, diagnosticItems, preventiveItems]);
 
   const calculatedScore = useMemo(() => {
-    if (diagnosticItems.length === 0 && preventiveItems.length === 0) return 100;
-    if (allRecommendations.length === 0) return 100;
+    if (diagnosticItems.length === 0) {
+      const now = Date.now();
+      const overdueTasks = (maintenanceRecords || []).filter(
+        r => r.status === 'pending' && r.due_date && new Date(r.due_date).getTime() < now,
+      );
+      if (overdueTasks.length === 0) return 100;
+      return Math.max(70, 100 - overdueTasks.length * 10);
+    }
     const penalty =
       urgentDiagnosticItems.length * 20 +
-      (diagnosticItems.length - urgentDiagnosticItems.length) * 10 +
-      preventiveItems.length * 4;
+      (diagnosticItems.length - urgentDiagnosticItems.length) * 10;
     return Math.max(25, Math.min(100, 100 - penalty));
-  }, [allRecommendations.length, urgentDiagnosticItems, diagnosticItems, preventiveItems]);
+  }, [diagnosticItems, urgentDiagnosticItems, maintenanceRecords]);
 
   const maintenanceHealth = useMemo(() => {
-    // While initial diagnostics are loading for active vehicle, use cached score to prevent 100% flash
+    // While initial diagnostics are loading for active vehicle, prevent flashing unverified or stale 80%
     if (!initialDiagnosticsLoaded || loadingDiagnostics) {
-      if (typeof cachedHealthScore === 'number') {
+      if (typeof cachedHealthScore === 'number' && cachedHealthScore !== 80) {
         return cachedHealthScore;
       }
       if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
-        return healthScoreMemoryCache.get(activeVehicleId);
+        const memScore = healthScoreMemoryCache.get(activeVehicleId);
+        if (typeof memScore === 'number' && memScore !== 80) {
+          return memScore;
+        }
       }
-      if (typeof vehicleInitialScore === 'number') {
+      if (typeof vehicleInitialScore === 'number' && vehicleInitialScore !== 80) {
         return vehicleInitialScore;
       }
       return null;

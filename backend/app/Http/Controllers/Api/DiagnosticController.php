@@ -84,13 +84,25 @@ class DiagnosticController extends Controller
         Diagnostic $diagnostic
     ): void {
         $createdTasks = [];
-        foreach ($diagnostic->maintenance_tasks ?? [] as $task) {
-            $taskTitle = is_string($task) ? $task : ($task['title'] ?? '');
+        $rawTasks = !empty($diagnostic->maintenance_tasks)
+            ? $diagnostic->maintenance_tasks
+            : (!empty($diagnostic->recommended_actions)
+                ? $diagnostic->recommended_actions
+                : (!empty($diagnostic->possible_causes) ? $diagnostic->possible_causes : []));
+
+        foreach ($rawTasks as $task) {
+            $taskTitle = is_string($task)
+                ? $task
+                : ($task['title'] ?? ($task['what_to_do'] ?? ($task['action'] ?? ($task['cause'] ?? ''))));
             if (! is_string($taskTitle) || trim($taskTitle) === '') {
                 continue;
             }
 
-            $cleanTitle = trim($taskTitle);
+            $cleanTitle = trim(preg_replace('/^(step\s*\d+[\s\:\.\-]*|\d+[\s\:\.\-]+)/i', '', $taskTitle));
+            if (empty($cleanTitle)) {
+                $cleanTitle = trim($taskTitle);
+            }
+            $cleanTitle = ucfirst($cleanTitle);
             $subTitle = substr($cleanTitle, 0, 30);
             $alreadyPending = \App\Models\MaintenanceRecord::where('user_id', $user->id)
                 ->where('vehicle_id', $vehicle->id)
@@ -123,7 +135,10 @@ class DiagnosticController extends Controller
                 continue;
             }
 
-            $urgency = is_array($task) ? ($task['urgency'] ?? 'Routine') : 'Routine';
+            $urgency = is_array($task) && !empty($task['urgency'])
+                ? $task['urgency']
+                : (in_array(strtoupper((string) $diagnostic->severity), ['HIGH', 'CRITICAL']) ? 'Urgent' : 'Routine');
+
             $dueDays = match (strtoupper((string) $urgency)) {
                 'IMMEDIATE' => 1,
                 'URGENT', 'HIGH' => 3,
@@ -134,6 +149,9 @@ class DiagnosticController extends Controller
             $desc = is_array($task) ? ($task['description'] ?? null) : null;
             if (is_array($task) && !empty($task['why_it_matters']) && empty($desc)) {
                 $desc = $task['why_it_matters'];
+            }
+            if (empty($desc)) {
+                $desc = 'Recommended inspection based on recent vehicle diagnosis.';
             }
 
             $notes = null;
@@ -150,13 +168,17 @@ class DiagnosticController extends Controller
                 }
             }
 
+            $serviceType = is_array($task) && !empty($task['service_type'])
+                ? $task['service_type']
+                : 'General Inspection';
+
             \App\Models\MaintenanceRecord::create([
                 'user_id' => $user->id,
                 'vehicle_id' => $vehicle->id,
                 'diagnostic_id' => $diagnostic->id,
                 'title' => $cleanTitle,
                 'description' => $desc,
-                'service_type' => is_array($task) ? ($task['service_type'] ?? 'General Inspection') : 'General Inspection',
+                'service_type' => $serviceType,
                 'status' => 'pending',
                 'is_inspection' => true,
                 'urgency' => $urgency,
@@ -915,7 +937,7 @@ class DiagnosticController extends Controller
             ]);
 
             // Automatically register pending inspection tasks for the vehicle without duplicating
-            if ($user && $vehicle && !empty($diagnostic->maintenance_tasks)) {
+            if ($user && $vehicle && (!empty($diagnostic->maintenance_tasks) || !empty($diagnostic->recommended_actions) || !empty($diagnostic->possible_causes))) {
                 $this->ensurePendingMaintenanceRecords($user, $vehicle, $diagnostic);
             }
 
