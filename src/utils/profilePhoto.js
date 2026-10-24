@@ -39,18 +39,30 @@ export const isPersistablePhotoUri = uri => {
   return REMOTE_URI.test(value) || DATA_IMAGE_URI.test(value);
 };
 
-/** Returns the first displayable photo for a user, ignoring dead device paths. */
+export const isDisplayablePhotoUri = uri => {
+  if (typeof uri !== 'string') {
+    return false;
+  }
+  const value = uri.trim();
+  return (
+    REMOTE_URI.test(value) ||
+    DATA_IMAGE_URI.test(value) ||
+    DEVICE_LOCAL_URI.test(value)
+  );
+};
+
+/** Returns the first displayable photo for a user. */
 export const resolveProfilePhoto = user => {
   if (!user) {
     return null;
   }
 
   const candidates = [user.photoURL, user.photo_url, user.avatar];
-  const match = candidates.find(isPersistablePhotoUri);
+  const match = candidates.find(isDisplayablePhotoUri);
   return match ? match.trim() : null;
 };
 
-/** Converts an image-picker asset into a value that can be stored server-side. */
+/** Converts an image-picker asset into a displayable/persistable photo URI. */
 export const toPersistablePhoto = asset => {
   if (!asset) {
     return null;
@@ -64,5 +76,5 @@ export const toPersistablePhoto = asset => {
     return `data:${mime};base64,${asset.base64}`;
   }
 
-  return isPersistablePhotoUri(asset.uri) ? asset.uri : null;
+  return asset.uri && isDisplayablePhotoUri(asset.uri) ? asset.uri : null;
 };

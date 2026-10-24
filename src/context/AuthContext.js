@@ -62,6 +62,7 @@ import {
 
 import {
   isDataImageUri,
+  isDisplayablePhotoUri,
   isPersistablePhotoUri,
 } from '../utils/profilePhoto';
 
@@ -110,8 +111,13 @@ const stripLegacyWrapper = backendUser => {
   return backendUser;
 };
 
-const pickPhoto = (...candidates) =>
-  candidates.find(isPersistablePhotoUri) || null;
+const pickPhoto = (...candidates) => {
+  const persistable = candidates.find(isPersistablePhotoUri);
+  if (persistable) {
+    return persistable;
+  }
+  return candidates.find(isDisplayablePhotoUri) || null;
+};
 
 export const buildAuthUser = (
   firebaseUser,
@@ -453,9 +459,15 @@ export const AuthProvider = ({
           getMeApi()
             .then(backendUserData => {
               if (isMounted && backendUserData) {
+                const freshBackend = extractBackendUser(backendUserData);
                 const updated = buildAuthUser(null, {
                   ...persistedUser,
-                  ...extractBackendUser(backendUserData),
+                  ...freshBackend,
+                  photoURL:
+                    freshBackend?.avatar ||
+                    freshBackend?.photoURL ||
+                    persistedUser?.photoURL ||
+                    null,
                 });
                 updateUser(updated).catch(() => {});
               }
@@ -549,9 +561,15 @@ export const AuthProvider = ({
                 getMeApi()
                   .then(backendUserData => {
                     if (isMounted && backendUserData) {
+                      const freshBackend = extractBackendUser(backendUserData);
                       const updated = buildAuthUser(null, {
                         ...currentUser,
-                        ...extractBackendUser(backendUserData),
+                        ...freshBackend,
+                        photoURL:
+                          freshBackend?.avatar ||
+                          freshBackend?.photoURL ||
+                          currentUser?.photoURL ||
+                          null,
                       });
                       updateUser(updated).catch(() => {});
                     }
@@ -1219,20 +1237,20 @@ export const AuthProvider = ({
         'photoURL' in changes ||
         'avatar' in changes
       ) {
-        // Never persist a device-only picker path: it breaks on reinstall
-        // and on every other device the account signs in from.
-        if (
-          updatedProfile.photoURL &&
-          !isPersistablePhotoUri(updatedProfile.photoURL)
+        const photoCandidate = updatedProfile.photoURL;
+        if (!photoCandidate) {
+          backendUpdates.avatar = null;
+        } else if (
+          typeof photoCandidate === 'string' &&
+          /^https?:\/\//i.test(photoCandidate.trim()) &&
+          photoCandidate.trim().length <= 2048
         ) {
-          throw new Error(
-            'Please choose the profile photo again so it can be saved to your account.',
-          );
+          backendUpdates.avatar = photoCandidate.trim();
         }
-
-        backendUpdates.avatar =
-          updatedProfile.photoURL ||
-          null;
+        // Notice: Do NOT pass long base64 data URIs or local file URIs to Laravel's
+        // backendUpdates.avatar. Laravel's avatar column is VARCHAR(255) with
+        // validation max:2048. Passing base64 strings causes HTTP 422 Unprocessable Content.
+        // Base64 photos are safely stored in AsyncStorage (@vehicare_user) on the device.
       }
 
       if (
@@ -1310,6 +1328,11 @@ export const AuthProvider = ({
         const authUser = buildAuthUser(null, {
           ...(currentUser || {}),
           ...data.user,
+          photoURL:
+            data.user?.avatar ||
+            data.user?.photoURL ||
+            currentUser?.photoURL ||
+            null,
         });
 
         const currentToken = tokenRef.current;
@@ -1395,6 +1418,11 @@ export const AuthProvider = ({
     const updatedUser = buildAuthUser(null, {
       ...(userRef.current || {}),
       ...serverUser,
+      photoURL:
+        serverUser?.avatar ||
+        serverUser?.photoURL ||
+        userRef.current?.photoURL ||
+        null,
     });
     await updateUser(updatedUser);
     return updatedUser;

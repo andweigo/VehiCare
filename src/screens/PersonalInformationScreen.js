@@ -162,9 +162,13 @@ const PersonalInformationScreen = ({ navigation }) => {
         error,
       );
 
+      const apiErrors = error?.response?.data?.errors;
       const apiMsg =
-        error?.response?.data?.errors?.phone_number?.[0] ||
+        apiErrors?.avatar?.[0] ||
+        apiErrors?.phone_number?.[0] ||
+        apiErrors?.name?.[0] ||
         error?.response?.data?.message ||
+        error?.message ||
         'Unable to save your information right now. Please try again.';
 
       showToast(apiMsg);

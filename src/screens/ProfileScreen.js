@@ -155,10 +155,15 @@ const ProfileScreen = ({ navigation }) => {
       setEditModalVisible(false);
     } catch (error) {
       console.error('Failed to update profile:', error);
-      Alert.alert(
-        'Unable to Save',
-        'Something went wrong while updating your profile. Please try again.',
-      );
+      const apiErrors = error?.response?.data?.errors;
+      const apiMsg =
+        apiErrors?.avatar?.[0] ||
+        apiErrors?.name?.[0] ||
+        apiErrors?.phone_number?.[0] ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Something went wrong while updating your profile. Please try again.';
+      Alert.alert('Unable to Save', apiMsg);
     } finally {
       setSavingEdit(false);
     }
