@@ -159,7 +159,11 @@ class OtpController extends Controller
             ], 400);
         }
 
-        // 1. Update Firebase Authentication credential first if FirebaseService is configured
+        // 1. Update Firebase Authentication credential first if FirebaseService is configured.
+        // A verified password-reset OTP is sufficient proof of account ownership for
+        // VehiCare's own password login. Do not block the reset when Firebase Admin
+        // is temporarily unavailable; the local credential must still be updated.
+        $firebaseSyncPending = false;
         if ($this->firebaseService->isConfigured()) {
             $firebaseResult = $this->firebaseService->updateUserPassword($user, $newPassword);
             if (! ($firebaseResult['success'] ?? false)) {
@@ -167,17 +171,14 @@ class OtpController extends Controller
                     'user_id' => $user->id,
                     'error' => $firebaseResult['message'] ?? 'Unknown error',
                 ]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unable to update authentication credentials. Please try again later.',
-                ], 500);
+                $firebaseSyncPending = true;
             }
         } elseif ($user->firebase_uid) {
             Log::warning('[OtpController] Firebase service account credentials not configured. Firebase user password could not be updated.', [
                 'user_id' => $user->id,
                 'firebase_uid' => $user->firebase_uid,
             ]);
+            $firebaseSyncPending = true;
         }
 
         // 2. Update Laravel database password
@@ -190,6 +191,7 @@ class OtpController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Password reset successfully. You can now log in with your new password.',
+            'firebase_sync_pending' => $firebaseSyncPending,
         ]);
     }
 }

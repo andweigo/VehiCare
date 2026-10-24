@@ -327,7 +327,7 @@ EOD;
             ]);
     }
 
-    public function test_failed_firebase_credential_update_rolls_back_laravel_password_change(): void
+    public function test_firebase_outage_does_not_block_local_password_reset(): void
     {
         $user = User::factory()->create([
             'email' => 'failurecase@example.com',
@@ -360,18 +360,19 @@ EOD;
             'password_confirmation' => 'FailedNewPassword123!',
         ]);
 
-        $response->assertStatus(500)
+        $response->assertStatus(200)
             ->assertJson([
-                'success' => false,
-                'message' => 'Unable to update authentication credentials. Please try again later.',
+                'success' => true,
+                'message' => 'Password reset successfully. You can now log in with your new password.',
+                'firebase_sync_pending' => true,
             ]);
 
-        // Verify password was NOT changed in Laravel database
+        // The verified OTP must always establish a usable local credential.
         $user->refresh();
-        $this->assertTrue(Hash::check('InitialPassword123!', $user->password));
+        $this->assertTrue(Hash::check('FailedNewPassword123!', $user->password));
 
-        // Verify OTP was NOT deleted so user can retry
-        $this->assertDatabaseHas('otp_codes', ['id' => $otp->id]);
+        // Reset codes remain single-use even when Firebase synchronization is pending.
+        $this->assertDatabaseMissing('otp_codes', ['id' => $otp->id]);
     }
 
     public function test_reset_password_endpoint_enforces_rate_limiting(): void
