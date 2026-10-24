@@ -334,16 +334,6 @@ const MaintenanceScreen = ({ navigation }) => {
                 <Text style={[styles.recordsTitle, { color: theme.text }]}>This vehicle’s maintenance</Text>
                 <Text style={[styles.recordsSubtitle, { color: theme.textSecondary }]}>Scheduled tasks and completed services</Text>
               </View>
-              {hasMaintenanceRecords && (
-                <TouchableOpacity
-                  style={[styles.smallAddButton, { backgroundColor: theme.accentSoft }]}
-                  onPress={() => openRecordForm('completed')}
-                  accessibilityLabel="Add a completed maintenance service"
-                >
-                  <Icon name="add" size={18} color={theme.accent} />
-                  <Text style={[styles.smallAddText, { color: theme.accent }]}>Add</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             {!hasMaintenanceRecords ? (
@@ -351,28 +341,10 @@ const MaintenanceScreen = ({ navigation }) => {
                 <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
                   <Icon name="event-note" size={27} color={theme.accent} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>Start your maintenance log</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No maintenance recommendations yet</Text>
                 <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-                  Add a service you have completed, schedule upcoming work, and keep each vehicle’s history in one place.
+                  VehiCare will add maintenance tasks automatically when it identifies them for this vehicle. Mark a recommended task as completed to keep its history up to date.
                 </Text>
-                <View style={styles.emptyActionsRow}>
-                  <TouchableOpacity
-                    style={[styles.primaryActionButton, { backgroundColor: theme.accent }]}
-                    onPress={() => openRecordForm('completed')}
-                    activeOpacity={0.85}
-                  >
-                    <Icon name="check-circle" size={16} color="#FFFFFF" />
-                    <Text style={styles.primaryActionText}>Log service</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.secondaryActionButton, { borderColor: theme.accent }]}
-                    onPress={() => openRecordForm('pending')}
-                    activeOpacity={0.85}
-                  >
-                    <Icon name="schedule" size={16} color={theme.accent} />
-                    <Text style={[styles.secondaryActionText, { color: theme.accent }]}>Schedule</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             ) : (
               <View style={styles.recordsList}>
