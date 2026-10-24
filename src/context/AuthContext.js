@@ -1192,13 +1192,24 @@ export const AuthProvider = ({
         );
       }
 
-      await updateFirebaseUserProfile({
-        displayName:
-          updatedProfile.displayName,
+      // Backend sessions can be restored without a Firebase session (for
+      // example, saved accounts or users signed in through Laravel). The
+      // backend profile update above is authoritative for those sessions, so
+      // do not fail the save just because Firebase has no current user.
+      try {
+        await updateFirebaseUserProfile({
+          displayName:
+            updatedProfile.displayName,
 
-        photoURL:
-          updatedProfile.photoURL,
-      });
+          photoURL:
+            updatedProfile.photoURL,
+        });
+      } catch (firebaseError) {
+        const firebaseMessage = String(firebaseError?.message || firebaseError || '');
+        if (!/no authenticated firebase user/i.test(firebaseMessage)) {
+          console.warn('[AuthContext] Firebase profile sync skipped:', firebaseMessage);
+        }
+      }
 
       await updateUser(
         updatedProfile,
