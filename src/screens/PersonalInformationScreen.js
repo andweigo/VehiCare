@@ -939,7 +939,8 @@ const PersonalInformationScreen = ({ navigation }) => {
       <CustomToast
         visible={toastVisible}
         message={toastMessage}
-        onDismiss={() => setToastVisible(false)}
+        duration={3500}
+        onHide={() => setToastVisible(false)}
       />
     </SafeAreaView>
   );
