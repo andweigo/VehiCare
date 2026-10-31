@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import useRecentActivities from '../hooks/useRecentActivities';
 import { useTheme } from '../theme/ThemeContext';
 import {
@@ -36,6 +37,7 @@ const ActivityScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
   const { activities, loading } = useRecentActivities(100);
+  const showSkeleton = useScreenSkeleton(loading);
   const [currentPage, setCurrentPage] = useState(1);
   const listRef = useRef(null);
 
@@ -176,6 +178,14 @@ const ActivityScreen = ({ navigation }) => {
       </View>
     );
   };
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <SkeletonLoader variant="activity" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>

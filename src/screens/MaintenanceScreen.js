@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import vehicleApi from '../api/vehicleApi';
 import MaintenanceRecordModal from '../components/MaintenanceRecordModal';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 
 import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
@@ -402,6 +402,7 @@ const MaintenanceScreen = ({ navigation, route }) => {
   };
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const showSkeleton = useScreenSkeleton(loading, activeVehicleId);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -411,7 +412,7 @@ const MaintenanceScreen = ({ navigation, route }) => {
     }).start();
   }, [fadeAnim]);
 
-  if (loading) {
+  if (showSkeleton) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}

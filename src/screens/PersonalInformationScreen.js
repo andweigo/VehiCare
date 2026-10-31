@@ -14,6 +14,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import CustomToast from '../components/CustomToast';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import {
@@ -176,6 +177,24 @@ const PersonalInformationScreen = ({ navigation }) => {
       setSaving(false);
     }
   };
+
+  const showSkeleton = useScreenSkeleton(false, user?.id);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        edges={['top']}
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.background,
+          },
+        ]}
+      >
+        <SkeletonLoader variant="personalInfo" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

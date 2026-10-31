@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useAIUsage } from '../context/AIUsageContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -27,12 +28,36 @@ import {
 } from '../utils/maintenanceUtils';
 import { getDisplayValue, getVehicleDisplayName } from '../utils/vehicleDisplay';
 
+const useSafeAuth = () => {
+  try {
+    return useAuth() || { isAuthenticated: false };
+  } catch {
+    return { isAuthenticated: false };
+  }
+};
+
+const useSafeLanguage = () => {
+  try {
+    return useLanguage() || { language: 'en' };
+  } catch {
+    return { language: 'en' };
+  }
+};
+
+const useSafeAIUsage = () => {
+  try {
+    return useAIUsage() || {};
+  } catch {
+    return {};
+  }
+};
+
 const MaintenanceGuideScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
   const { item } = route.params || {};
 
-  const { isAuthenticated } = useAuth();
-  const { language } = useLanguage();
+  const { isAuthenticated } = useSafeAuth();
+  const { language } = useSafeLanguage();
   const { activeVehicle, pendingVehicle } = useVehicle();
   const vehicleProfile = activeVehicle || pendingVehicle;
   const { markAsDone, isRecommendationCompleted } = useMaintenanceRecommendations();
@@ -41,7 +66,7 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     recordConsultationOptimistic,
     refreshUsage,
     setQuotaExhausted,
-  } = useAIUsage();
+  } = useSafeAIUsage();
 
   const scrollViewRef = useRef(null);
 
@@ -485,6 +510,15 @@ STRICT INSTRUCTIONS FOR RESPONSE:
 
   const hasTools = Array.isArray(guide.tools) && guide.tools.length > 0;
   const hasSafety = Array.isArray(guide.safetyNotes) && guide.safetyNotes.length > 0;
+  const showSkeleton = useScreenSkeleton(false, item?.id || item?.title);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+        <SkeletonLoader variant="maintenanceGuide" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>

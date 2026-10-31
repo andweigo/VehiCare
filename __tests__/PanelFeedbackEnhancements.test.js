@@ -201,11 +201,13 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(dashboardCode).toContain("title: 'Smart tips'");
       expect(dashboardCode).not.toContain("title: 'Vehicle health'");
 
-      // 7. Reusable SkeletonLoader & screen-specific card skeleton variants
+      // 7. Reusable SkeletonLoader & screen-specific card skeleton variants across all screens
       const skeletonCode = fs.readFileSync(
         path.resolve(__dirname, '..', 'src/components/SkeletonLoader.js'),
         'utf8',
       );
+      expect(skeletonCode).toContain('export const useScreenSkeleton');
+      expect(skeletonCode).toContain("variant === 'dashboard'");
       expect(skeletonCode).toContain("variant === 'maintenance'");
       expect(skeletonCode).toContain("variant === 'smartTips'");
       expect(skeletonCode).toContain("variant === 'vehicles'");
@@ -213,7 +215,21 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(skeletonCode).toContain("variant === 'repairShops'");
       expect(skeletonCode).toContain("variant === 'vehicleHealth'");
       expect(skeletonCode).toContain("variant === 'notifications'");
+      expect(skeletonCode).toContain("variant === 'notificationPreferences'");
+      expect(skeletonCode).toContain("variant === 'managePlan'");
+      expect(skeletonCode).toContain("variant === 'activity'");
+      expect(skeletonCode).toContain("variant === 'maintenanceCategory'");
+      expect(skeletonCode).toContain("variant === 'maintenanceGuide'");
+      expect(skeletonCode).toContain("variant === 'profile'");
+      expect(skeletonCode).toContain("variant === 'personalInfo'");
+      expect(skeletonCode).toContain("variant === 'vehicleCorrection'");
+      expect(skeletonCode).toContain("variant === 'settings'");
+      expect(skeletonCode).toContain("variant === 'helpSupport'");
+
+      expect(maintScreenCode).toContain('useScreenSkeleton(loading, activeVehicleId)');
       expect(maintScreenCode).toContain('<SkeletonLoader variant="maintenance" />');
+      expect(guideCode).toContain('<SkeletonLoader variant="maintenanceGuide" />');
+      expect(dashboardCode).toContain('<SkeletonLoader variant="dashboard" />');
     });
   });
 });

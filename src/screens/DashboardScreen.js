@@ -22,6 +22,7 @@ import DashboardVehicleProfileModal from '../components/DashboardVehicleProfileM
 import NeedHelpSignInModal from '../components/NeedHelpSignInModal';
 import RecentActivityCard from '../components/RecentActivityCard';
 import Sidebar from '../components/Sidebar';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import VehicleHealthSpeedometer from '../components/VehicleHealthSpeedometer';
 import AIUsageCard from '../components/AIUsageCard';
 import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
@@ -170,9 +171,11 @@ const DashboardScreen = ({ navigation }) => {
   const {
     activeVehicle,
     pendingVehicle,
+    loading: vehicleLoading,
     refreshActiveVehicle,
   } = useVehicle();
   const { usage, isDetailsModalVisible, openDetailsModal, closeDetailsModal, refreshUsage } = useAIUsage();
+  const showSkeleton = useScreenSkeleton(Boolean(vehicleLoading), activeVehicle?.id ?? pendingVehicle?.id);
 
   const [requestedFeature, setRequestedFeature] = useState('');
   const [requestedRoute, setRequestedRoute] = useState(null);
@@ -468,6 +471,10 @@ const DashboardScreen = ({ navigation }) => {
       />
 
       <View style={styles.page}>
+        {showSkeleton ? (
+          <SkeletonLoader variant="dashboard" />
+        ) : (
+        <>
 
         {/* ==================================================
             CONTENT
@@ -752,6 +759,8 @@ const DashboardScreen = ({ navigation }) => {
 
           </View>
         </ScrollView>
+        </>
+        )}
       </View>
 
 

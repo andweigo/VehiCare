@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useSidebar } from '../context/SidebarContext';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -38,6 +39,26 @@ const SettingsScreen = ({ navigation }) => {
       navigation.navigate('HelpSupport');
     }
   };
+
+  const showSkeleton = useScreenSkeleton(false);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        edges={['top']}
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? '#0A0A0A' : theme.background },
+        ]}
+      >
+        <StatusBar
+          barStyle={isDark ? 'light-content' : 'dark-content'}
+          backgroundColor={isDark ? '#0A0A0A' : theme.background}
+        />
+        <SkeletonLoader variant="settings" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

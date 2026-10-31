@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
 import { useTheme } from '../theme/ThemeContext';
 import { mapItemToCategoryId } from '../utils/maintenanceUtils';
@@ -26,9 +27,12 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
     vehicleProfile,
     allRecommendations,
     groupedCategories,
+    activeVehicleId,
+    loading,
     markAsDone,
     undo,
   } = useMaintenanceRecommendations();
+  const showSkeleton = useScreenSkeleton(loading, `${activeVehicleId || ''}-${categoryId || ''}`);
 
   /* -------------------------------------------------------
      CATEGORY
@@ -155,6 +159,19 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
       background: theme.surfaceAlt,
     };
   };
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.container,
+          { backgroundColor: theme.background },
+        ]}
+      >
+        <SkeletonLoader variant="maintenanceCategory" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

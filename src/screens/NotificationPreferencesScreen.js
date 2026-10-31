@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import CustomToast from '../components/CustomToast';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { DEFAULT_PREFERENCES, getNotificationPreferences, updateNotificationPreferences } from '../services/notificationService';
 import { requestNotificationPermission } from '../services/permissionService';
 import { useLanguage } from '../context/LanguageContext';
@@ -47,6 +47,7 @@ const NotificationPreferencesScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
+  const showSkeleton = useScreenSkeleton(loading);
   const [saving, setSaving] = useState(false);
   const [prefs, setPrefs] = useState(DEFAULT_PREFERENCES);
   const [toast, setToast] = useState({ visible: false, type: 'info', title: '', message: '' });
@@ -195,7 +196,7 @@ const NotificationPreferencesScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {loading ? (
+      {showSkeleton ? (
         <SkeletonLoader variant="notificationPreferences" />
       ) : (
         <ScrollView

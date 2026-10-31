@@ -20,6 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import ConfirmSignOutModal from '../components/ConfirmSignOutModal';
 import LanguageSelectorModal from '../components/LanguageSelectorModal';
 import PasswordSecurityCard from '../components/PasswordSecurityCard';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSidebar } from '../context/SidebarContext';
@@ -175,6 +176,23 @@ const ProfileScreen = ({ navigation }) => {
       setThemeName(isDark ? 'light' : 'dark');
     }
   };
+
+  const showSkeleton = useScreenSkeleton(false, user?.id);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        edges={['top']}
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? '#0A0A0A' : theme.background },
+        ]}
+      >
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0A0A' : theme.background} />
+        <SkeletonLoader variant="profile" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

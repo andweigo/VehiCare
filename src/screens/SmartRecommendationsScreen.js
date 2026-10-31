@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
@@ -44,6 +44,14 @@ import {
 |--------------------------------------------------------------------------
 */
 
+const useSafeMaintenanceRecommendations = () => {
+  try {
+    return useMaintenanceRecommendations() || {};
+  } catch {
+    return {};
+  }
+};
+
 const SmartRecommendationsScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { user, isAuthenticated } = useAuth();
@@ -68,11 +76,12 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     diagnostics: hookDiagnostics,
     repairRecords: hookRepairRecords,
     completedRecommendationIds: hookCompletedIds,
-  } = useMaintenanceRecommendations();
+  } = useSafeMaintenanceRecommendations();
 
   const healthPercentage = typeof hookHealthPercentage === 'number' ? hookHealthPercentage : 44;
   const healthStatus = hookHealthStatus || 'Needs attention';
   const loading = hookLoading;
+  const showSkeleton = useScreenSkeleton(loading, activeVehicleId);
 
   const [itemOpacity] = useState(new Animated.Value(0));
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
@@ -519,7 +528,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     );
   };
 
-  if (loading) {
+  if (showSkeleton) {
     return (
       <SafeAreaView
         style={[

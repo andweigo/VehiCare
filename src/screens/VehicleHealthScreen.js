@@ -6,7 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useVehicle } from '../context/VehicleContext';
 import useVehicleHealth from '../hooks/useVehicleHealth';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import VehicleHealthSpeedometer from '../components/VehicleHealthSpeedometer';
 import { useTheme } from '../theme/ThemeContext';
 import {
@@ -172,6 +172,23 @@ const VehicleHealthScreen = ({ navigation }) => {
     const start = (completedPage - 1) * COMPLETED_PAGE_SIZE;
     return reversedCompleted.slice(start, start + COMPLETED_PAGE_SIZE);
   }, [reversedCompleted, completedPage]);
+
+  const showSkeleton = useScreenSkeleton(loading && !refreshing, vehicleProfile?.id);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.background,
+          },
+        ]}
+      >
+        <SkeletonLoader variant="vehicleHealth" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -540,7 +557,7 @@ const VehicleHealthScreen = ({ navigation }) => {
           </View>
 
           {loading && completedRecommendations.length === 0 ? (
-            <SkeletonLoader variant="vehicleHealth" />
+            <SkeletonLoader variant="vehicleHealthRecords" />
           ) : completedRecommendations.length === 0 ? (
             <View
               style={[

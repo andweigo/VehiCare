@@ -13,6 +13,7 @@ import { getPaymentHistory, getSubscriptionStatus, subscribePlan } from '../api/
 import vehicleApi from '../api/vehicleApi';
 import PaymentModal from '../components/PaymentModal';
 import CustomModal from '../components/CustomModal';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import useCustomModal from '../hooks/useCustomModal';
 import { useAuth } from '../context/AuthContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
@@ -382,6 +383,19 @@ const ManagePlanScreen = ({ navigation }) => {
   const handleContactSupport = () => {
     navigation.navigate('HelpSupport');
   };
+
+  const showSkeleton = useScreenSkeleton(statusLoading || vehicleLoading);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        edges={['top']}
+        style={[styles.container, { backgroundColor: theme.background }]}
+      >
+        <SkeletonLoader variant="managePlan" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

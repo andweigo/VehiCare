@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
 import CustomToast from '../components/CustomToast';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useAuth } from '../context/AuthContext';
 import { getDisplayValue } from '../utils/vehicleDisplay';
 
@@ -367,19 +368,12 @@ const VehicleCorrectionRequestScreen = ({
     }
   };
 
-  if (loading) {
+  const showSkeleton = useScreenSkeleton(loading || fetchingActiveRequest, vehicle?.id);
+
+  if (showSkeleton) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator
-            size="large"
-            color={ORANGE}
-          />
-
-          <Text style={styles.loadingText}>
-            Loading vehicle information...
-          </Text>
-        </View>
+        <SkeletonLoader variant="vehicleCorrection" />
       </SafeAreaView>
     );
   }

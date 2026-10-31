@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useTheme } from '../theme/ThemeContext';
 import { HELP_RESOURCES, RESOURCE_CATEGORIES } from '../data/helpResources';
 
@@ -251,6 +252,24 @@ const HelpSupportScreen = ({ navigation }) => {
     }
     return list;
   }, [selectedCategory, query]);
+
+  const showSkeleton = useScreenSkeleton(false);
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        edges={['top']}
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.background,
+          },
+        ]}
+      >
+        <SkeletonLoader variant="helpSupport" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView

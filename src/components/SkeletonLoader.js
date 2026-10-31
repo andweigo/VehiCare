@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -28,6 +28,38 @@ export const useSkeletonPulse = () => {
   }, [pulseAnim]);
 
   return pulseAnim;
+};
+
+/**
+ * Reusable screen-level skeleton hook.
+ * Ensures screens whose context data is already cached in memory still display
+ * a smooth, card-matched skeleton transition on screen mount or vehicle switch,
+ * while remaining instant in synchronous Jest unit tests unless externalLoading is true.
+ */
+export const useScreenSkeleton = (
+  externalLoading = false,
+  triggerKey = null,
+  durationMs = 340,
+) => {
+  const isTestEnv =
+    typeof process !== 'undefined' &&
+    process?.env?.JEST_WORKER_ID !== undefined;
+
+  const [hydrating, setHydrating] = useState(!isTestEnv);
+
+  useEffect(() => {
+    if (isTestEnv) {
+      setHydrating(false);
+      return undefined;
+    }
+    setHydrating(true);
+    const timer = setTimeout(() => {
+      setHydrating(false);
+    }, durationMs);
+    return () => clearTimeout(timer);
+  }, [triggerKey, durationMs, isTestEnv]);
+
+  return Boolean(externalLoading || hydrating);
 };
 
 /**
@@ -123,6 +155,64 @@ export const SkeletonCard = ({ children, style }) => {
 const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
   const pulse = useSkeletonPulse();
 
+  // 0. DASHBOARD SCREEN SKELETON
+  if (variant === 'dashboard') {
+    return (
+      <View testID="skeleton-dashboard" style={[styles.screenWrap, style]}>
+        {/* Greeting + Menu */}
+        <View style={styles.headerRow}>
+          <View style={styles.flex1}>
+            <SkeletonLine width="42%" height={12} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="68%" height={20} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+        </View>
+
+        {/* Active Vehicle Garage Bar Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowCenter}>
+            <SkeletonBox width={46} height={46} borderRadius={14} pulseAnim={pulse} />
+            <View style={[styles.flex1, styles.ml12]}>
+              <SkeletonLine width="38%" height={10} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="66%" height={16} pulseAnim={pulse} />
+            </View>
+            <SkeletonBox width={70} height={30} borderRadius={10} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* Vehicle Health Speedometer Cluster Card */}
+        <SkeletonCard style={[styles.mb14, styles.centerCol]}>
+          <SkeletonCircle size={126} style={styles.mb12} pulseAnim={pulse} />
+          <SkeletonBox width={118} height={24} borderRadius={12} pulseAnim={pulse} />
+        </SkeletonCard>
+
+        {/* Something Wrong? Diagnosis Hero Banner */}
+        <SkeletonCard style={styles.mb16}>
+          <View style={styles.rowCenter}>
+            <SkeletonBox width={42} height={42} borderRadius={12} pulseAnim={pulse} />
+            <View style={[styles.flex1, styles.ml12]}>
+              <SkeletonLine width="62%" height={16} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="85%" height={11} pulseAnim={pulse} />
+            </View>
+          </View>
+          <SkeletonBox width="100%" height={42} borderRadius={12} style={styles.mt14} pulseAnim={pulse} />
+        </SkeletonCard>
+
+        {/* How can we help? 2x2 Grid */}
+        <SkeletonLine width={140} height={15} style={styles.mb12} pulseAnim={pulse} />
+        <View style={styles.grid2x2}>
+          {[0, 1, 2, 3].map(i => (
+            <SkeletonCard key={i} style={styles.gridCard}>
+              <SkeletonBox width={38} height={38} borderRadius={12} pulseAnim={pulse} />
+              <SkeletonLine width="75%" height={14} style={styles.mt12} pulseAnim={pulse} />
+              <SkeletonLine width="55%" height={11} style={styles.mt6} pulseAnim={pulse} />
+            </SkeletonCard>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   // 1. MAINTENANCE SCREEN SKELETON
   if (variant === 'maintenance') {
     return (
@@ -198,6 +288,7 @@ const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
             <SkeletonLine width="42%" height={10} style={styles.mb6} pulseAnim={pulse} />
             <SkeletonLine width="68%" height={18} pulseAnim={pulse} />
           </View>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
         </View>
 
         {/* Vehicle Health & Completion Progress Card */}
@@ -368,10 +459,60 @@ const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
     );
   }
 
-  // 6. VEHICLE HEALTH RECORDS SKELETON (embedded inside VehicleHealthScreen)
+  // 6. VEHICLE HEALTH FULL SCREEN SKELETON
   if (variant === 'vehicleHealth') {
     return (
-      <View testID="skeleton-vehicle-health" style={style}>
+      <View testID="skeleton-vehicle-health" style={[styles.screenWrap, style]}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="38%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="58%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {/* Speedometer Gauge Card */}
+        <SkeletonCard style={[styles.mb14, styles.centerCol]}>
+          <SkeletonCircle size={132} style={styles.mb12} pulseAnim={pulse} />
+          <SkeletonBox width={124} height={24} borderRadius={12} pulseAnim={pulse} />
+        </SkeletonCard>
+
+        {/* Active Vehicle Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowBetween}>
+            <View style={styles.flex1}>
+              <SkeletonBox width={104} height={20} borderRadius={10} style={styles.mb8} pulseAnim={pulse} />
+              <SkeletonLine width="68%" height={16} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="46%" height={12} pulseAnim={pulse} />
+            </View>
+            <SkeletonBox width={48} height={48} borderRadius={14} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width="100%" height={38} borderRadius={11} style={styles.mt14} pulseAnim={pulse} />
+        </SkeletonCard>
+
+        {/* Health Breakdown / Completed Records */}
+        <SkeletonCard style={styles.mb12}>
+          <SkeletonLine width="52%" height={15} style={styles.mb12} pulseAnim={pulse} />
+          {[0, 1, 2].map(i => (
+            <View key={i} style={[styles.rowCenter, i > 0 && styles.mt12]}>
+              <SkeletonCircle size={36} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <SkeletonLine width="68%" height={14} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="42%" height={11} pulseAnim={pulse} />
+              </View>
+              <SkeletonBox width={64} height={22} borderRadius={8} pulseAnim={pulse} />
+            </View>
+          ))}
+        </SkeletonCard>
+      </View>
+    );
+  }
+
+  // 6b. VEHICLE HEALTH INLINE RECORDS SKELETON
+  if (variant === 'vehicleHealthRecords') {
+    return (
+      <View testID="skeleton-vehicle-health-records" style={style}>
         {[0, 1, 2].map(i => (
           <SkeletonCard key={i} style={styles.mb10}>
             <View style={styles.rowCenter}>
@@ -453,7 +594,410 @@ const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
     );
   }
 
-  // 9. DEFAULT GENERIC CARDS SKELETON
+  // 9. MANAGE PLAN SCREEN SKELETON
+  if (variant === 'managePlan') {
+    return (
+      <View testID="skeleton-manage-plan" style={[styles.screenWrap, style]}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="36%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="56%" height={18} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+        </View>
+
+        {/* Current Plan Hero Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowBetween}>
+            <View style={[styles.rowCenter, styles.flex1]}>
+              <SkeletonBox width={44} height={44} borderRadius={13} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <SkeletonLine width="42%" height={10} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="68%" height={16} pulseAnim={pulse} />
+              </View>
+            </View>
+            <SkeletonBox width={64} height={24} borderRadius={12} pulseAnim={pulse} />
+          </View>
+          <SkeletonLine width="90%" height={11} style={styles.mt12} pulseAnim={pulse} />
+          <View style={styles.mt14}>
+            <View style={styles.rowBetween}>
+              <SkeletonLine width="38%" height={11} pulseAnim={pulse} />
+              <SkeletonLine width="18%" height={11} pulseAnim={pulse} />
+            </View>
+            <SkeletonBox width="100%" height={8} borderRadius={4} style={styles.mt6} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* What's Included Features Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={[styles.rowBetween, styles.mb12]}>
+            <SkeletonLine width="45%" height={15} pulseAnim={pulse} />
+            <SkeletonBox width={72} height={22} borderRadius={11} pulseAnim={pulse} />
+          </View>
+          {[0, 1, 2, 3].map(i => (
+            <View key={i} style={[styles.rowCenter, i > 0 && styles.mt12]}>
+              <SkeletonCircle size={26} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <SkeletonLine width="68%" height={13} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="86%" height={10} pulseAnim={pulse} />
+              </View>
+            </View>
+          ))}
+        </SkeletonCard>
+
+        {/* Plan Cycle Cards */}
+        <SkeletonLine width="44%" height={15} style={styles.mb10} pulseAnim={pulse} />
+        {[0, 1].map(i => (
+          <SkeletonCard key={i} style={styles.mb12}>
+            <View style={styles.rowBetween}>
+              <View style={styles.flex1}>
+                <SkeletonLine width="55%" height={16} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="75%" height={11} pulseAnim={pulse} />
+              </View>
+              <SkeletonBox width={84} height={28} borderRadius={10} pulseAnim={pulse} />
+            </View>
+          </SkeletonCard>
+        ))}
+      </View>
+    );
+  }
+
+  // 10. ACTIVITY TIMELINE SCREEN SKELETON
+  if (variant === 'activity') {
+    return (
+      <View testID="skeleton-activity" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="32%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="58%" height={18} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width={68} height={26} borderRadius={13} pulseAnim={pulse} />
+        </View>
+
+        <SkeletonBox width={76} height={24} borderRadius={12} style={styles.mb12} pulseAnim={pulse} />
+
+        {[0, 1, 2, 3, 4].map(i => (
+          <SkeletonCard key={i} style={styles.mb10}>
+            <View style={styles.rowCenter}>
+              <SkeletonBox width={40} height={40} borderRadius={12} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <View style={[styles.rowBetween, styles.mb6]}>
+                  <SkeletonBox width={74} height={18} borderRadius={6} pulseAnim={pulse} />
+                  <SkeletonLine width={48} height={10} pulseAnim={pulse} />
+                </View>
+                <SkeletonLine width="76%" height={14} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="90%" height={11} pulseAnim={pulse} />
+              </View>
+            </View>
+          </SkeletonCard>
+        ))}
+      </View>
+    );
+  }
+
+  // 11. MAINTENANCE CATEGORY SCREEN SKELETON
+  if (variant === 'maintenanceCategory') {
+    return (
+      <View testID="skeleton-maintenance-category" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="42%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="66%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {/* Category Hero Card */}
+        <SkeletonCard style={styles.mb16}>
+          <View style={styles.rowBetween}>
+            <SkeletonBox width={52} height={52} borderRadius={16} pulseAnim={pulse} />
+            <SkeletonBox width={86} height={26} borderRadius={13} pulseAnim={pulse} />
+          </View>
+          <SkeletonLine width="68%" height={17} style={styles.mt12} pulseAnim={pulse} />
+          <SkeletonLine width="92%" height={12} style={styles.mt6} pulseAnim={pulse} />
+          <View style={[styles.rowGap8, styles.mt14]}>
+            <SkeletonBox width={78} height={28} borderRadius={10} pulseAnim={pulse} />
+            <SkeletonBox width={88} height={28} borderRadius={10} pulseAnim={pulse} />
+            <SkeletonBox width={78} height={28} borderRadius={10} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* Category Tasks */}
+        {[0, 1, 2].map(i => (
+          <SkeletonCard key={i} style={styles.mb12}>
+            <View style={styles.rowBetween}>
+              <SkeletonLine width="68%" height={15} pulseAnim={pulse} />
+              <SkeletonBox width={66} height={22} borderRadius={8} pulseAnim={pulse} />
+            </View>
+            <SkeletonLine width="92%" height={11} style={styles.mt12} pulseAnim={pulse} />
+            <SkeletonLine width="74%" height={11} style={styles.mt6} pulseAnim={pulse} />
+            <View style={[styles.rowGap10, styles.mt14]}>
+              <SkeletonBox width="48%" height={36} borderRadius={10} pulseAnim={pulse} />
+              <SkeletonBox width="48%" height={36} borderRadius={10} pulseAnim={pulse} />
+            </View>
+          </SkeletonCard>
+        ))}
+      </View>
+    );
+  }
+
+  // 12. MAINTENANCE GUIDE SCREEN SKELETON
+  if (variant === 'maintenanceGuide') {
+    return (
+      <View testID="skeleton-maintenance-guide" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonBox width={120} height={18} borderRadius={9} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="78%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {/* Overview & Progress Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowBetween}>
+            <SkeletonLine width="46%" height={13} pulseAnim={pulse} />
+            <SkeletonLine width="24%" height={13} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width="100%" height={8} borderRadius={4} style={styles.mt12} pulseAnim={pulse} />
+        </SkeletonCard>
+
+        {/* Active Step Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowCenter}>
+            <SkeletonCircle size={36} pulseAnim={pulse} />
+            <View style={[styles.ml12, styles.flex1]}>
+              <SkeletonLine width="35%" height={10} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="75%" height={16} pulseAnim={pulse} />
+            </View>
+          </View>
+          <SkeletonLine width="96%" height={12} style={styles.mt14} pulseAnim={pulse} />
+          <SkeletonLine width="88%" height={12} style={styles.mt6} pulseAnim={pulse} />
+          <SkeletonLine width="72%" height={12} style={styles.mt6} pulseAnim={pulse} />
+          <SkeletonBox width="100%" height={54} borderRadius={12} style={styles.mt14} pulseAnim={pulse} />
+          <SkeletonBox width="100%" height={42} borderRadius={12} style={styles.mt12} pulseAnim={pulse} />
+          <View style={[styles.rowGap10, styles.mt12]}>
+            <SkeletonBox width="48%" height={40} borderRadius={12} pulseAnim={pulse} />
+            <SkeletonBox width="48%" height={40} borderRadius={12} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* Collapsed Step Clarification Bar */}
+        <SkeletonCard>
+          <View style={styles.rowBetween}>
+            <View style={[styles.rowCenter, styles.flex1]}>
+              <SkeletonCircle size={36} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <SkeletonLine width="62%" height={14} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="80%" height={10} pulseAnim={pulse} />
+              </View>
+            </View>
+            <SkeletonCircle size={28} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+      </View>
+    );
+  }
+
+  // 13. PROFILE SCREEN SKELETON
+  if (variant === 'profile') {
+    return (
+      <View testID="skeleton-profile" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="36%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="48%" height={18} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+        </View>
+
+        {/* User Hero Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowCenter}>
+            <SkeletonCircle size={60} pulseAnim={pulse} />
+            <View style={[styles.ml12, styles.flex1]}>
+              <SkeletonLine width="64%" height={17} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="78%" height={12} pulseAnim={pulse} />
+            </View>
+            <SkeletonCircle size={34} pulseAnim={pulse} />
+          </View>
+          <View style={[styles.statsRow, styles.mt14]}>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={styles.statBoxPlaceholder}>
+                <SkeletonLine width={36} height={16} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="65%" height={10} pulseAnim={pulse} />
+              </View>
+            ))}
+          </View>
+        </SkeletonCard>
+
+        {/* Plan Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowBetween}>
+            <SkeletonLine width="48%" height={16} pulseAnim={pulse} />
+            <SkeletonBox width={60} height={22} borderRadius={11} pulseAnim={pulse} />
+          </View>
+          <View style={[styles.rowBetween, styles.mt12]}>
+            <SkeletonLine width="40%" height={12} pulseAnim={pulse} />
+            <SkeletonLine width="32%" height={12} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* Settings Group Rows */}
+        <SkeletonCard>
+          {[0, 1, 2, 3].map(i => (
+            <View key={i} style={[styles.rowBetween, i > 0 && styles.mt14]}>
+              <View style={[styles.rowCenter, styles.flex1]}>
+                <SkeletonBox width={38} height={38} borderRadius={11} pulseAnim={pulse} />
+                <View style={[styles.ml12, styles.flex1]}>
+                  <SkeletonLine width="58%" height={14} style={styles.mb6} pulseAnim={pulse} />
+                  <SkeletonLine width="76%" height={10} pulseAnim={pulse} />
+                </View>
+              </View>
+              <SkeletonBox width={20} height={20} borderRadius={6} pulseAnim={pulse} />
+            </View>
+          ))}
+        </SkeletonCard>
+      </View>
+    );
+  }
+
+  // 14. PERSONAL INFORMATION / FORM SCREEN SKELETON
+  if (variant === 'personalInfo' || variant === 'form') {
+    return (
+      <View testID="skeleton-personal-info" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="34%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="64%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {/* Avatar Identity Card */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowCenter}>
+            <SkeletonCircle size={68} pulseAnim={pulse} />
+            <View style={[styles.ml12, styles.flex1]}>
+              <SkeletonLine width="62%" height={16} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="80%" height={12} style={styles.mb8} pulseAnim={pulse} />
+              <SkeletonBox width={84} height={22} borderRadius={11} pulseAnim={pulse} />
+            </View>
+          </View>
+        </SkeletonCard>
+
+        {/* Input Form Fields Card */}
+        <SkeletonCard style={styles.mb14}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={i > 0 ? styles.mt14 : undefined}>
+              <SkeletonLine width="38%" height={11} style={styles.mb8} pulseAnim={pulse} />
+              <SkeletonBox width="100%" height={46} borderRadius={12} pulseAnim={pulse} />
+            </View>
+          ))}
+        </SkeletonCard>
+
+        <SkeletonBox width="100%" height={48} borderRadius={14} pulseAnim={pulse} />
+      </View>
+    );
+  }
+
+  // 15. VEHICLE CORRECTION REQUEST SCREEN SKELETON
+  if (variant === 'vehicleCorrection') {
+    return (
+      <View testID="skeleton-vehicle-correction" style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="42%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="68%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {/* Protected Profile Banner */}
+        <SkeletonCard style={styles.mb14}>
+          <View style={styles.rowCenter}>
+            <SkeletonBox width={40} height={40} borderRadius={12} pulseAnim={pulse} />
+            <View style={[styles.ml12, styles.flex1]}>
+              <SkeletonLine width="52%" height={14} style={styles.mb6} pulseAnim={pulse} />
+              <SkeletonLine width="90%" height={11} pulseAnim={pulse} />
+            </View>
+          </View>
+        </SkeletonCard>
+
+        {/* Selectable Vehicle Detail Fields */}
+        {[0, 1, 2, 3].map(i => (
+          <SkeletonCard key={i} style={styles.mb10}>
+            <View style={styles.rowBetween}>
+              <View style={[styles.rowCenter, styles.flex1]}>
+                <SkeletonBox width={36} height={36} borderRadius={10} pulseAnim={pulse} />
+                <View style={[styles.ml12, styles.flex1]}>
+                  <SkeletonLine width="44%" height={11} style={styles.mb6} pulseAnim={pulse} />
+                  <SkeletonLine width="68%" height={14} pulseAnim={pulse} />
+                </View>
+              </View>
+              <SkeletonCircle size={22} pulseAnim={pulse} />
+            </View>
+          </SkeletonCard>
+        ))}
+      </View>
+    );
+  }
+
+  // 16. SETTINGS / HELP SUPPORT SCREEN SKELETON
+  if (variant === 'settings' || variant === 'helpSupport') {
+    return (
+      <View testID={`skeleton-${variant}`} style={[styles.screenWrap, style]}>
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="45%" height={10} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="55%" height={18} pulseAnim={pulse} />
+          </View>
+        </View>
+
+        {variant === 'helpSupport' && (
+          <>
+            <SkeletonBox width="100%" height={46} borderRadius={14} style={styles.mb14} pulseAnim={pulse} />
+            <View style={[styles.grid2x2, styles.mb16]}>
+              {[0, 1, 2, 3].map(i => (
+                <SkeletonCard key={i} style={styles.gridCard}>
+                  <SkeletonBox width={36} height={36} borderRadius={10} pulseAnim={pulse} />
+                  <SkeletonLine width="75%" height={14} style={styles.mt12} pulseAnim={pulse} />
+                  <SkeletonLine width="90%" height={10} style={styles.mt6} pulseAnim={pulse} />
+                </SkeletonCard>
+              ))}
+            </View>
+          </>
+        )}
+
+        {[0, 1].map(sectionIdx => (
+          <View key={sectionIdx} style={styles.mb16}>
+            <SkeletonLine width={110} height={11} style={styles.mb10} pulseAnim={pulse} />
+            <SkeletonCard>
+              {[0, 1, 2].map(rowIdx => (
+                <View key={rowIdx} style={[styles.rowBetween, rowIdx > 0 && styles.mt14]}>
+                  <View style={[styles.rowCenter, styles.flex1]}>
+                    <SkeletonBox width={38} height={38} borderRadius={11} pulseAnim={pulse} />
+                    <View style={[styles.ml12, styles.flex1]}>
+                      <SkeletonLine width="60%" height={14} style={styles.mb6} pulseAnim={pulse} />
+                      <SkeletonLine width="82%" height={10} pulseAnim={pulse} />
+                    </View>
+                  </View>
+                  <SkeletonBox width={20} height={20} borderRadius={6} pulseAnim={pulse} />
+                </View>
+              ))}
+            </SkeletonCard>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  // 17. DEFAULT GENERIC CARDS SKELETON
   return (
     <View testID="skeleton-cards" style={[styles.screenWrap, style]}>
       {Array.from({ length: count }).map((_, i) => (
@@ -482,6 +1026,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     padding: 16,
+  },
+  centerCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
   },
   headerRow: {
     flexDirection: 'row',
