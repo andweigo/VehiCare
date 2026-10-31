@@ -37,6 +37,7 @@ import AILimitModal from '../components/AILimitModal';
 import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
 import AiThinkingBubble from '../components/AiThinkingBubble';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import CustomModal from '../components/CustomModal';
 import CustomToast from '../components/CustomToast';
 import DiagnosisLimitModal from '../components/DiagnosisLimitModal';
 import DiagnosticResultModal from '../components/DiagnosticResultModal';
@@ -578,6 +579,14 @@ export default function AskVehiCareScreen({
   const [confirmedActionMeta, setConfirmedActionMeta] = useState({});
   const [cancelledActionIds, setCancelledActionIds] = useState([]);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
+  const [actionResultModal, setActionResultModal] = useState({
+    visible: false,
+    type: 'success',
+    badgeLabel: 'SUCCESS',
+    title: '',
+    message: '',
+    primaryLabel: 'Done',
+  });
 
   const vehicleProfile =
     isAuthenticated
@@ -1134,8 +1143,37 @@ export default function AskVehiCareScreen({
       }
 
       const feedbackText = res?.message || resultPayload?.message || 'Action executed successfully.';
-      setFeedbackNotice(feedbackText);
-      setTimeout(() => setFeedbackNotice(null), 4000);
+
+      const modalTitle =
+        action === 'create_vehicle'
+          ? 'Vehicle Added Successfully'
+          : action === 'update_vehicle'
+          ? 'Vehicle Profile Updated'
+          : action === 'switch_active_vehicle'
+          ? 'Active Vehicle Switched'
+          : isMaintenanceCreationAction
+          ? 'Maintenance Added Successfully'
+          : 'Action Completed';
+
+      const modalBadge =
+        action === 'create_vehicle'
+          ? 'VEHICLE ADDED'
+          : action === 'update_vehicle'
+          ? 'VEHICLE UPDATED'
+          : action === 'switch_active_vehicle'
+          ? 'VEHICLE SWITCHED'
+          : isMaintenanceCreationAction
+          ? 'MAINTENANCE SAVED'
+          : 'SUCCESS';
+
+      setActionResultModal({
+        visible: true,
+        type: 'success',
+        badgeLabel: modalBadge,
+        title: modalTitle,
+        message: feedbackText,
+        primaryLabel: action === 'create_vehicle' ? 'Awesome' : 'Done',
+      });
 
       const confirmMessage = {
         id: `assistant-confirmed-${Date.now()}`,
@@ -1149,7 +1187,14 @@ export default function AskVehiCareScreen({
       addMessageToSession(currentSessionId, ownerUserId, confirmMessage);
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Could not execute requested action.';
-      Alert.alert('Action Failed', msg);
+      setActionResultModal({
+        visible: true,
+        type: 'error',
+        badgeLabel: 'ACTION FAILED',
+        title: 'Action Failed',
+        message: msg,
+        primaryLabel: 'Close',
+      });
     } finally {
       setIsExecutingAction(false);
     }
@@ -1387,6 +1432,28 @@ export default function AskVehiCareScreen({
         }
       } catch (vehErr) {
         console.warn('[AskVehiCareScreen] Could not refresh vehicles after chat onboarding:', vehErr);
+      }
+
+      if (screenMountedRef.current) {
+        const createdVehicleName = resultData?.action_result?.vehicle?.display_name
+          || [
+            resultData?.action_result?.vehicle?.year,
+            resultData?.action_result?.vehicle?.make || resultData?.action_result?.vehicle?.brand,
+            resultData?.action_result?.vehicle?.model,
+          ]
+            .filter(Boolean)
+            .join(' ')
+          || 'your new vehicle';
+        setActionResultModal({
+          visible: true,
+          type: 'success',
+          badgeLabel: 'VEHICLE ADDED',
+          title: 'Vehicle Added Successfully',
+          message:
+            resultData?.action_result?.message ||
+            `Successfully added ${createdVehicleName} to your garage and set it as your active vehicle.`,
+          primaryLabel: 'Awesome',
+        });
       }
     }
 
@@ -4115,6 +4182,18 @@ export default function AskVehiCareScreen({
         secondaryLabel="Cancel"
         onConfirm={confirmNewChat}
         onCancel={() => setShowNewChatConfirmModal(false)}
+      />
+
+      {/* AI ACTION / VEHICLE ADDITION RESULT MODAL */}
+      <CustomModal
+        visible={actionResultModal.visible}
+        type={actionResultModal.type}
+        badgeLabel={actionResultModal.badgeLabel}
+        title={actionResultModal.title}
+        message={actionResultModal.message}
+        primaryLabel={actionResultModal.primaryLabel || 'Done'}
+        onConfirm={() => setActionResultModal(prev => ({ ...prev, visible: false }))}
+        onCancel={() => setActionResultModal(prev => ({ ...prev, visible: false }))}
       />
 
       <CustomToast

@@ -92,4 +92,17 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(planCode).toContain('Payment Submitted — Pending Verification');
     });
   });
+
+  describe('Conversational Vehicle Addition Modal Verification', () => {
+    it('displays CustomModal on successful vehicle addition and does not reference undefined setFeedbackNotice in AskVehiCareScreen.js', () => {
+      const askCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/AskVehiCareScreen.js'),
+        'utf8',
+      );
+      expect(askCode).not.toContain('setFeedbackNotice');
+      expect(askCode).toContain('Vehicle Added Successfully');
+      expect(askCode).toContain('actionResultModal');
+      expect(askCode).toContain('<CustomModal');
+    });
+  });
 });
