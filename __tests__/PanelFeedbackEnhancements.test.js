@@ -191,6 +191,7 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       );
       expect(dashboardCode).toContain("title: 'Manage plan'");
       expect(dashboardCode).toContain("description: 'Plan & subscription'");
+      expect(dashboardCode).toContain("title: 'Smart tips'");
       expect(dashboardCode).not.toContain("title: 'Vehicle health'");
     });
   });

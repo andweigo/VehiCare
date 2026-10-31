@@ -438,7 +438,7 @@ const DashboardScreen = ({ navigation }) => {
     },
     {
       iconName: 'auto-awesome',
-      title: 'Smart recommendations',
+      title: 'Smart tips',
       description: 'Your next steps',
       feature: 'Smart Recommendations',
       requiresAuth: true,
