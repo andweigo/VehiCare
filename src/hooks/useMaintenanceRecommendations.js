@@ -30,6 +30,18 @@ const DEFAULT_HEALTH_STATUS = {
 // Global in-memory cache to prevent flickering during vehicle switching
 const healthScoreMemoryCache = new Map();
 export const healthFactorsMemoryCache = new Map();
+const vehicleDataMemoryCache = new Map();
+
+export const getHealthScoreColor = score => {
+  const num = Number(score);
+  if (!Number.isFinite(num)) return '#32D583';
+  if (num >= 90) return '#10B981';
+  if (num >= 80) return '#32D583';
+  if (num >= 70) return '#84CC16';
+  if (num >= 60) return '#F5B942';
+  if (num >= 40) return '#FF7337';
+  return '#EF4444';
+};
 
 /**
  * Core internal hook containing the authoritative vehicle health calculation
@@ -71,11 +83,35 @@ export const useMaintenanceRecommendationsInternal = () => {
   const [serviceHistory, setServiceHistory] = useState([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState([]);
   const [repairRecords, setRepairRecords] = useState([]);
+  const [loadedVehicleId, setLoadedVehicleId] = useState(() => activeVehicleId);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(() => Boolean(activeVehicleId));
   const [initialDiagnosticsLoaded, setInitialDiagnosticsLoaded] = useState(false);
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
   const maintenanceWriteIdsRef = useRef(new Set());
   const autoSyncedTitlesRef = useRef(new Set());
+  const fetchRequestIdRef = useRef(0);
+
+  // Scope state strictly to the currently selected activeVehicleId so switching vehicles
+  // immediately reflects the new vehicle without leaking the previous vehicle's data.
+  const isCurrentVehicleLoaded = loadedVehicleId === activeVehicleId;
+  const cachedVehicleSnapshot = activeVehicleId ? vehicleDataMemoryCache.get(activeVehicleId) : null;
+
+  const effectiveDiagnostics = useMemo(
+    () => (isCurrentVehicleLoaded ? diagnostics : (cachedVehicleSnapshot?.diagnostics || [])),
+    [isCurrentVehicleLoaded, diagnostics, cachedVehicleSnapshot],
+  );
+  const effectiveServiceHistory = useMemo(
+    () => (isCurrentVehicleLoaded ? serviceHistory : (cachedVehicleSnapshot?.serviceHistory || [])),
+    [isCurrentVehicleLoaded, serviceHistory, cachedVehicleSnapshot],
+  );
+  const effectiveMaintenanceRecords = useMemo(
+    () => (isCurrentVehicleLoaded ? maintenanceRecords : (cachedVehicleSnapshot?.maintenanceRecords || [])),
+    [isCurrentVehicleLoaded, maintenanceRecords, cachedVehicleSnapshot],
+  );
+  const effectiveRepairRecords = useMemo(
+    () => (isCurrentVehicleLoaded ? repairRecords : (cachedVehicleSnapshot?.repairRecords || [])),
+    [isCurrentVehicleLoaded, repairRecords, cachedVehicleSnapshot],
+  );
 
   const vehicleInitialScore = useMemo(() => {
     const vHealth = vehicleProfile?.health || vehicleProfile?.vehicle_health || vehicleProfile?.vehicleHealth || {};
@@ -96,15 +132,37 @@ export const useMaintenanceRecommendationsInternal = () => {
 
   useEffect(() => {
     let isCancelled = false;
+    autoSyncedTitlesRef.current = new Set();
+
     if (!activeVehicleId) {
       setCachedHealthScore(null);
+      setLoadedVehicleId(null);
       return;
     }
-    setInitialDiagnosticsLoaded(false);
-    setLoadingDiagnostics(true);
+
+    const memSnapshot = vehicleDataMemoryCache.get(activeVehicleId);
+    if (memSnapshot) {
+      setDiagnostics(memSnapshot.diagnostics || []);
+      setServiceHistory(memSnapshot.serviceHistory || []);
+      setMaintenanceRecords(memSnapshot.maintenanceRecords || []);
+      setRepairRecords(memSnapshot.repairRecords || []);
+      setLoadedVehicleId(activeVehicleId);
+      setInitialDiagnosticsLoaded(true);
+      setLoadingDiagnostics(false);
+    } else {
+      setDiagnostics([]);
+      setServiceHistory([]);
+      setMaintenanceRecords([]);
+      setRepairRecords([]);
+      setLoadedVehicleId(activeVehicleId);
+      setInitialDiagnosticsLoaded(false);
+      setLoadingDiagnostics(true);
+    }
+
     if (healthScoreMemoryCache.has(activeVehicleId)) {
       setCachedHealthScore(healthScoreMemoryCache.get(activeVehicleId));
     } else {
+      setCachedHealthScore(typeof vehicleInitialScore === 'number' ? vehicleInitialScore : null);
       AsyncStorage.getItem(`@vehicare_cached_health_${activeVehicleId}`)
         .then(val => {
           if (!isCancelled && val !== null) {
@@ -120,7 +178,7 @@ export const useMaintenanceRecommendationsInternal = () => {
     return () => {
       isCancelled = true;
     };
-  }, [activeVehicleId]);
+  }, [activeVehicleId, vehicleInitialScore]);
 
   // Load completed maintenance items for active vehicle
   useEffect(() => {
@@ -175,18 +233,24 @@ export const useMaintenanceRecommendationsInternal = () => {
 
   // Fetch diagnostics, repairs, and service history scoped strictly to active vehicle
   const fetchVehicleDiagnostics = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
+
     if (!vehicleProfile) {
       setDiagnostics([]);
       setServiceHistory([]);
       setRepairRecords([]);
       setMaintenanceRecords([]);
+      setLoadedVehicleId(null);
       setLoadingDiagnostics(false);
       setInitialDiagnosticsLoaded(true);
       return;
     }
 
-    setInitialDiagnosticsLoaded(false);
-    setLoadingDiagnostics(true);
+    const hasMemSnapshot = Boolean(activeVehicleId && vehicleDataMemoryCache.has(activeVehicleId));
+    if (!hasMemSnapshot) {
+      setInitialDiagnosticsLoaded(false);
+      setLoadingDiagnostics(true);
+    }
 
     const filterByVehicle = list =>
       (list || []).filter(item => {
@@ -197,10 +261,10 @@ export const useMaintenanceRecommendationsInternal = () => {
           item.vehicle?.vehicle_id ??
           null;
 
-        if (activeVehicleId !== null && itemVid !== null) {
-          return String(itemVid) === String(activeVehicleId);
+        if (activeVehicleId !== null) {
+          return itemVid !== null && String(itemVid) === String(activeVehicleId);
         }
-        return true;
+        return itemVid === null;
       });
 
     const filterMaintenanceByVehicle = list =>
@@ -208,8 +272,6 @@ export const useMaintenanceRecommendationsInternal = () => {
         const itemVid = item.vehicle_id ?? item.vehicleId ?? item.vehicle?.id ?? item.vehicle?.vehicle_id ?? null;
         return activeVehicleId !== null && itemVid !== null && String(itemVid) === String(activeVehicleId);
       });
-
-    setMaintenanceRecords([]);
 
     try {
       // Step 1: Read local history and active diagnostic sessions INSTANTLY (< 5ms)
@@ -262,11 +324,28 @@ export const useMaintenanceRecommendationsInternal = () => {
         console.warn('Local storage error reading history:', err?.message);
       }
 
+      if (fetchRequestIdRef.current !== requestId) {
+        return;
+      }
+
       const initialFiltered = filterByVehicle(localRecords);
       const initialServices = filterMaintenanceByVehicle(localServices);
 
-      setServiceHistory(initialServices);
-      setDiagnostics(initialFiltered);
+      let resolvedDiags = initialFiltered;
+      let resolvedRepairs = hasMemSnapshot ? (vehicleDataMemoryCache.get(activeVehicleId)?.repairRecords || []) : [];
+      let resolvedMaint = hasMemSnapshot ? (vehicleDataMemoryCache.get(activeVehicleId)?.maintenanceRecords || []) : [];
+      let resolvedServices = initialServices;
+
+      if (!hasMemSnapshot) {
+        setServiceHistory(initialServices);
+        setDiagnostics(initialFiltered);
+        setRepairRecords([]);
+        setMaintenanceRecords([]);
+        setLoadedVehicleId(activeVehicleId);
+        // Mark local phase loaded immediately so switching vehicles updates the UI without waiting 8s
+        setInitialDiagnosticsLoaded(true);
+        setLoadingDiagnostics(false);
+      }
 
       // Step 2: Background API sync (8.0s timeout to accommodate mobile network/Render latency)
       if (isAuthenticated) {
@@ -284,38 +363,63 @@ export const useMaintenanceRecommendationsInternal = () => {
             timeoutPromise,
           ]);
 
-          if (Array.isArray(apiDiags) && apiDiags.length > 0) {
-            setDiagnostics(filterByVehicle(apiDiags));
+          if (fetchRequestIdRef.current !== requestId) {
+            return;
           }
-          if (Array.isArray(apiRepairs) && apiRepairs.length > 0) {
-            setRepairRecords(filterByVehicle(apiRepairs));
+
+          if (Array.isArray(apiDiags)) {
+            const filteredApiDiags = filterByVehicle(apiDiags);
+            const seenDiagIds = new Set(filteredApiDiags.map(d => String(d.id)));
+            const mergedDiags = [
+              ...filteredApiDiags,
+              ...initialFiltered.filter(d => !d.id || !seenDiagIds.has(String(d.id))),
+            ];
+            resolvedDiags = mergedDiags;
+            setDiagnostics(mergedDiags);
+          }
+          if (Array.isArray(apiRepairs)) {
+            const filteredApiRepairs = filterByVehicle(apiRepairs);
+            resolvedRepairs = filteredApiRepairs;
+            setRepairRecords(filteredApiRepairs);
           }
           if (Array.isArray(apiMaintenance)) {
             const vehicleMaintenance = filterMaintenanceByVehicle(apiMaintenance);
+            resolvedMaint = vehicleMaintenance;
             setMaintenanceRecords(vehicleMaintenance);
             const completedBackendServices = vehicleMaintenance.filter(
               m => (m.status || 'completed') === 'completed'
             );
-            setServiceHistory(prev => {
-              const combined = [...prev.filter(item => !item.id), ...completedBackendServices];
-              const seenIds = new Set();
-              return combined.filter(item => {
-                const id = item.id || `${item.title}-${item.created_at}`;
-                if (seenIds.has(id)) return false;
-                seenIds.add(id);
-                return true;
-              });
+            const combinedServices = [...initialServices.filter(item => !item.id), ...completedBackendServices];
+            const seenIds = new Set();
+            resolvedServices = combinedServices.filter(item => {
+              const id = item.id || `${item.title}-${item.created_at}`;
+              if (seenIds.has(id)) return false;
+              seenIds.add(id);
+              return true;
             });
+            setServiceHistory(resolvedServices);
           }
         } catch (err) {
           console.warn('Silent API diagnostics check:', err?.message);
         }
       }
+
+      if (fetchRequestIdRef.current === requestId && activeVehicleId) {
+        vehicleDataMemoryCache.set(activeVehicleId, {
+          diagnostics: resolvedDiags,
+          repairRecords: resolvedRepairs,
+          maintenanceRecords: resolvedMaint,
+          serviceHistory: resolvedServices,
+        });
+      }
     } catch (error) {
       console.warn('Error loading vehicle diagnostics:', error?.message);
     } finally {
-      setInitialDiagnosticsLoaded(true);
-      setLoadingDiagnostics(false);
+      if (fetchRequestIdRef.current === requestId) {
+        setLoadedVehicleId(activeVehicleId);
+        setInitialDiagnosticsLoaded(true);
+        setLoadingDiagnostics(false);
+      }
     }
   }, [vehicleProfile, activeVehicleId, isAuthenticated, userId]);
 
@@ -334,14 +438,14 @@ export const useMaintenanceRecommendationsInternal = () => {
 
   // Distinct Maintenance Tasks (Action-oriented Inspections & Tasks)
   const maintenanceTasks = useMemo(
-    () => extractMaintenanceTasks(diagnostics, repairRecords, vehicleProfile),
-    [diagnostics, repairRecords, vehicleProfile],
+    () => extractMaintenanceTasks(effectiveDiagnostics, effectiveRepairRecords, vehicleProfile),
+    [effectiveDiagnostics, effectiveRepairRecords, vehicleProfile],
   );
 
   // Distinct Smart Recommendations (Educational & Preventive Habits)
   const smartRecommendations = useMemo(
-    () => extractSmartRecommendations(diagnostics, repairRecords, vehicleProfile),
-    [diagnostics, repairRecords, vehicleProfile],
+    () => extractSmartRecommendations(effectiveDiagnostics, effectiveRepairRecords, vehicleProfile),
+    [effectiveDiagnostics, effectiveRepairRecords, vehicleProfile],
   );
 
   // Compute baseline recommendations for active vehicle
@@ -427,12 +531,20 @@ export const useMaintenanceRecommendationsInternal = () => {
   // task; completion later updates that same record instead of creating a
   // second one.
   useEffect(() => {
-    if (!isAuthenticated || !activeVehicleId || !Array.isArray(allRecommendations) || allRecommendations.length === 0) {
+    if (
+      !isAuthenticated ||
+      !activeVehicleId ||
+      !isCurrentVehicleLoaded ||
+      !initialDiagnosticsLoaded ||
+      loadingDiagnostics ||
+      !Array.isArray(allRecommendations) ||
+      allRecommendations.length === 0
+    ) {
       return;
     }
 
     const existingTitles = new Set(
-      (maintenanceRecords || [])
+      (effectiveMaintenanceRecords || [])
         .filter(record => record?.status !== 'cancelled')
         .map(record => normalizeKey(record?.title))
         .filter(Boolean),
@@ -493,7 +605,16 @@ export const useMaintenanceRecommendationsInternal = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeVehicleId, allRecommendations, isAuthenticated, isRecommendationCompleted, maintenanceRecords]);
+  }, [
+    activeVehicleId,
+    allRecommendations,
+    effectiveMaintenanceRecords,
+    initialDiagnosticsLoaded,
+    isAuthenticated,
+    isCurrentVehicleLoaded,
+    isRecommendationCompleted,
+    loadingDiagnostics,
+  ]);
 
   // Mark item as completed across all screens, AsyncStorage, and backend
   const markAsDone = useCallback(
@@ -628,7 +749,7 @@ export const useMaintenanceRecommendationsInternal = () => {
   // History Items for Active Vehicle
   const historyItems = useMemo(() => {
     const completedRecs = allRecommendations.filter(item => isRecommendationCompleted(item));
-    const merged = [...completedRecs, ...serviceHistory];
+    const merged = [...completedRecs, ...effectiveServiceHistory];
 
     merged.sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -637,7 +758,7 @@ export const useMaintenanceRecommendationsInternal = () => {
     });
 
     return merged;
-  }, [allRecommendations, isRecommendationCompleted, serviceHistory]);
+  }, [allRecommendations, isRecommendationCompleted, effectiveServiceHistory]);
 
   const diagnosticItems = useMemo(
     () => todoItems.filter(item => item.source === 'diagnostic'),
@@ -749,126 +870,176 @@ export const useMaintenanceRecommendationsInternal = () => {
     return categoryList;
   }, [vehicleProfile, diagnosticRecommendations, allRecommendations, isRecommendationCompleted]);
 
-  // Calculate Maintenance Health & Status for Active Vehicle
-  // Decoupled from arbitrary checkbox clicks; reflects verified vehicle condition,
-  // unresolved AI diagnoses, and confirmed repairs.
-  const healthStatus = useMemo(() => {
-    const activeUnresolvedDiags = (diagnostics || []).filter(d => {
-      const rep = (repairRecords || []).find(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
-      return !rep;
+  // Determine active unresolved diagnostics for the currently selected vehicle
+  const activeUnresolvedDiags = useMemo(() => {
+    return (effectiveDiagnostics || []).filter(d => {
+      const diagIdStr = String(d.id);
+      const isRepaired = (effectiveRepairRecords || []).some(
+        r => String(r.diagnostic_id || r.diagnosticId) === diagIdStr && (r.status || 'completed') === 'completed',
+      );
+      if (isRepaired) return false;
+
+      const isCompletedInMaint = (effectiveMaintenanceRecords || []).some(
+        m => String(m.diagnostic_id || m.diagnosticId) === diagIdStr && m.status === 'completed',
+      );
+      if (isCompletedInMaint) return false;
+
+      const tasksForDiag = (diagnosticRecommendations || []).filter(
+        t => t.diagnosisId && String(t.diagnosisId) === diagIdStr,
+      );
+      if (tasksForDiag.length > 0 && tasksForDiag.every(t => isRecommendationCompleted(t))) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    effectiveDiagnostics,
+    effectiveRepairRecords,
+    effectiveMaintenanceRecords,
+    diagnosticRecommendations,
+    isRecommendationCompleted,
+  ]);
+
+  const overdueMaintenanceTasks = useMemo(() => {
+    const now = Date.now();
+    return (effectiveMaintenanceRecords || []).filter(
+      r => r.status === 'pending' && r.due_date && new Date(r.due_date).getTime() < now,
+    );
+  }, [effectiveMaintenanceRecords]);
+
+  const calculatedScore = useMemo(() => {
+    // If backend profile provides an authoritative vehicle health score, use it
+    if (typeof vehicleInitialScore === 'number' && !isNaN(vehicleInitialScore)) {
+      const activeUrgentDiags = activeUnresolvedDiags.filter(d => {
+        const sev = String(d.severity || '').toLowerCase();
+        return sev === 'high' || sev === 'critical' || sev === 'urgent';
+      });
+      if (activeUrgentDiags.length > 0) {
+        return Math.min(vehicleInitialScore, 55);
+      }
+      return vehicleInitialScore;
+    }
+
+    if (activeUnresolvedDiags.length === 0) {
+      const bonus = Math.min(6, completedCount * 2);
+      const baseScore = Math.min(100, 94 + bonus);
+      if (overdueMaintenanceTasks.length === 0) return baseScore;
+      return Math.max(65, baseScore - overdueMaintenanceTasks.length * 6);
+    }
+
+    let penalty = 0;
+    activeUnresolvedDiags.forEach(d => {
+      const sev = String(d.severity || '').toLowerCase();
+      if (sev === 'high' || sev === 'critical' || sev === 'urgent') {
+        penalty += 25;
+      } else if (sev === 'medium' || sev === 'moderate') {
+        penalty += 14;
+      } else {
+        penalty += 8;
+      }
     });
 
+    if (overdueMaintenanceTasks.length > 0) {
+      penalty += overdueMaintenanceTasks.length * 5;
+    }
+
+    return Math.max(25, Math.min(92, 100 - penalty));
+  }, [vehicleInitialScore, activeUnresolvedDiags, overdueMaintenanceTasks, completedCount]);
+
+  // Calculate Maintenance Health & Status for Active Vehicle
+  // Colors dynamically scale with the health score (higher health = better color),
+  // while the badge reflects the active vehicle's real condition.
+  const healthStatus = useMemo(() => {
     const urgentDiags = activeUnresolvedDiags.filter(d => {
       const sev = String(d.severity || '').toLowerCase();
       return sev === 'high' || sev === 'critical' || sev === 'urgent';
     });
 
-    if (urgentDiags.length > 0) {
+    const dynamicColor = getHealthScoreColor(calculatedScore);
+
+    if (urgentDiags.length > 0 || calculatedScore < 40) {
       return {
         label: 'Needs Immediate Attention',
         code: 'CRITICAL',
-        color: '#FF5A5F',
+        color: dynamicColor,
         icon: 'warning',
-        explanation: `${urgentDiags.length} critical issue identified from recent diagnostic results`,
+        explanation:
+          urgentDiags.length > 0
+            ? `${urgentDiags.length} critical issue${urgentDiags.length === 1 ? '' : 's'} identified from recent diagnostic results`
+            : 'Immediate vehicle inspection recommended.',
       };
     }
-    if (activeUnresolvedDiags.length > 0) {
+
+    if (activeUnresolvedDiags.length > 0 || calculatedScore < 60) {
       return {
         label: 'Needs Attention',
         code: 'ATTENTION',
-        color: '#F63B05',
+        color: dynamicColor,
         icon: 'report-problem',
-        explanation: `${activeUnresolvedDiags.length} item${
-          activeUnresolvedDiags.length > 1 ? 's' : ''
-        } need attention based on diagnostic history`,
+        explanation:
+          activeUnresolvedDiags.length > 0
+            ? `${activeUnresolvedDiags.length} item${activeUnresolvedDiags.length > 1 ? 's' : ''} need attention based on diagnostic history`
+            : 'Inspection recommended based on current vehicle health.',
       };
     }
-    if (preventiveItems.length > 0) {
+
+    if (overdueMaintenanceTasks.length > 0 || calculatedScore < 80) {
       return {
         label: 'Maintenance Due Soon',
         code: 'GOOD',
-        color: '#F5B942',
+        color: dynamicColor,
         icon: 'schedule',
-        explanation: `${preventiveItems.length} routine maintenance item${
-          preventiveItems.length > 1 ? 's' : ''
-        } approaching service interval`,
+        explanation:
+          overdueMaintenanceTasks.length > 0
+            ? `${overdueMaintenanceTasks.length} scheduled maintenance item${overdueMaintenanceTasks.length > 1 ? 's' : ''} due for service`
+            : 'Routine maintenance approaching service interval.',
       };
     }
+
     return {
       label: 'Optimal',
       code: 'OPTIMAL',
-      color: '#32D583',
+      color: dynamicColor,
       icon: 'check-circle',
       explanation: 'All vehicle systems are checked and running normally.',
     };
-  }, [diagnostics, repairRecords, preventiveItems]);
-
-  const calculatedScore = useMemo(() => {
-    // If backend profile provides an authoritative vehicle health score, use it
-    if (typeof vehicleInitialScore === 'number' && !isNaN(vehicleInitialScore)) {
-      const activeUrgentDiags = (diagnostics || []).filter(d => {
-        const sev = String(d.severity || '').toLowerCase();
-        const isUrgent = sev === 'high' || sev === 'critical' || sev === 'urgent';
-        const isRepaired = (repairRecords || []).some(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
-        return isUrgent && !isRepaired;
-      });
-      if (activeUrgentDiags.length > 0) {
-        return Math.min(vehicleInitialScore, 60);
-      }
-      return vehicleInitialScore;
-    }
-
-    // Calculated health based on diagnostic condition & confirmed repairs (not task checkbox clicks)
-    const activeDiags = (diagnostics || []).filter(d => {
-      const isRepaired = (repairRecords || []).some(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
-      return !isRepaired;
-    });
-
-    if (activeDiags.length === 0) {
-      const now = Date.now();
-      const overdueTasks = (maintenanceRecords || []).filter(
-        r => r.status === 'pending' && r.due_date && new Date(r.due_date).getTime() < now,
-      );
-      if (overdueTasks.length === 0) return 94;
-      return Math.max(70, 94 - overdueTasks.length * 6);
-    }
-
-    const urgentCount = activeDiags.filter(d => {
-      const sev = String(d.severity || '').toLowerCase();
-      return sev === 'high' || sev === 'critical' || sev === 'urgent';
-    }).length;
-
-    const penalty = urgentCount * 25 + (activeDiags.length - urgentCount) * 12;
-    return Math.max(30, Math.min(95, 100 - penalty));
-  }, [vehicleInitialScore, diagnostics, repairRecords, maintenanceRecords]);
+  }, [activeUnresolvedDiags, overdueMaintenanceTasks, calculatedScore]);
 
   const maintenanceHealth = useMemo(() => {
-    // While initial diagnostics are loading for active vehicle, prevent flashing unverified or stale 80%
-    if (!initialDiagnosticsLoaded || loadingDiagnostics) {
-      if (typeof cachedHealthScore === 'number' && cachedHealthScore !== 80) {
-        return cachedHealthScore;
+    if (isCurrentVehicleLoaded && (initialDiagnosticsLoaded || !loadingDiagnostics)) {
+      return calculatedScore;
+    }
+    if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
+      const memScore = healthScoreMemoryCache.get(activeVehicleId);
+      if (typeof memScore === 'number') {
+        return memScore;
       }
-      if (activeVehicleId && healthScoreMemoryCache.has(activeVehicleId)) {
-        const memScore = healthScoreMemoryCache.get(activeVehicleId);
-        if (typeof memScore === 'number' && memScore !== 80) {
-          return memScore;
-        }
-      }
-      if (typeof vehicleInitialScore === 'number' && vehicleInitialScore !== 80) {
-        return vehicleInitialScore;
-      }
-      return null;
+    }
+    if (typeof cachedHealthScore === 'number') {
+      return cachedHealthScore;
+    }
+    if (typeof vehicleInitialScore === 'number') {
+      return vehicleInitialScore;
     }
     return calculatedScore;
-  }, [initialDiagnosticsLoaded, loadingDiagnostics, cachedHealthScore, activeVehicleId, vehicleInitialScore, calculatedScore]);
+  }, [
+    isCurrentVehicleLoaded,
+    initialDiagnosticsLoaded,
+    loadingDiagnostics,
+    activeVehicleId,
+    cachedHealthScore,
+    vehicleInitialScore,
+    calculatedScore,
+  ]);
 
   // Keep memory and persistent health cache updated
   useEffect(() => {
-    if (!loadingDiagnostics && initialDiagnosticsLoaded && activeVehicleId && typeof calculatedScore === 'number') {
+    if (isCurrentVehicleLoaded && !loadingDiagnostics && initialDiagnosticsLoaded && activeVehicleId && typeof calculatedScore === 'number') {
       healthScoreMemoryCache.set(activeVehicleId, calculatedScore);
       AsyncStorage.setItem(`@vehicare_cached_health_${activeVehicleId}`, String(calculatedScore)).catch(() => {});
     }
-  }, [loadingDiagnostics, initialDiagnosticsLoaded, activeVehicleId, calculatedScore]);
+  }, [isCurrentVehicleLoaded, loadingDiagnostics, initialDiagnosticsLoaded, activeVehicleId, calculatedScore]);
 
   const resolvedTasks = useMemo(
     () => maintenanceTasks.filter(item => item.isResolved),
@@ -887,17 +1058,17 @@ export const useMaintenanceRecommendationsInternal = () => {
     maintenanceTasks: Array.isArray(maintenanceTasks) ? maintenanceTasks : [],
     smartRecommendations: Array.isArray(smartRecommendations) ? smartRecommendations : [],
     resolvedTasks: Array.isArray(resolvedTasks) ? resolvedTasks : [],
-    repairRecords: Array.isArray(repairRecords) ? repairRecords : [],
+    repairRecords: Array.isArray(effectiveRepairRecords) ? effectiveRepairRecords : [],
     allRecommendations: Array.isArray(allRecommendations) ? allRecommendations : [],
     todoItems: Array.isArray(todoItems) ? todoItems : [],
     diagnosticItems: Array.isArray(diagnosticItems) ? diagnosticItems : [],
     preventiveItems: Array.isArray(preventiveItems) ? preventiveItems : [],
     urgentDiagnosticItems: Array.isArray(urgentDiagnosticItems) ? urgentDiagnosticItems : [],
     historyItems: Array.isArray(historyItems) ? historyItems : [],
-    serviceHistory: Array.isArray(serviceHistory) ? serviceHistory : [],
-    maintenanceRecords: Array.isArray(maintenanceRecords) ? maintenanceRecords : [],
+    serviceHistory: Array.isArray(effectiveServiceHistory) ? effectiveServiceHistory : [],
+    maintenanceRecords: Array.isArray(effectiveMaintenanceRecords) ? effectiveMaintenanceRecords : [],
     groupedCategories: Array.isArray(groupedCategories) ? groupedCategories : [],
-    diagnostics: Array.isArray(diagnostics) ? diagnostics : [],
+    diagnostics: Array.isArray(effectiveDiagnostics) ? effectiveDiagnostics : [],
     dueSoonCount: Number.isInteger(dueSoonCount) ? dueSoonCount : 0,
     overdueCount: Number.isInteger(overdueCount) ? overdueCount : 0,
     completedCount: Number.isInteger(completedCount) ? completedCount : 0,

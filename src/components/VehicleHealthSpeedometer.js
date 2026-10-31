@@ -27,48 +27,97 @@ const VehicleHealthSpeedometer = ({
   const isDark = theme?.name === 'dark';
 
   const {
+    vehicleProfile,
     healthPercentage,
     healthStatus,
     healthData,
     loading,
   } = useVehicleHealth();
 
-  const score = Math.min(100, Math.max(0, Number(healthPercentage) || 94));
+  const activeVehicleId = vehicleProfile?.id ?? vehicleProfile?.vehicle_id ?? null;
 
-  // Compute live issue counts
+  const score =
+    typeof healthPercentage === 'number' && Number.isFinite(healthPercentage)
+      ? Math.min(100, Math.max(0, Math.round(healthPercentage)))
+      : 94;
+
+  // Compute live issue counts for the active vehicle
   const urgentCount = healthData?.urgentDiagnosticItems?.length || 0;
-  const diagCount = (healthData?.diagnosticItems?.length || 0) + urgentCount;
+  const diagCount = healthData?.diagnosticItems?.length || 0;
   const preventiveCount = healthData?.preventiveItems?.length || 0;
 
   // Animated sweep value (0 -> score)
   const animValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (loading) return;
-
-    // Reset and sweep smoothly up to the score like a revving sports tachometer
+    // Reset and sweep smoothly up to the active vehicle's real health score
     animValue.setValue(0);
     Animated.sequence([
       Animated.timing(animValue, {
         toValue: 100,
-        duration: 450,
+        duration: 420,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
       Animated.timing(animValue, {
         toValue: score,
-        duration: 400,
+        duration: 380,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start();
-  }, [score, loading, animValue]);
+  }, [score, activeVehicleId, animValue]);
 
   // Needle rotation interpolation: 0% -> START_ANGLE (-120deg), 100% -> START_ANGLE + ARC_ANGLE (120deg)
   const needleRotation = animValue.interpolate({
     inputRange: [0, 100],
     outputRange: [`${START_ANGLE}deg`, `${START_ANGLE + ARC_ANGLE}deg`],
   });
+
+  // Progressive health color palette: the higher the vehicle health score, the better the color
+  // (decoupled from whether the badge says ATTENTION so higher health always updates the colors used)
+  const scorePalette = useMemo(() => {
+    if (score >= 90) {
+      return {
+        color: '#10B981',
+        glowColor: 'rgba(16, 185, 129, 0.22)',
+        bgColor: 'rgba(16, 185, 129, 0.14)',
+      };
+    }
+    if (score >= 80) {
+      return {
+        color: '#32D583',
+        glowColor: 'rgba(50, 213, 131, 0.20)',
+        bgColor: 'rgba(50, 213, 131, 0.14)',
+      };
+    }
+    if (score >= 70) {
+      return {
+        color: '#84CC16',
+        glowColor: 'rgba(132, 204, 22, 0.20)',
+        bgColor: 'rgba(132, 204, 22, 0.14)',
+      };
+    }
+    if (score >= 60) {
+      return {
+        color: '#F5B942',
+        glowColor: 'rgba(245, 185, 66, 0.20)',
+        bgColor: 'rgba(245, 185, 66, 0.14)',
+      };
+    }
+    if (score >= 40) {
+      return {
+        color: '#FF7337',
+        glowColor: 'rgba(255, 115, 55, 0.20)',
+        bgColor: 'rgba(255, 115, 55, 0.14)',
+      };
+    }
+    return {
+      color: '#EF4444',
+      glowColor: 'rgba(239, 68, 68, 0.22)',
+      bgColor: 'rgba(239, 68, 68, 0.14)',
+    };
+  }, [score]);
 
   // 4 Standard Dynamic Vehicle Health Badges: OPTIMAL, GOOD, ATTENTION, CRITICAL
   const statusInfo = useMemo(() => {
@@ -81,13 +130,13 @@ const VehicleHealthSpeedometer = ({
       code === 'CRITICAL' ||
       rawLabel.includes('CRITICAL') ||
       rawLabel.includes('IMMEDIATE') ||
-      (score !== null && score < 40)
+      score < 40
     ) {
       return {
         badge: 'CRITICAL',
-        color: '#EF4444',
-        glowColor: 'rgba(239, 68, 68, 0.16)',
-        bgColor: 'rgba(239, 68, 68, 0.14)',
+        color: scorePalette.color,
+        glowColor: scorePalette.glowColor,
+        bgColor: scorePalette.bgColor,
         detailText: urgentCount > 0
           ? `${urgentCount} critical issue${urgentCount === 1 ? '' : 's'} reported`
           : diagCount > 0
@@ -101,14 +150,16 @@ const VehicleHealthSpeedometer = ({
       diagCount > 0 ||
       code === 'ATTENTION' ||
       rawLabel.includes('ATTENTION') ||
-      (score !== null && score < 60)
+      score < 60
     ) {
       return {
         badge: 'ATTENTION',
-        color: '#FF7337',
-        glowColor: 'rgba(255, 115, 55, 0.16)',
-        bgColor: 'rgba(255, 115, 55, 0.14)',
-        detailText: `${diagCount > 0 ? diagCount : 1} issue${(diagCount > 1 || diagCount === 0) ? 's' : ''} reported`,
+        color: scorePalette.color,
+        glowColor: scorePalette.glowColor,
+        bgColor: scorePalette.bgColor,
+        detailText: diagCount > 0
+          ? `${diagCount} issue${diagCount === 1 ? '' : 's'} reported`
+          : 'Inspection recommended',
       };
     }
 
@@ -118,13 +169,13 @@ const VehicleHealthSpeedometer = ({
       code === 'GOOD' ||
       rawLabel.includes('DUE') ||
       rawLabel.includes('GOOD') ||
-      (score !== null && score < 80)
+      score < 80
     ) {
       return {
         badge: 'GOOD',
-        color: '#F5B942',
-        glowColor: 'rgba(245, 185, 66, 0.16)',
-        bgColor: 'rgba(245, 185, 66, 0.14)',
+        color: scorePalette.color,
+        glowColor: scorePalette.glowColor,
+        bgColor: scorePalette.bgColor,
         detailText: preventiveCount > 0
           ? `${preventiveCount} task${preventiveCount === 1 ? '' : 's'} due soon`
           : 'Maintenance due soon',
@@ -134,12 +185,12 @@ const VehicleHealthSpeedometer = ({
     // 4. OPTIMAL: Score >= 80, no unresolved diagnostic issues
     return {
       badge: 'OPTIMAL',
-      color: '#32D583',
-      glowColor: 'rgba(50, 213, 131, 0.16)',
-      bgColor: 'rgba(50, 213, 131, 0.14)',
+      color: scorePalette.color,
+      glowColor: scorePalette.glowColor,
+      bgColor: scorePalette.bgColor,
       detailText: 'All systems checked',
     };
-  }, [score, urgentCount, diagCount, preventiveCount, healthStatus]);
+  }, [score, urgentCount, diagCount, preventiveCount, healthStatus, scorePalette]);
 
   const statusColor = statusInfo.color;
   const statusGlowColor = statusInfo.glowColor;

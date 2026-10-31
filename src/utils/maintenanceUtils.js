@@ -1062,19 +1062,29 @@ export const mergeRecommendations = (diagnosticRecs, baselineRecs, vehicleProfil
 };
 
 /**
- * Return health indicator color matching SmartRecommendationsScreen.
+ * Return health indicator color based on health percentage (higher health = better color).
  */
 export const getHealthBarColor = (healthPercentage, theme) => {
-  if (healthPercentage >= 80) {
-    return theme?.success || '#35B86B';
+  const score = Number(healthPercentage);
+  if (!Number.isFinite(score)) {
+    return theme?.success || '#32D583';
   }
-  if (healthPercentage >= 60) {
-    return theme?.accent || '#F63B05';
+  if (score >= 90) {
+    return '#10B981';
   }
-  if (healthPercentage >= 40) {
-    return '#D6A23A';
+  if (score >= 80) {
+    return '#32D583';
   }
-  return '#FF5A5F';
+  if (score >= 70) {
+    return '#84CC16';
+  }
+  if (score >= 60) {
+    return '#F5B942';
+  }
+  if (score >= 40) {
+    return '#FF7337';
+  }
+  return '#EF4444';
 };
 
 /**

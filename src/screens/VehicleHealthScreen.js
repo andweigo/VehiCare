@@ -57,21 +57,25 @@ const VehicleHealthScreen = ({ navigation }) => {
 
   const getHealthColor = score => {
     if (typeof score !== 'number' || score === null) {
-      return theme.accent;
+      return '#32D583';
+    }
+    if (score >= 90) {
+      return '#10B981';
     }
     if (score >= 80) {
-      return theme.success || '#35B86B';
+      return '#32D583';
     }
-
+    if (score >= 70) {
+      return '#84CC16';
+    }
     if (score >= 60) {
-      return theme.accent;
+      return '#F5B942';
     }
-
     if (score >= 40) {
-      return '#D6A23A';
+      return '#FF7337';
     }
 
-    return '#FF5A5F';
+    return '#EF4444';
   };
 
   const getVehicleIconName = vehicleTypeValue => {

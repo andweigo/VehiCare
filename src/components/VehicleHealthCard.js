@@ -176,19 +176,23 @@ const VehicleHealthCard = ({ onPress }) => {
   // ==========================================
 
   const getHealthColor = value => {
+    if (value >= 90) {
+      return '#10B981';
+    }
     if (value >= 80) {
-      return theme.success || '#35B86B';
+      return '#32D583';
     }
-
+    if (value >= 70) {
+      return '#84CC16';
+    }
     if (value >= 60) {
-      return theme.accent;
+      return '#F5B942';
     }
-
     if (value >= 40) {
-      return '#D6A23A';
+      return '#FF7337';
     }
 
-    return '#FF5A5F';
+    return '#EF4444';
   };
 
   const healthColor = getHealthColor(

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { VehicleHealthContext } from '../context/VehicleHealthContext';
 import {
+  getHealthScoreColor,
   healthFactorsMemoryCache,
 } from './useMaintenanceRecommendations';
 
@@ -69,6 +70,7 @@ const useVehicleHealth = () => {
     if (healthFactorsMemoryCache.has(activeVehicleId)) {
       setCachedFactors(healthFactorsMemoryCache.get(activeVehicleId));
     } else {
+      setCachedFactors(null);
       AsyncStorage.getItem(`@vehicare_cached_factors_${activeVehicleId}`)
         .then(val => {
           if (!isCancelled && val) {
@@ -94,12 +96,12 @@ const useVehicleHealth = () => {
 
   // Dynamic maintenanceHealth derived from active diagnostic records and maintenance history
   // is authoritative across the entire application to prevent score divergence.
-  const hasLoadedHealth = typeof maintenanceHealth === 'number' && Boolean(maintenance.initialDiagnosticsLoaded);
-  const healthScore = hasLoadedHealth ? maintenanceHealth : (isDiagnosticsLoading ? null : 100);
+  const hasLoadedHealth = typeof maintenanceHealth === 'number' && Number.isFinite(maintenanceHealth);
+  const healthScore = hasLoadedHealth ? maintenanceHealth : (isDiagnosticsLoading ? null : 94);
 
   const healthPercentage = (typeof healthScore === 'number' && Number.isFinite(healthScore))
     ? Math.min(100, Math.max(0, Math.round(healthScore)))
-    : (isDiagnosticsLoading ? null : 100);
+    : (isDiagnosticsLoading ? null : 94);
 
   const rawHealthStatus = recHealthStatus || vehicleHealth?.status || vehicleHealth?.health_status;
 
@@ -129,15 +131,9 @@ const useVehicleHealth = () => {
         : healthPercentage >= 60
         ? 'schedule'
         : 'warning',
-    color: (typeof rawHealthStatus === 'object' && rawHealthStatus?.color && rawHealthStatus?.code !== 'NO_HISTORY')
-      ? rawHealthStatus.color
-      : healthPercentage === null
-        ? '#F63B05'
-        : healthPercentage >= 80
-        ? '#32D583'
-        : healthPercentage >= 60
-        ? '#F5B942'
-        : '#FF5A5F',
+    color: healthPercentage !== null
+      ? getHealthScoreColor(healthPercentage)
+      : '#32D583',
     explanation: (typeof rawHealthStatus === 'object' && rawHealthStatus?.explanation)
       ? rawHealthStatus.explanation
       : undefined,

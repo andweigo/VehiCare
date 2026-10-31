@@ -319,7 +319,16 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   }, [progressPercentage, progressWidth]);
 
   const healthTheme = useMemo(() => {
-    // 1. Optimal (>= 80%): Emerald green
+    if (healthPercentage >= 90) {
+      return {
+        color: '#10B981',
+        bgColor: 'rgba(16, 185, 129, 0.14)',
+        borderColor: 'rgba(16, 185, 129, 0.35)',
+        glowColor: 'rgba(16, 185, 129, 0.20)',
+        label: 'OPTIMAL',
+        conditionText: 'Optimal vehicle condition',
+      };
+    }
     if (healthPercentage >= 80) {
       return {
         color: '#32D583',
@@ -330,7 +339,16 @@ const SmartRecommendationsScreen = ({ navigation }) => {
         conditionText: 'Optimal vehicle condition',
       };
     }
-    // 2. Good (60 - 79%): Amber / Gold
+    if (healthPercentage >= 70) {
+      return {
+        color: '#84CC16',
+        bgColor: 'rgba(132, 204, 22, 0.14)',
+        borderColor: 'rgba(132, 204, 22, 0.35)',
+        glowColor: 'rgba(132, 204, 22, 0.20)',
+        label: 'GOOD',
+        conditionText: 'Good vehicle condition',
+      };
+    }
     if (healthPercentage >= 60) {
       return {
         color: '#F5B942',
@@ -341,7 +359,6 @@ const SmartRecommendationsScreen = ({ navigation }) => {
         conditionText: 'Routine maintenance approaching',
       };
     }
-    // 3. Attention (40 - 59%): Vibrant Orange
     if (healthPercentage >= 40) {
       return {
         color: '#FF7337',
@@ -352,7 +369,6 @@ const SmartRecommendationsScreen = ({ navigation }) => {
         conditionText: 'Inspection recommended',
       };
     }
-    // 4. Critical (< 40%): Alert Red
     return {
       color: '#EF4444',
       bgColor: 'rgba(239, 68, 68, 0.14)',

@@ -18,6 +18,12 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       'src/screens/MaintenanceGuideScreen.js',
       'src/components/TermsAndConditionsModal.js',
       'src/data/legalDocuments.js',
+      'src/components/VehicleHealthSpeedometer.js',
+      'src/hooks/useMaintenanceRecommendations.js',
+      'src/hooks/useVehicleHealth.js',
+      'src/screens/VehicleHealthScreen.js',
+      'src/components/VehicleHealthCard.js',
+      'src/utils/maintenanceUtils.js',
     ];
 
     test.each(modifiedFiles)('%s compiles without syntax errors', relativePath => {
@@ -103,6 +109,37 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(askCode).toContain('Vehicle Added Successfully');
       expect(askCode).toContain('actionResultModal');
       expect(askCode).toContain('<CustomModal');
+    });
+  });
+
+  describe('Dynamic Vehicle Health & Progressive Color Scaling Verification', () => {
+    it('strictly scopes vehicle health state per activeVehicleId and uses progressive score-based colors in VehicleHealthSpeedometer.js', () => {
+      const speedometerCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/components/VehicleHealthSpeedometer.js'),
+        'utf8',
+      );
+      const maintHookCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/hooks/useMaintenanceRecommendations.js'),
+        'utf8',
+      );
+      const { getHealthBarColor } = require('../src/utils/maintenanceUtils');
+
+      // Speedometer uses scorePalette driven by score so ATTENTION badge does not lock the color
+      expect(speedometerCode).toContain('scorePalette');
+      expect(speedometerCode).toContain('color: scorePalette.color');
+
+      // Hook strictly isolates vehicles via loadedVehicleId & vehicleDataMemoryCache
+      expect(maintHookCode).toContain('vehicleDataMemoryCache');
+      expect(maintHookCode).toContain('loadedVehicleId === activeVehicleId');
+      expect(maintHookCode).toContain('itemVid !== null && String(itemVid) === String(activeVehicleId)');
+
+      // Progressive health colors: higher health = better color
+      expect(getHealthBarColor(95)).toBe('#10B981');
+      expect(getHealthBarColor(85)).toBe('#32D583');
+      expect(getHealthBarColor(75)).toBe('#84CC16');
+      expect(getHealthBarColor(65)).toBe('#F5B942');
+      expect(getHealthBarColor(50)).toBe('#FF7337');
+      expect(getHealthBarColor(30)).toBe('#EF4444');
     });
   });
 });
