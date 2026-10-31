@@ -334,25 +334,7 @@ const VehicleHealthSpeedometer = ({
 
           {/* Crisp White Inner Ring & Perfectly Centered Readout */}
           <View style={styles.innerWhiteRing}>
-            <Text style={styles.healthModeLabel}>Health status</Text>
-
-            <View style={styles.healthModeSelectorRow}>
-              <Text style={styles.modeTriangle}>◀</Text>
-              <Text
-                style={[
-                  styles.healthModeValue,
-                  { color: statusColor },
-                ]}
-                numberOfLines={1}
-              >
-                {statusLabel}
-              </Text>
-              <Text style={styles.modeTriangle}>▶</Text>
-            </View>
-
             <Text style={styles.centerGiantScore}>{score}</Text>
-
-            <Text style={styles.centerUnitLabel}>health %</Text>
           </View>
         </View>
       </View>
