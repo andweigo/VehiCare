@@ -30,6 +30,7 @@ class VehicleValidationController extends Controller
                 'custom_model' => 'nullable|string|max:150',
                 'custom_year' => 'nullable',
                 'model_number' => 'nullable|string|max:150',
+                'vin' => 'nullable|string|max:150',
             ]);
 
             $result = $this->validationService->validateVehicle($validated);

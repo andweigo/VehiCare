@@ -1,10 +1,11 @@
-import { BRAND, BRAND_SOFT, darkColors, lightColors } from './colors';
+import { BRAND, BRAND_SECONDARY, BRAND_SOFT, darkColors, lightColors } from './colors';
 
 export const themes = {
   dark: {
     name: 'dark',
     ...darkColors,
     accent: BRAND,
+    accentSecondary: BRAND_SECONDARY,
     accentSoft: BRAND_SOFT,
     iconInactive: '#A3A3A3',
     statusBadgeBackground: '#132017',
@@ -14,6 +15,7 @@ export const themes = {
     name: 'light',
     ...lightColors,
     accent: BRAND,
+    accentSecondary: BRAND_SECONDARY,
     accentSoft: BRAND_SOFT,
     iconInactive: '#9CA3AF',
     statusBadgeBackground: '#FEE4DA',

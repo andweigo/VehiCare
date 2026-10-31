@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
+  AppState,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,15 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { getPaymentHistory, getSubscriptionStatus, subscribePlan } from '../api/subscriptionApi';
 import vehicleApi from '../api/vehicleApi';
-import SubscriptionManagementCard from '../components/SubscriptionManagementCard';
 import PaymentModal from '../components/PaymentModal';
 import CustomModal from '../components/CustomModal';
 import useCustomModal from '../hooks/useCustomModal';
 import { useAuth } from '../context/AuthContext';
 import useRealtimeUpdates from '../hooks/useRealtimeUpdates';
 import { useTheme } from '../theme/ThemeContext';
-
-const LOGO_SOURCE = require('../assets/logo.png');
 
 const formatDate = (dateStr) => {
   if (!dateStr) return null;
@@ -74,40 +70,9 @@ const ManagePlanScreen = ({ navigation }) => {
   const isMonthlyDisabled = isCurrentMonthly || restrictionState === 'pending_verification' || restrictionState === 'refund_processing';
   const isYearlyDisabled = isCurrentYearly || restrictionState === 'pending_verification' || restrictionState === 'refund_processing';
 
-  const monthlyButtonText = useMemo(() => {
-    if (isCurrentMonthly) return 'Current Active Plan';
-    if (restrictionState === 'pending_verification') return 'Verification Pending';
-    if (restrictionState === 'refund_processing') return 'Refund in Progress';
-    if (isPremium) return 'Switch to Monthly — ₱149/mo';
-    return 'Select Premium Monthly — ₱149/mo';
-  }, [isCurrentMonthly, restrictionState, isPremium]);
-
-  const monthlyButtonIcon = isCurrentMonthly
-    ? 'check-circle'
-    : restrictionState === 'pending_verification'
-    ? 'hourglass-empty'
-    : restrictionState === 'refund_processing'
-    ? 'refresh'
-    : 'star';
-
-  const yearlyButtonText = useMemo(() => {
-    if (isCurrentYearly) return 'Current Active Plan';
-    if (restrictionState === 'pending_verification') return 'Verification Pending';
-    if (restrictionState === 'refund_processing') return 'Refund in Progress';
-    if (isPremium) return 'Switch to Yearly — ₱1,490/yr';
-    return 'Select Premium Yearly — ₱1,490/yr';
-  }, [isCurrentYearly, restrictionState, isPremium]);
-
-  const yearlyButtonIcon = isCurrentYearly
-    ? 'check-circle'
-    : restrictionState === 'pending_verification'
-    ? 'hourglass-empty'
-    : restrictionState === 'refund_processing'
-    ? 'refresh'
-    : 'stars';
-
   const currentVehicleLimit = vehicleLimit;
   const registeredVehicleCount = registeredVehicles.length;
+  const availableSpaces = Math.max(0, currentVehicleLimit - registeredVehicleCount);
 
   const vehicleUsagePercent = Math.min(
     100,
@@ -116,69 +81,71 @@ const ManagePlanScreen = ({ navigation }) => {
       : 0,
   );
 
-  const planLabel = useMemo(() => {
-    if (isPremium) return 'Premium Plan';
-    if (isFree && !isGuest) return 'Free Plan';
-    if (isGuest) return 'Guest';
-    return 'Not available';
-  }, [isPremium, isFree, isGuest]);
+  const planLabel = isPremium ? 'Premium Plan' : isFree && !isGuest ? 'Free Plan' : 'Guest';
+  const planDescription = isPremium
+    ? 'The full VehiCare experience. Diagnose, repair and care for every ride.'
+    : 'Essential vehicle care: beginner-friendly diagnosis, plausible causes, and safe checks.';
 
-  const planHeadline = useMemo(() => {
-    if (isPremium) return 'Full VehiCare Experience';
-    if (isFree) return 'Essential VehiCare Features';
-    return 'Try VehiCare without an account';
-  }, [isPremium, isFree]);
-
-  const planDescription = useMemo(() => {
-    if (isPremium) {
-      return 'Advanced multi-vehicle diagnostics, step-by-step repair guides, itemized parts & labor costs, and longitudinal history synthesis.';
-    }
-    if (isFree) {
-      return 'Essential vehicle care: beginner-friendly diagnosis, plausible causes, safe DIY checks, stopping advice, and total cost estimates.';
-    }
-    return 'Create an account to save your vehicle information, history, and access account features.';
-  }, [isPremium, isFree]);
-
-  const benefits = useMemo(() => {
+  const features = useMemo(() => {
     if (isPremium) {
       return [
-        'Up to 5 vehicle profiles',
-        '100 AI consultations per month',
-        'Deep diagnostic reasoning with supporting evidence',
-        'Step-by-step DIY & professional repair guides',
-        'Itemized cost breakdown (parts vs. labor)',
-        'Vehicle history analysis (repairs & maintenance)',
+        {
+          title: 'Up to 5 vehicle profiles',
+          desc: 'Keep all your rides in one place.',
+        },
+        {
+          title: '100 AI consultations / month',
+          desc: 'Vehicle-specific help when you need it.',
+        },
+        {
+          title: 'Deep diagnostic reasoning',
+          desc: 'Understand findings with supporting evidence.',
+        },
+        {
+          title: 'Step-by-step repair guides',
+          desc: 'DIY instructions & professional repair guidance.',
+        },
+        {
+          title: 'Itemized repair costs',
+          desc: 'See parts and labor separately.',
+        },
+        {
+          title: 'Vehicle history analysis',
+          desc: 'Insights across repairs & maintenance.',
+        },
       ];
     }
-
     return [
-      '1 vehicle profile',
-      '20 AI consultations per month',
-      'Essential diagnostic analysis & plausible causes',
-      'Plain-language explanations for beginners',
-      'Safety stopping alerts & basic DIY checks',
-      'Estimated total repair cost ranges',
+      {
+        title: '1 vehicle profile',
+        desc: 'Save and track your primary vehicle.',
+      },
+      {
+        title: '20 AI consultations / month',
+        desc: 'Essential vehicle-specific AI help.',
+      },
+      {
+        title: 'Plausible causes & DIY checks',
+        desc: 'Safe guidance for common vehicle symptoms.',
+      },
+      {
+        title: 'Estimated repair cost ranges',
+        desc: 'See general cost expectations before visiting shops.',
+      },
     ];
   }, [isPremium]);
 
-  const freeComparison = [
-    '1 saved vehicle profile',
-    '20 AI consultations / month',
-    'Essential diagnostics & plausible causes',
-    'Beginner-friendly safe checks & alerts',
-    'Estimated repair cost range',
-  ];
+  const restrictionStateRef = useRef(restrictionState);
+  useEffect(() => {
+    restrictionStateRef.current = restrictionState;
+  }, [restrictionState]);
 
-  const premiumComparison = [
-    'Up to 5 saved vehicle profiles',
-    '100 AI consultations / month',
-    'Deep diagnostic reasoning with evidence',
-    'Step-by-step repair guides & safety limits',
-    'Itemized cost breakdowns (parts + labor)',
-    'Vehicle history synthesis & correlation',
-  ];
+  const refreshUserRef = useRef(refreshUser);
+  useEffect(() => {
+    refreshUserRef.current = refreshUser;
+  }, [refreshUser]);
 
-  const loadSubscriptionData = useCallback(async () => {
+  const loadSubscriptionData = useCallback(async (options = {}) => {
     if (isGuest) {
       setStatusLoading(false);
       return;
@@ -187,9 +154,19 @@ const ManagePlanScreen = ({ navigation }) => {
     try {
       const statusRes = await getSubscriptionStatus();
       if (statusRes?.status === 'success') {
-        setRestrictionState(statusRes.restriction_state || 'none');
+        const nextRestriction = statusRes.restriction_state || 'none';
+        const prevRestriction = restrictionStateRef.current;
+        restrictionStateRef.current = nextRestriction;
+        setRestrictionState(nextRestriction);
         setCanSubmitPayment(statusRes.can_submit_payment ?? true);
         setActivePayment(statusRes.active_payment || null);
+
+        if (
+          (options.refreshAuth || prevRestriction !== nextRestriction) &&
+          typeof refreshUserRef.current === 'function'
+        ) {
+          await refreshUserRef.current();
+        }
       }
 
       const historyRes = await getPaymentHistory();
@@ -227,14 +204,46 @@ const ManagePlanScreen = ({ navigation }) => {
     }
   }, [isGuest, loadSubscriptionData]);
 
+  // Automatic status polling while a transaction is processing or pending verification
+  useEffect(() => {
+    if (
+      isGuest ||
+      (restrictionState !== 'pending_verification' &&
+        restrictionState !== 'refund_processing')
+    ) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      loadSubscriptionData({ refreshAuth: true });
+    }, 5000);
+    intervalId?.unref?.();
+
+    return () => clearInterval(intervalId);
+  }, [isGuest, restrictionState, loadSubscriptionData]);
+
+  // Refresh subscription status when the app returns to foreground
+  useEffect(() => {
+    if (isGuest || !AppState?.addEventListener) {
+      return undefined;
+    }
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        loadSubscriptionData({ refreshAuth: true });
+      }
+    });
+
+    return () => {
+      subscription?.remove?.();
+    };
+  }, [isGuest, loadSubscriptionData]);
+
   const handleRealtimePaymentUpdate = useCallback(
     async (eventData) => {
-      console.info('[ManagePlanScreen] Realtime payment update received:', eventData);
-
       if (typeof refreshUser === 'function') {
         await refreshUser();
       }
-
       if (eventData?.state_data) {
         setRestrictionState(eventData.state_data.restriction_state || 'none');
         setCanSubmitPayment(eventData.state_data.can_submit_payment ?? true);
@@ -243,7 +252,6 @@ const ManagePlanScreen = ({ navigation }) => {
           setPaymentHistory(eventData.state_data.payments);
         }
       }
-
       await loadSubscriptionData();
     },
     [refreshUser, loadSubscriptionData],
@@ -309,13 +317,15 @@ const ManagePlanScreen = ({ navigation }) => {
       return;
     }
 
-    // Toggle to the alternate billing cycle
     const targetCycle = subscriptionCycle === 'monthly' ? 'yearly' : 'monthly';
     setSelectedCycle(targetCycle);
     setShowConfirmModal(true);
   };
 
   const handleConfirmPayment = async (paymentData) => {
+    if (isSubmitting || !canSubmitPayment || restrictionState === 'pending_verification' || restrictionState === 'refund_processing') {
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await subscribePlan(
@@ -326,6 +336,11 @@ const ManagePlanScreen = ({ navigation }) => {
       );
 
       setShowConfirmModal(false);
+      setRestrictionState('pending_verification');
+      setCanSubmitPayment(false);
+      if (res?.payment) {
+        setActivePayment(res.payment);
+      }
 
       if (typeof refreshUser === 'function') {
         await refreshUser();
@@ -335,9 +350,9 @@ const ManagePlanScreen = ({ navigation }) => {
 
       const priceText = selectedCycle === 'yearly' ? '₱1,490.00' : '₱149.00';
       showModal({
-        title: 'Payment Submitted!',
-        message: `Your ${priceText} Premium payment has been submitted successfully (Reference: ${res?.payment?.reference_number || 'VC-Payment'}). It is now awaiting admin verification.`,
-        type: 'success',
+        title: 'Payment Submitted — Pending Verification',
+        message: `Your ${priceText} Premium payment request has been received (Reference: ${res?.payment?.reference_number || 'VC-Payment'}). Premium entitlements will activate automatically once verified by VehiCare.`,
+        type: 'info',
         primaryLabel: 'OK',
       });
     } catch (error) {
@@ -377,30 +392,49 @@ const ManagePlanScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Top Header */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => navigation.goBack()}
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Icon name="arrow-back" size={20} color={theme.text} />
+            </TouchableOpacity>
+
+            <View>
+              <Text style={[styles.eyebrow, { color: theme.textSecondary }]}>
+                SUBSCRIPTION
+              </Text>
+              <Text style={[styles.screenTitle, { color: theme.text }]}>
+                Manage Plan
+              </Text>
+            </View>
+          </View>
+
           <TouchableOpacity
             activeOpacity={0.75}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.openDrawer?.() || navigation.getParent()?.openDrawer?.()}
             style={[
-              styles.backButton,
+              styles.iconBtn,
               {
                 backgroundColor: theme.surface,
                 borderColor: theme.border,
               },
             ]}
           >
-            <Icon name="arrow-back" size={21} color={theme.text} />
+            <Icon name="menu" size={20} color={theme.text} />
           </TouchableOpacity>
-
-          <Text style={[styles.headerTitle, { color: theme.text }]}>
-            Manage Plan
-          </Text>
         </View>
 
         {/* WORKFLOW RESTRICTION BANNERS */}
-
-        {/* 1. Pending Verification Banner */}
         {restrictionState === 'pending_verification' && activePayment && (
           <View style={[styles.bannerCard, styles.pendingBannerCard]}>
             <View style={styles.bannerHeaderRow}>
@@ -435,22 +469,15 @@ const ManagePlanScreen = ({ navigation }) => {
                 </Text>
               </View>
               <View style={styles.bannerDetailRow}>
-                <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Payment Method</Text>
-                <Text style={[styles.bannerValue, { color: theme.text }]}>
-                  {activePayment.payment_method?.toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.bannerDetailRow}>
                 <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Status</Text>
                 <Text style={[styles.bannerValue, { color: '#F59E0B', fontFamily: 'Outfit-Bold' }]}>
-                  Pending Verification
+                  Verification Pending
                 </Text>
               </View>
             </View>
           </View>
         )}
 
-        {/* 2. Refund Processing Banner */}
         {restrictionState === 'refund_processing' && activePayment && (
           <View style={[styles.bannerCard, styles.refundProcessingBannerCard]}>
             <View style={styles.bannerHeaderRow}>
@@ -459,10 +486,10 @@ const ManagePlanScreen = ({ navigation }) => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.bannerTitle, { color: '#EF4444' }]}>
-                  Payment Rejected • Refund in Progress
+                  Refund in Progress
                 </Text>
                 <Text style={[styles.bannerSubTitle, { color: theme.textSecondary }]}>
-                  Please wait until your refund is completed before submitting another payment.
+                  Your previous payment was rejected. Please wait until your refund is completed before submitting another payment.
                 </Text>
               </View>
             </View>
@@ -478,14 +505,6 @@ const ManagePlanScreen = ({ navigation }) => {
                   ₱{Number(activePayment.amount).toFixed(2)}
                 </Text>
               </View>
-              {activePayment.rejection_reason && (
-                <View style={styles.bannerDetailRow}>
-                  <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Reason</Text>
-                  <Text style={[styles.bannerValue, { color: '#EF4444' }]}>
-                    {activePayment.rejection_reason}
-                  </Text>
-                </View>
-              )}
               <View style={styles.bannerDetailRow}>
                 <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Refund Status</Text>
                 <Text style={[styles.bannerValue, { color: '#EF4444', fontFamily: 'Outfit-Bold' }]}>
@@ -496,7 +515,6 @@ const ManagePlanScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* 3. Refund Completed Banner */}
         {restrictionState === 'refund_completed' && activePayment && (
           <View style={[styles.bannerCard, styles.refundCompletedBannerCard]}>
             <View style={styles.bannerHeaderRow}>
@@ -512,588 +530,260 @@ const ManagePlanScreen = ({ navigation }) => {
                 </Text>
               </View>
             </View>
-
-            <View style={[styles.bannerDetailsBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.bannerDetailRow}>
-                <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Refund Amount</Text>
-                <Text style={[styles.bannerValue, { color: '#3B82F6', fontFamily: 'Outfit-Bold' }]}>
-                  ₱{Number(activePayment.refund_amount || activePayment.amount).toFixed(2)}
-                </Text>
-              </View>
-              <View style={styles.bannerDetailRow}>
-                <Text style={[styles.bannerLabel, { color: theme.textSecondary }]}>Refund Status</Text>
-                <Text style={[styles.bannerValue, { color: '#3B82F6', fontFamily: 'Outfit-Bold' }]}>
-                  Refunded
-                </Text>
-              </View>
-            </View>
           </View>
         )}
 
-        {/* Current Plan Hero */}
+        {/* Hero Current Plan Card matching reference design */}
         <View
           style={[
             styles.heroCard,
             {
-              backgroundColor: theme.surface,
-              borderColor: isPremium ? theme.accent : theme.border,
+              backgroundColor: '#16161A',
+              borderColor: '#232328',
             },
           ]}
         >
+          {/* Header Row */}
           <View style={styles.heroTopRow}>
-            <View
-              style={[
-                styles.heroIcon,
-                {
-                  backgroundColor: isPremium
-                    ? theme.accentSoft
-                    : theme.surfaceAlt,
-                },
-              ]}
-            >
-              <Icon
-                name={isPremium ? 'star' : isFree ? 'person' : 'person-outline'}
-                size={24}
-                color={isPremium ? theme.accent : theme.textSecondary}
-              />
+            <View style={styles.heroIconBox}>
+              <Icon name="verified" size={22} color="#F5501C" />
             </View>
 
-            <View style={styles.heroPlanInfo}>
-              <View style={styles.heroLabelRow}>
-                <Text
-                  style={[
-                    styles.heroPlanType,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  CURRENT PLAN
-                </Text>
+            <View style={styles.heroTitleWrap}>
+              <Text style={styles.heroEyebrow}>CURRENT PLAN</Text>
+              <Text style={styles.heroTitleText}>{planLabel}</Text>
+            </View>
 
-                {isPremium && (
-                  <View
-                    style={[
-                      styles.activeBadge,
-                      { backgroundColor: theme.accentSoft },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.activeDot,
-                        { backgroundColor: theme.accent },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.activeBadgeText,
-                        { color: theme.accent },
-                      ]}
-                    >
-                      {subscriptionStatus === 'active' ? 'ACTIVE' : subscriptionStatus.toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <Text style={[styles.heroTitle, { color: theme.text }]}>
-                {planLabel}
+            <View style={styles.heroBadge}>
+              <Text style={styles.heroBadgeText}>
+                {subscriptionStatus === 'active' ? 'Active' : subscriptionStatus.toUpperCase()}
               </Text>
             </View>
           </View>
 
-          <Text style={[styles.heroHeadline, { color: theme.text }]}>
-            {planHeadline}
-          </Text>
+          {/* Description */}
+          <Text style={styles.heroDescText}>{planDescription}</Text>
 
-          <Text
-            style={[styles.heroDescription, { color: theme.textSecondary }]}
-          >
-            {planDescription}
-          </Text>
-
+          {/* Vehicle Profiles Stats & Progress */}
           {!isGuest && (
-            <View
-              style={[
-                styles.vehicleUsage,
-                {
-                  backgroundColor: theme.surfaceAlt,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.vehicleUsageHeader}>
-                <View style={styles.vehicleUsageTitleRow}>
-                  <Icon name="directions-car" size={17} color={theme.accent} />
-                  <Text
-                    style={[styles.vehicleUsageTitle, { color: theme.text }]}
-                  >
-                    Vehicle profiles
-                  </Text>
-                </View>
-
-                <Text
-                  style={[styles.vehicleUsageValue, { color: theme.text }]}
-                >
-                  {registeredVehicleCount}/{currentVehicleLimit}
+            <View style={styles.heroUsageSection}>
+              <View style={styles.usageHeaderRow}>
+                <Text style={styles.usageLabel}>Vehicle profiles</Text>
+                <Text style={styles.usageValue}>
+                  {registeredVehicleCount} / {currentVehicleLimit}
                 </Text>
               </View>
 
-              <View
-                style={[
-                  styles.progressTrack,
-                  { backgroundColor: theme.border },
-                ]}
-              >
+              <View style={styles.progressTrack}>
                 <View
                   style={[
                     styles.progressFill,
-                    {
-                      backgroundColor: theme.accent,
-                      width: `${vehicleUsagePercent}%`,
-                    },
+                    { width: `${vehicleUsagePercent}%` },
                   ]}
                 />
               </View>
 
-              <Text
-                style={[
-                  styles.vehicleUsageCaption,
-                  { color: theme.textSecondary },
-                ]}
-              >
+              <Text style={styles.usageCaption}>
                 {vehicleLoading
-                  ? 'Loading registered vehicles…'
-                  : `${registeredVehicleCount} registered ${
-                      registeredVehicleCount === 1 ? 'vehicle' : 'vehicles'
-                    } on your account (Max limit: ${currentVehicleLimit})`}
+                  ? 'Loading vehicles…'
+                  : `${availableSpaces} vehicle ${availableSpaces === 1 ? 'space' : 'spaces'} available`}
               </Text>
             </View>
           )}
         </View>
 
-        {/* Plan Benefits */}
+        {/* What's Included Section matching reference design */}
         <View
           style={[
-            styles.sectionCard,
+            styles.featuresCard,
             {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
+              backgroundColor: '#16161A',
+              borderColor: '#232328',
             },
           ]}
         >
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                What's included
-              </Text>
-              <Text
-                style={[
-                  styles.sectionSubtitle,
-                  { color: theme.textSecondary },
-                ]}
-              >
-                Features available on your plan
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.featureCount,
-                { backgroundColor: theme.accentSoft },
-              ]}
-            >
-              <Text
-                style={[styles.featureCountText, { color: theme.accent }]}
-              >
-                {benefits.length}
-              </Text>
+          <View style={styles.featuresHeader}>
+            <Text style={styles.featuresTitle}>What's included</Text>
+            <View style={styles.featuresCountBadge}>
+              <Text style={styles.featuresCountText}>{features.length} features</Text>
             </View>
           </View>
 
-          <View style={styles.benefitList}>
-            {benefits.map((item, index) => (
+          <View style={styles.featuresList}>
+            {features.map((item, idx) => (
               <View
-                key={index}
+                key={idx}
                 style={[
-                  styles.benefitRow,
-                  index !== benefits.length - 1 && {
-                    borderBottomWidth: 1,
-                    borderBottomColor: theme.border,
-                  },
+                  styles.featureRow,
+                  idx !== features.length - 1 && styles.featureRowDivider,
                 ]}
               >
-                <View
-                  style={[
-                    styles.checkCircle,
-                    { backgroundColor: theme.accentSoft },
-                  ]}
-                >
-                  <Icon name="check" size={15} color={theme.accent} />
+                <View style={styles.checkIconBox}>
+                  <Icon name="check" size={15} color="#F5501C" />
                 </View>
-                <Text style={[styles.benefitText, { color: theme.text }]}>
-                  {item}
-                </Text>
+                <View style={styles.featureTextWrap}>
+                  <Text style={styles.featureItemTitle}>{item.title}</Text>
+                  <Text style={styles.featureItemDesc}>{item.desc}</Text>
+                </View>
               </View>
             ))}
           </View>
         </View>
 
-        {/* Selectable Subscription Plans */}
-        <View style={styles.sectionBlock}>
-          <View style={styles.sectionHeadingWrap}>
-            <Text style={[styles.sectionHeading, { color: theme.text }]}>
-              Available Plans
-            </Text>
-            <Text
-              style={[
-                styles.sectionHeadingDescription,
-                { color: theme.textSecondary },
-              ]}
-            >
-              Tap a plan below to choose your billing cycle and checkout
-            </Text>
-          </View>
-
-          {/* 1. Free Plan Card */}
-          <View
-            style={[
-              styles.compareCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor: isFree ? theme.accent : theme.border,
-              },
-            ]}
-          >
-            {isFree && !isGuest && (
-              <View
-                style={[
-                  styles.currentBadge,
-                  { backgroundColor: theme.accentSoft },
-                ]}
-              >
-                <Text
-                  style={[styles.currentBadgeText, { color: theme.accent }]}
-                >
-                  CURRENT PLAN
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.compareHeader}>
-              <View
-                style={[
-                  styles.compareIcon,
-                  { backgroundColor: theme.surfaceAlt },
-                ]}
-              >
-                <Icon
-                  name="person-outline"
-                  size={21}
-                  color={theme.textSecondary}
-                />
-              </View>
-
-              <View style={styles.compareTitleWrap}>
-                <Text style={[styles.compareTitle, { color: theme.text }]}>
-                  Free Plan
-                </Text>
-                <Text
-                  style={[
-                    styles.comparePrice,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  ₱0 / month • 1 Vehicle Limit
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.compareFeatures}>
-              {freeComparison.map((item, index) => (
-                <View key={index} style={styles.compareFeatureRow}>
-                  <Icon name="check" size={16} color={theme.accent} />
-                  <Text
-                    style={[
-                      styles.compareFeatureText,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* 2. Premium Monthly Card */}
-          <TouchableOpacity
-            activeOpacity={!isMonthlyDisabled ? 0.88 : 1}
-            disabled={isMonthlyDisabled}
-            onPress={() => handleSelectPlan('monthly')}
-            style={[
-              styles.compareCard,
-              styles.premiumCompareCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor:
-                  selectedCycle === 'monthly' ? theme.accent : theme.border,
-                borderWidth: selectedCycle === 'monthly' ? 2 : 1,
-                opacity: isMonthlyDisabled && !isCurrentMonthly ? 0.65 : 1,
-              },
-            ]}
-          >
-            {isPremium && subscriptionCycle === 'monthly' && (
-              <View
-                style={[
-                  styles.currentBadge,
-                  { backgroundColor: theme.accentSoft },
-                ]}
-              >
-                <Text
-                  style={[styles.currentBadgeText, { color: theme.accent }]}
-                >
-                  ACTIVE MONTHLY PLAN
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.compareHeader}>
-              <View
-                style={[
-                  styles.compareIcon,
-                  { backgroundColor: theme.accentSoft },
-                ]}
-              >
-                <Icon name="star" size={21} color={theme.accent} />
-              </View>
-
-              <View style={styles.compareTitleWrap}>
-                <Text style={[styles.compareTitle, { color: theme.text }]}>
-                  Premium Monthly
-                </Text>
-                <Text
-                  style={[
-                    styles.comparePrice,
-                    { color: theme.accent, fontFamily: 'Outfit-Bold', fontSize: 16, marginTop: 2 },
-                  ]}
-                >
-                  ₱149 / month
-                </Text>
-                <Text
-                  style={[
-                    styles.compareSubPrice,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  Billed monthly • Up to 5 vehicles
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.compareFeatures}>
-              {premiumComparison.map((item, index) => (
-                <View key={index} style={styles.compareFeatureRow}>
-                  <Icon name="check" size={16} color={theme.accent} />
-                  <Text
-                    style={[
-                      styles.compareFeatureText,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              disabled={isMonthlyDisabled}
-              onPress={() => handleSelectPlan('monthly')}
-              style={[
-                styles.cardSelectButton,
-                {
-                  backgroundColor: isCurrentMonthly
-                    ? theme.accentSoft
-                    : isMonthlyDisabled
-                    ? theme.border
-                    : theme.accent,
-                },
-              ]}
-            >
-              <Icon
-                name={monthlyButtonIcon}
-                size={17}
-                color={isCurrentMonthly ? theme.accent : '#FFFFFF'}
-              />
-              <Text
-                style={[
-                  styles.cardSelectButtonText,
-                  isCurrentMonthly && { color: theme.accent },
-                ]}
-              >
-                {monthlyButtonText}
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-
-          {/* 3. Premium Yearly Card */}
-          <TouchableOpacity
-            activeOpacity={!isYearlyDisabled ? 0.88 : 1}
-            disabled={isYearlyDisabled}
-            onPress={() => handleSelectPlan('yearly')}
-            style={[
-              styles.compareCard,
-              styles.premiumCompareCard,
-              {
-                backgroundColor: theme.surface,
-                borderColor:
-                  selectedCycle === 'yearly' ? theme.accent : theme.border,
-                borderWidth: selectedCycle === 'yearly' ? 2 : 1,
-                opacity: isYearlyDisabled && !isCurrentYearly ? 0.65 : 1,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.premiumRibbon,
-                { backgroundColor: theme.accent },
-              ]}
-            >
-              <Icon name="star" size={12} color="#FFFFFF" />
-              <Text style={styles.premiumRibbonText}>BEST VALUE</Text>
-            </View>
-
-            {isPremium && subscriptionCycle === 'yearly' && (
-              <View
-                style={[
-                  styles.currentBadge,
-                  { backgroundColor: theme.accentSoft, top: 32 },
-                ]}
-              >
-                <Text
-                  style={[styles.currentBadgeText, { color: theme.accent }]}
-                >
-                  ACTIVE YEARLY PLAN
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.compareHeader}>
-              <View
-                style={[
-                  styles.compareIcon,
-                  { backgroundColor: theme.accentSoft },
-                ]}
-              >
-                <Icon name="stars" size={23} color={theme.accent} />
-              </View>
-
-              <View style={styles.compareTitleWrap}>
-                <Text style={[styles.compareTitle, { color: theme.text }]}>
-                  Premium Yearly
-                </Text>
-                <Text
-                  style={[
-                    styles.comparePrice,
-                    { color: theme.accent, fontFamily: 'Outfit-Bold', fontSize: 16, marginTop: 2 },
-                  ]}
-                >
-                  ₱1,490 / year
-                </Text>
-                <Text
-                  style={[
-                    styles.compareSubPrice,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  About ₱124/month (Save ₱298/year) • Up to 5 vehicles
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.compareFeatures}>
-              {premiumComparison.map((item, index) => (
-                <View key={index} style={styles.compareFeatureRow}>
-                  <Icon name="check" size={16} color={theme.accent} />
-                  <Text
-                    style={[
-                      styles.compareFeatureText,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              disabled={isYearlyDisabled}
-              onPress={() => handleSelectPlan('yearly')}
-              style={[
-                styles.cardSelectButton,
-                {
-                  backgroundColor: isCurrentYearly
-                    ? theme.accentSoft
-                    : isYearlyDisabled
-                    ? theme.border
-                    : theme.accent,
-                },
-              ]}
-            >
-              <Icon
-                name={yearlyButtonIcon}
-                size={17}
-                color={isCurrentYearly ? theme.accent : '#FFFFFF'}
-              />
-              <Text
-                style={[
-                  styles.cardSelectButtonText,
-                  isCurrentYearly && { color: theme.accent },
-                ]}
-              >
-                {yearlyButtonText}
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
+        {/* Available Plans / Upgrade / Manage Options */}
+        <View style={styles.sectionHeadingWrap}>
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>
+            {isPremium ? 'Subscription Details' : 'Choose a Plan'}
+          </Text>
+          <Text style={[styles.sectionHeadingDescription, { color: theme.textSecondary }]}>
+            {isPremium
+              ? `Currently on Premium ${subscriptionCycle === 'yearly' ? 'Yearly' : 'Monthly'} cycle`
+              : 'Select your preferred billing cycle to unlock full features'}
+          </Text>
         </View>
 
-        {/* Subscription Management Info Card */}
-        <SubscriptionManagementCard
-          isPremium={isPremium}
-          subscriptionInterval={subscriptionCycle}
-          subscriptionStatus={subscriptionStatus}
-          expiresAt={expiresAt}
-          vehicleLimit={vehicleLimit}
-          onChangeBilling={handleChangeBilling}
-        />
+        {/* If Free: Display Monthly and Yearly options */}
+        {!isPremium && (
+          <View style={styles.planCardsWrap}>
+            {/* Monthly Card */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              disabled={isSubmitting || isMonthlyDisabled}
+              onPress={() => handleSelectPlan('monthly')}
+              style={[
+                styles.planOptionCard,
+                {
+                  backgroundColor: '#16161A',
+                  borderColor: selectedCycle === 'monthly' ? '#F5501C' : '#232328',
+                  opacity: isSubmitting || isMonthlyDisabled ? 0.65 : 1,
+                },
+              ]}
+            >
+              <View style={styles.planOptionHeader}>
+                <View>
+                  <Text style={styles.planOptionTitle}>Premium Monthly</Text>
+                  <Text style={styles.planOptionPrice}>₱149 <Text style={styles.planOptionPer}>/ month</Text></Text>
+                </View>
+                <View style={styles.actionPill}>
+                  <Text style={styles.actionPillText}>
+                    {isSubmitting && selectedCycle === 'monthly'
+                      ? 'Processing…'
+                      : restrictionState === 'pending_verification'
+                      ? 'Verification Pending'
+                      : restrictionState === 'refund_processing'
+                      ? 'Refund in Progress'
+                      : 'Select'}
+                  </Text>
+                  <Icon name="arrow-forward" size={14} color="#F5501C" />
+                </View>
+              </View>
+              <Text style={styles.planOptionSub}>Up to 5 vehicles • Cancel anytime</Text>
+            </TouchableOpacity>
+
+            {/* Yearly Card */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              disabled={isSubmitting || isYearlyDisabled}
+              onPress={() => handleSelectPlan('yearly')}
+              style={[
+                styles.planOptionCard,
+                {
+                  backgroundColor: '#16161A',
+                  borderColor: selectedCycle === 'yearly' ? '#F5501C' : '#232328',
+                  opacity: isSubmitting || isYearlyDisabled ? 0.65 : 1,
+                },
+              ]}
+            >
+              <View style={styles.ribbon}>
+                <Text style={styles.ribbonText}>SAVE 17%</Text>
+              </View>
+              <View style={styles.planOptionHeader}>
+                <View>
+                  <Text style={styles.planOptionTitle}>Premium Yearly</Text>
+                  <Text style={styles.planOptionPrice}>₱1,490 <Text style={styles.planOptionPer}>/ year</Text></Text>
+                </View>
+                <View style={styles.actionPill}>
+                  <Text style={styles.actionPillText}>
+                    {isSubmitting && selectedCycle === 'yearly'
+                      ? 'Processing…'
+                      : restrictionState === 'pending_verification'
+                      ? 'Verification Pending'
+                      : restrictionState === 'refund_processing'
+                      ? 'Refund in Progress'
+                      : 'Select'}
+                  </Text>
+                  <Icon name="arrow-forward" size={14} color="#F5501C" />
+                </View>
+              </View>
+              <Text style={styles.planOptionSub}>₱124/month • Up to 5 vehicles</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* If Premium: Display Manage & Billing Switch Button */}
+        {isPremium && (
+          <View
+            style={[
+              styles.manageBox,
+              {
+                backgroundColor: '#16161A',
+                borderColor: '#232328',
+              },
+            ]}
+          >
+            <View style={styles.manageRow}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.heroEyebrow}>
+                  {subscriptionCycle === 'yearly' ? 'ACTIVE YEARLY PLAN' : 'ACTIVE MONTHLY PLAN'}
+                </Text>
+                <Text style={styles.manageTitle}>Current Active Plan</Text>
+                <Text style={styles.manageSub}>
+                  {subscriptionCycle === 'yearly' ? 'Yearly (₱1,490/yr)' : 'Monthly (₱149/mo)'}
+                  {expiresAt ? ` • Renews ${formatDate(expiresAt)}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={isSubmitting || restrictionState === 'pending_verification' || restrictionState === 'refund_processing'}
+                onPress={handleChangeBilling}
+                style={[
+                  styles.changeBillingBtn,
+                  (isSubmitting || restrictionState === 'pending_verification' || restrictionState === 'refund_processing') && { opacity: 0.6 },
+                ]}
+              >
+                <Text style={styles.changeBillingBtnText}>
+                  {isSubmitting
+                    ? 'Processing…'
+                    : restrictionState === 'pending_verification'
+                    ? 'Verification Pending'
+                    : restrictionState === 'refund_processing'
+                    ? 'Refund in Progress'
+                    : subscriptionCycle === 'monthly'
+                    ? 'Switch to Yearly — ₱1,490/yr'
+                    : 'Switch to Monthly — ₱149/mo'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* PAYMENT HISTORY SECTION */}
         {paymentHistory.length > 0 && (
           <View
             style={[
-              styles.sectionCard,
+              styles.featuresCard,
               {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
+                backgroundColor: '#16161A',
+                borderColor: '#232328',
+                marginTop: 16,
               },
             ]}
           >
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                  Payment History
-                </Text>
-                <Text
-                  style={[
-                    styles.sectionSubtitle,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  Simulated payment attempts & refund logs
-                </Text>
-              </View>
+            <View style={styles.featuresHeader}>
+              <Text style={styles.featuresTitle}>Payment History</Text>
+              <Text style={[styles.featuresCountText, { color: theme.textSecondary }]}>
+                {paymentHistory.length} records
+              </Text>
             </View>
 
             <View style={styles.historyList}>
@@ -1103,21 +793,19 @@ const ManagePlanScreen = ({ navigation }) => {
                   style={[
                     styles.historyItemCard,
                     {
-                      backgroundColor: theme.surfaceAlt,
-                      borderColor: theme.border,
+                      backgroundColor: '#1D1D22',
+                      borderColor: '#2A2A30',
                     },
                   ]}
                 >
                   <View style={styles.historyItemTopRow}>
                     <View>
-                      <Text style={[styles.historyRefText, { color: theme.text }]}>
-                        {item.reference_number}
-                      </Text>
-                      <Text style={[styles.historyMetaText, { color: theme.textSecondary }]}>
+                      <Text style={styles.historyRefText}>{item.reference_number}</Text>
+                      <Text style={styles.historyMetaText}>
                         Premium ({item.billing_cycle === 'yearly' ? 'Yearly' : 'Monthly'}) • {item.payment_method?.toUpperCase()}
                       </Text>
                     </View>
-                    <Text style={[styles.historyAmountText, { color: theme.accent }]}>
+                    <Text style={styles.historyAmountText}>
                       ₱{Number(item.amount).toFixed(2)}
                     </Text>
                   </View>
@@ -1139,7 +827,6 @@ const ManagePlanScreen = ({ navigation }) => {
                           <Text style={[styles.historyBadgeText, { color: '#EF4444' }]}>REJECTED</Text>
                         </View>
                       )}
-
                       {item.refund_status === 'processing' && (
                         <View style={[styles.historyBadge, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
                           <Text style={[styles.historyBadgeText, { color: '#EF4444' }]}>REFUND PROCESSING</Text>
@@ -1152,77 +839,38 @@ const ManagePlanScreen = ({ navigation }) => {
                       )}
                     </View>
 
-                    <Text style={[styles.historyDateText, { color: theme.textSecondary }]}>
+                    <Text style={styles.historyDateText}>
                       {formatDate(item.submitted_at || item.created_at)}
                     </Text>
                   </View>
-
-                  {item.rejection_reason && (
-                    <Text style={[styles.rejectionReasonText, { color: '#EF4444' }]}>
-                      Reason: {item.rejection_reason}
-                    </Text>
-                  )}
                 </View>
               ))}
             </View>
           </View>
         )}
 
-        {/* Support Card */}
-        <View
+        {/* Support Help Link */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handleContactSupport}
           style={[
-            styles.supportCard,
+            styles.helpRow,
             {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
+              backgroundColor: '#16161A',
+              borderColor: '#232328',
+              marginTop: 16,
             },
           ]}
         >
-          <View
-            style={[
-              styles.supportIcon,
-              { backgroundColor: theme.accentSoft },
-            ]}
-          >
-            <Icon name="support-agent" size={22} color={theme.accent} />
+          <View style={styles.helpIconBox}>
+            <Icon name="support-agent" size={20} color="#F5501C" />
           </View>
-
-          <View style={styles.supportContent}>
-            <Text style={[styles.supportTitle, { color: theme.text }]}>
-              Need help with your plan?
-            </Text>
-            <Text
-              style={[
-                styles.supportDescription,
-                { color: theme.textSecondary },
-              ]}
-            >
-              Our support team can help with subscriptions, account questions, and premium features.
-            </Text>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleContactSupport}
-              style={[
-                styles.supportButton,
-                {
-                  backgroundColor: theme.surfaceAlt,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <Icon name="chat" size={17} color={theme.accent} />
-              <Text
-                style={[
-                  styles.supportButtonText,
-                  { color: theme.accent },
-                ]}
-              >
-                Contact Support
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.helpTextWrap}>
+            <Text style={styles.helpTitle}>Need help with billing?</Text>
+            <Text style={styles.helpSub}>Contact VehiCare support team</Text>
           </View>
-        </View>
+          <Icon name="chevron-right" size={20} color="#8E8E93" />
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Payment Form Checkout Modal */}
@@ -1249,32 +897,351 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingBottom: 40,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconBtn: {
+    width: 42,
+    height: 42,
     borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
-  headerTitle: {
+  eyebrow: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  screenTitle: {
     fontFamily: 'Outfit-Bold',
     fontSize: 22,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
-  // Restriction Banners
-  bannerCard: {
+  // Hero Card
+  heroCard: {
     borderWidth: 1,
     borderRadius: 20,
-    padding: 16,
+    padding: 20,
+    marginBottom: 16,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  heroIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  heroTitleWrap: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 1,
+    color: '#8E8E93',
+  },
+  heroTitleText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+  heroBadge: {
+    backgroundColor: 'rgba(245, 80, 28, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 80, 28, 0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  heroBadgeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#F5501C',
+  },
+  heroDescText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#A0A0A5',
+    marginTop: 14,
+    marginBottom: 16,
+  },
+  heroUsageSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#232328',
+    paddingTop: 16,
+  },
+  usageHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  usageLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  usageValue: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#26262B',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#F5501C',
+    borderRadius: 3,
+  },
+  usageCaption: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+  // Features Card
+  featuresCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 20,
+  },
+  featuresHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  featuresTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  featuresCountBadge: {
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  featuresCountText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 11,
+    color: '#F5501C',
+  },
+  featuresList: {
+    marginTop: 4,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
+  featureRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#202025',
+  },
+  checkIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  featureTextWrap: {
+    flex: 1,
+  },
+  featureItemTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  featureItemDesc: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  // Heading
+  sectionHeadingWrap: {
+    marginBottom: 12,
+  },
+  sectionHeading: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+  },
+  sectionHeadingDescription: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  // Plan Options
+  planCardsWrap: {
+    gap: 12,
+  },
+  planOptionCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  ribbon: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#F5501C',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderBottomLeftRadius: 10,
+  },
+  ribbonText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 9,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  planOptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  planOptionTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  planOptionPrice: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    color: '#F5501C',
+    marginTop: 2,
+  },
+  planOptionPer: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+  planOptionSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    marginTop: 6,
+  },
+  actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  actionPillText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+    color: '#F5501C',
+  },
+  // Manage Box
+  manageBox: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  manageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  manageTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  manageSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  changeBillingBtn: {
+    backgroundColor: 'rgba(245, 80, 28, 0.14)',
+    borderWidth: 1,
+    borderColor: '#F5501C',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  changeBillingBtnText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+    color: '#F5501C',
+  },
+  // Help Row
+  helpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+  },
+  helpIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  helpTextWrap: {
+    flex: 1,
+  },
+  helpTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  helpSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    marginTop: 1,
+  },
+  // Workflow Banners
+  bannerCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
   },
   pendingBannerCard: {
     backgroundColor: 'rgba(245, 158, 11, 0.08)',
@@ -1291,30 +1258,30 @@ const styles = StyleSheet.create({
   bannerHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   bannerIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   bannerTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 16,
+    fontSize: 14,
   },
   bannerSubTitle: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
   },
   bannerDetailsBox: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    padding: 12,
-    gap: 8,
+    padding: 10,
+    gap: 6,
   },
   bannerDetailRow: {
     flexDirection: 'row',
@@ -1323,291 +1290,15 @@ const styles = StyleSheet.create({
   },
   bannerLabel: {
     fontFamily: 'Inter-Medium',
-    fontSize: 12,
+    fontSize: 11,
   },
   bannerValue: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
+    fontSize: 12,
   },
   bannerValueMono: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-  },
-  // Hero Card
-  heroCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  heroIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  heroPlanInfo: {
-    flex: 1,
-  },
-  heroLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroPlanType: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-  activeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-  activeBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  heroTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 20,
-    marginTop: 2,
-  },
-  heroHeadline: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 16,
-    marginBottom: 6,
-  },
-  heroDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 16,
-  },
-  vehicleUsage: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-  },
-  vehicleUsageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  vehicleUsageTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vehicleUsageTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 13,
-    marginLeft: 6,
-  },
-  vehicleUsageValue: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-  },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  vehicleUsageCaption: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-  },
-  // Section Card
-  sectionCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 18,
-  },
-  sectionSubtitle: {
-    fontFamily: 'Inter-Regular',
     fontSize: 12,
-    marginTop: 2,
-  },
-  featureCount: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  featureCountText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-  },
-  benefitList: {
-    marginTop: 4,
-  },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  checkCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  benefitText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-  },
-  // Comparison Section
-  sectionBlock: {
-    marginBottom: 20,
-  },
-  sectionHeadingWrap: {
-    marginBottom: 14,
-  },
-  sectionHeading: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 18,
-  },
-  sectionHeadingDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  compareCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 14,
-    position: 'relative',
-  },
-  premiumCompareCard: {
-    overflow: 'hidden',
-  },
-  currentBadge: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  currentBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  premiumRibbon: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderBottomLeftRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  premiumRibbonText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 9,
-    color: '#FFFFFF',
-    marginLeft: 3,
-    letterSpacing: 0.5,
-  },
-  compareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  compareIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  compareTitleWrap: {
-    flex: 1,
-  },
-  compareTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 16,
-  },
-  cycleBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  cycleBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9,
-  },
-  comparePrice: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 13,
-  },
-  compareSubPrice: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  compareFeatures: {
-    marginBottom: 16,
-  },
-  compareFeatureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  compareFeatureText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  cardSelectButton: {
-    borderRadius: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardSelectButtonText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginLeft: 6,
   },
   // History List
   historyList: {
@@ -1627,16 +1318,19 @@ const styles = StyleSheet.create({
   },
   historyRefText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14,
+    fontSize: 13,
+    color: '#FFFFFF',
   },
   historyMetaText: {
     fontFamily: 'Inter-Regular',
     fontSize: 11,
+    color: '#8E8E93',
     marginTop: 2,
   },
   historyAmountText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15,
+    fontSize: 14,
+    color: '#F5501C',
   },
   historyStatusRow: {
     flexDirection: 'row',
@@ -1649,7 +1343,7 @@ const styles = StyleSheet.create({
   },
   historyBadge: {
     paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 6,
   },
   historyBadgeText: {
@@ -1660,56 +1354,7 @@ const styles = StyleSheet.create({
   historyDateText: {
     fontFamily: 'Inter-Regular',
     fontSize: 11,
-  },
-  rejectionReasonText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11,
-    marginTop: 6,
-  },
-  // Support Card
-  supportCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  supportIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  supportContent: {
-    flex: 1,
-  },
-  supportTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 16,
-  },
-  supportDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4,
-    marginBottom: 14,
-  },
-  supportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  supportButtonText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    marginLeft: 6,
+    color: '#8E8E93',
   },
 });
 

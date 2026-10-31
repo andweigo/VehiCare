@@ -8,11 +8,21 @@ const DashboardGreeting = () => {
   const {
     greetingPrefix,
     userName,
-    subtitleText,
   } = useDashboardGreeting();
 
   return (
     <View style={styles.container}>
+      <Text
+        style={[
+          styles.brandTag,
+          {
+            color: theme.textSecondary || '#8E8E93',
+          },
+        ]}
+      >
+        VEHICARE
+      </Text>
+
       <Text
         style={[
           styles.title,
@@ -24,29 +34,7 @@ const DashboardGreeting = () => {
         ellipsizeMode="tail"
       >
         {greetingPrefix}
-        {userName ? ', ' : ''}
-        {userName ? (
-          <Text
-            style={{
-              color: theme.accent,
-            }}
-          >
-            {userName}
-          </Text>
-        ) : null}
-      </Text>
-
-      <Text
-        style={[
-          styles.subtitle,
-          {
-            color: theme.textSecondary,
-          },
-        ]}
-        numberOfLines={2}
-        ellipsizeMode="tail"
-      >
-        {subtitleText}
+        {userName ? `, ${userName}` : ''}
       </Text>
     </View>
   );
@@ -59,17 +47,21 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-  title: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 23,
-    lineHeight: 30,
+  brandTag: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+    marginBottom: 3,
   },
 
-  subtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 4,
+  title: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 21,
+    fontWeight: '700',
+    lineHeight: 27,
+    letterSpacing: -0.3,
   },
 });
 

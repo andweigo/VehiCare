@@ -72,6 +72,12 @@ const AIUsageCard = ({
     ? `Monthly quota • Resets ${resetShortDate}`
     : 'Monthly quota • Resets 1st of month';
 
+  const isDark = theme?.name === 'dark';
+  const cardBg = theme?.glassSurface || (isDark ? 'rgba(20, 21, 25, 0.90)' : '#18181B');
+  const cardBorder = exhausted
+    ? '#F5501C'
+    : (theme?.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.14)' : '#2E2F35'));
+
   // Loading skeleton / placeholder
   if (loading && !usage?.limit) {
     return (
@@ -80,15 +86,15 @@ const AIUsageCard = ({
         style={[
           styles.card,
           {
-            backgroundColor: theme.surface || '#151515',
-            borderColor: theme.border || '#292929',
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
           },
           style,
         ]}
       >
         <View style={styles.loadingRow}>
-          <ActivityIndicator size="small" color={theme.accent || '#F5501C'} />
-          <Text style={[styles.loadingText, { color: theme.textSecondary || '#8E8E93' }]}>
+          <ActivityIndicator size="small" color="#F5501C" />
+          <Text style={[styles.loadingText, { color: '#8E8E93' }]}>
             Loading AI consultation quota...
           </Text>
         </View>
@@ -104,22 +110,22 @@ const AIUsageCard = ({
         style={[
           styles.card,
           {
-            backgroundColor: theme.surface || '#151515',
-            borderColor: theme.border || '#292929',
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
           },
           style,
         ]}
       >
         <View style={styles.errorRow}>
           <Feather name="alert-circle" size={20} color="#F5501C" />
-          <Text style={[styles.errorText, { color: theme.textSecondary || '#8E8E93' }]}>
+          <Text style={[styles.errorText, { color: '#8E8E93' }]}>
             Unable to sync AI quota
           </Text>
           <TouchableOpacity
-            style={[styles.retryButton, { borderColor: theme.accent || '#F5501C' }]}
+            style={[styles.retryButton, { borderColor: '#F5501C' }]}
             onPress={() => refreshUsage()}
           >
-            <Text style={[styles.retryText, { color: theme.accent || '#F5501C' }]}>Retry</Text>
+            <Text style={[styles.retryText, { color: '#F5501C' }]}>Retry</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -132,8 +138,8 @@ const AIUsageCard = ({
       style={[
         styles.card,
         {
-          backgroundColor: theme.surface || '#151515',
-          borderColor: exhausted ? '#F5501C' : theme.border || '#292929',
+          backgroundColor: cardBg,
+          borderColor: cardBorder,
         },
         style,
       ]}
@@ -143,8 +149,8 @@ const AIUsageCard = ({
       {/* Top Header Row */}
       <View style={styles.cardHeader}>
         <View style={styles.headerLeft}>
-          <View style={[styles.sparkDot, { backgroundColor: theme.accent || '#F5501C' }]} />
-          <Text style={[styles.cardTag, { color: theme.textSecondary || '#8E8E93' }]}>
+          <View style={[styles.sparkDot, { backgroundColor: '#F5501C' }]} />
+          <Text style={[styles.cardTag, { color: '#8E8E93' }]}>
             AI CONSULTATION USAGE
           </Text>
         </View>
@@ -165,9 +171,9 @@ const AIUsageCard = ({
             size={76}
             strokeWidth={7}
             isExhausted={exhausted}
-            activeColor={theme.accent || '#F5501C'}
-            trackColor={theme.dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)"}
-            textColor={theme.text}
+            activeColor="#F5501C"
+            trackColor="rgba(255, 255, 255, 0.12)"
+            textColor="#FFFFFF"
             exhaustedColor="#F5501C"
             testID="dashboard-donut-ring"
           />
@@ -177,7 +183,7 @@ const AIUsageCard = ({
           <Text
             style={[
               styles.summaryTitle,
-              { color: exhausted ? '#F5501C' : theme.text || '#FFFFFF' },
+              { color: exhausted ? '#F5501C' : '#FFFFFF' },
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -186,20 +192,20 @@ const AIUsageCard = ({
           </Text>
 
           <Text
-            style={[styles.subline, { color: theme.textSecondary || '#8E8E93' }]}
+            style={[styles.subline, { color: '#8E8E93' }]}
             numberOfLines={1}
           >
             {sublineText}
           </Text>
 
           <View style={styles.actionRow}>
-            <Text style={[styles.viewDetailsText, { color: theme.accent || '#F5501C' }]}>
+            <Text style={[styles.viewDetailsText, { color: '#F5501C' }]}>
               View details
             </Text>
             <MaterialIcons
               name="chevron-right"
               size={18}
-              color={theme.accent || '#F5501C'}
+              color="#F5501C"
             />
           </View>
         </View>
@@ -228,7 +234,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     marginBottom: 16,
-    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 5,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -247,7 +257,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   cardTag: {
-    fontSize: 11,
+    fontSize: 9.5,
     fontWeight: '700',
     letterSpacing: 0.8,
     fontFamily: 'Inter-SemiBold',
@@ -260,7 +270,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   planBadgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     fontFamily: 'Inter-SemiBold',
     letterSpacing: 0.3,
@@ -279,17 +289,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   summaryTitle: {
-    fontSize: 17,
+    fontSize: 14.5,
     fontWeight: '800',
     fontFamily: 'Outfit-Bold',
+    color: '#FFFFFF',
     letterSpacing: -0.2,
-    lineHeight: 22,
+    lineHeight: 19,
     marginBottom: 3,
   },
   subline: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'Inter-Regular',
-    lineHeight: 17,
+    color: '#8E8E93',
+    lineHeight: 15,
     marginBottom: 8,
   },
   actionRow: {
@@ -297,7 +309,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   viewDetailsText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     fontFamily: 'Inter-SemiBold',
   },
@@ -358,11 +370,11 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   progressCountText: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Inter-Medium',
   },
   progressPercentText: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Inter-SemiBold',
     fontWeight: '700',
   },

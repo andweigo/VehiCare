@@ -41,6 +41,8 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
     saveError,
     validationResult,
     loadingValidation,
+    vehicleType,
+    isFreePlanAtLimit,
   } = vehicleDetails;
 
   const {
@@ -55,7 +57,10 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
     toggleDropdown,
     setModelNumber,
     openCustomVehicleModal,
+    onUpgradePress,
   } = handlers;
+
+  const isBicycleType = String(vehicleType || '').toLowerCase().includes('bicycle');
 
   return (
     <>
@@ -181,9 +186,38 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
                     </TouchableOpacity>
                   ))
                 ) : (
-                  <Text style={[styles.noResults, { color: theme.textSecondary }]}>
-                    No matching brand
-                  </Text>
+                  <View style={[styles.customSuggestionBox, { backgroundColor: theme.surface }]}>
+                    <Text style={[styles.noResults, { color: theme.textSecondary }]}>
+                      No matching brand
+                    </Text>
+                    {isFreePlanAtLimit ? (
+                      <TouchableOpacity
+                        style={[styles.customSuggestionAction, { borderTopColor: theme.border }]}
+                        onPress={onUpgradePress}
+                      >
+                        <Text style={[styles.customSuggestionText, { color: theme.accent }]}>
+                          Adding an additional custom vehicle requires Premium. Upgrade Plan →
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.customSuggestionAction, { borderTopColor: theme.border }]}
+                        onPress={() =>
+                          openCustomVehicleModal?.({
+                            brand: brandSearch,
+                            model: modelSearch,
+                            year: yearSearch,
+                          })
+                        }
+                      >
+                        <Text style={[styles.customSuggestionText, { color: theme.accent }]}>
+                          {brandSearch?.trim()
+                            ? `Add "${brandSearch.trim()}" as a custom vehicle`
+                            : 'Add as a custom vehicle'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
               </View>
             )}
@@ -253,9 +287,38 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
                     </TouchableOpacity>
                   ))
                 ) : (
-                  <Text style={[styles.noResults, { color: theme.textSecondary }]}>
-                    No matching model
-                  </Text>
+                  <View style={[styles.customSuggestionBox, { backgroundColor: theme.surface }]}>
+                    <Text style={[styles.noResults, { color: theme.textSecondary }]}>
+                      No matching model
+                    </Text>
+                    {isFreePlanAtLimit ? (
+                      <TouchableOpacity
+                        style={[styles.customSuggestionAction, { borderTopColor: theme.border }]}
+                        onPress={onUpgradePress}
+                      >
+                        <Text style={[styles.customSuggestionText, { color: theme.accent }]}>
+                          Adding an additional custom vehicle requires Premium. Upgrade Plan →
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.customSuggestionAction, { borderTopColor: theme.border }]}
+                        onPress={() =>
+                          openCustomVehicleModal?.({
+                            brand: brandSearch,
+                            model: modelSearch,
+                            year: yearSearch,
+                          })
+                        }
+                      >
+                        <Text style={[styles.customSuggestionText, { color: theme.accent }]}>
+                          {modelSearch?.trim()
+                            ? `Add "${modelSearch.trim()}" as a custom vehicle`
+                            : 'Add as a custom vehicle'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
               </View>
             )}
@@ -336,17 +399,24 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
           </View>
 
           <Text style={[styles.label, { color: theme.textSecondary }]}>
-            Vehicle Model Number
-            <Text style={[styles.optional, { color: theme.placeholder }]}>{'  '}(Optional)</Text>
+            Vehicle Identification Number (VIN)
+            <Text style={[styles.optional, { color: theme.placeholder }]}>
+              {'  '}{isBicycleType ? '(Not required for bicycles)' : '(Optional)'}
+            </Text>
           </Text>
 
           <TextInput
             style={[styles.input, { backgroundColor: theme.surfaceAlt, color: theme.text, borderColor: theme.border }]}
-            placeholder="Enter model number"
+            placeholder={
+              isBicycleType
+                ? 'Not required for bicycles (optional frame serial)'
+                : 'Enter 17-character VIN (Optional)'
+            }
             placeholderTextColor={theme.placeholder}
             value={modelNumber}
             onChangeText={setModelNumber}
             autoCapitalize="characters"
+            maxLength={isBicycleType ? 32 : 17}
           />
 
           <VehicleValidationBadge
@@ -356,7 +426,13 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
 
           <Pressable
             style={[styles.otherButton, { backgroundColor: theme.surface, borderColor: theme.accent }]}
-            onPress={openCustomVehicleModal}
+            onPress={() =>
+              openCustomVehicleModal?.({
+                brand: brandSearch,
+                model: modelSearch,
+                year: yearSearch,
+              })
+            }
             android_ripple={{ color: theme.border }}>
             <Text style={[styles.otherButtonText, { color: theme.text }]}> 
               My vehicle is not listed
@@ -370,7 +446,9 @@ const VehicleDetailsSteps = ({ vehicleDetails, handlers }) => {
           )}
 
           <Text style={[styles.helperText, { color: theme.textSecondary }]}>
-            You can usually find this on your vehicle documents or identification plate.
+            {isBicycleType
+              ? 'Bicycles do not require a 17-character VIN. You may leave this blank.'
+              : 'You can find your 17-character Vehicle Identification Number (VIN) on your registration documents or chassis plate (excludes I, O, and Q).'}
           </Text>
 
           {saveError && (!validationResult || (validationResult.is_valid && validationResult.year_valid !== false)) ? (
@@ -651,6 +729,21 @@ const styles = StyleSheet.create({
   saveErrorText: {
     fontFamily: 'Inter-Regular',
     color: '#F63B05',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  customSuggestionBox: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  customSuggestionAction: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderTopWidth: 1,
+    alignItems: 'center',
+  },
+  customSuggestionText: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 13,
     textAlign: 'center',
   },

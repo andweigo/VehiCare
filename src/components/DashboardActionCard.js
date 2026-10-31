@@ -3,54 +3,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
 
-/**
- * Category-themed Icon Fill Palette for Dashboard Action Cards
- */
-const getActionCardCategoryStyle = (categoryKey = '', isDark = false) => {
-  const norm = String(categoryKey).toLowerCase();
-
-  if (norm.includes('diag') || norm.includes('wrong') || norm.includes('problem')) {
-    return {
-      icon: 'medical-services',
-      color: isDark ? '#F63B05' : '#C2410C',
-      background: isDark ? '#27160F' : '#FEE4DA',
-    };
-  }
-
-  if (norm.includes('shop') || norm.includes('profess') || norm.includes('help')) {
-    return {
-      icon: 'storefront',
-      color: isDark ? '#F59E0B' : '#B45309',
-      background: isDark ? '#29220F' : '#FEF3C7',
-    };
-  }
-
-  if (norm.includes('maint') || norm.includes('keep')) {
-    return {
-      icon: 'build',
-      color: isDark ? '#32D583' : '#15803D',
-      background: isDark ? '#13241A' : '#DCFCE7',
-    };
-  }
-
-  if (norm.includes('recommend') || norm.includes('smart') || norm.includes('ai')) {
-    return {
-      icon: 'auto-awesome',
-      color: isDark ? '#8C7BFF' : '#6D28D9',
-      background: isDark ? '#19162A' : '#F3E8FF',
-    };
-  }
-
-  return {
-    icon: 'star',
-    color: isDark ? '#F63B05' : '#C2410C',
-    background: isDark ? '#27160F' : '#FEE4DA',
-  };
-};
-
 const DashboardActionCard = ({
   iconName,
-  categoryKey,
   title,
   description,
   onPress,
@@ -58,39 +12,46 @@ const DashboardActionCard = ({
   const { theme, themeName } = useTheme();
   const isDark = themeName === 'dark';
 
-  const categoryStyle = getActionCardCategoryStyle(categoryKey || title || iconName, isDark);
-  const displayIcon = iconName || categoryStyle.icon;
-
   return (
     <TouchableOpacity
       style={[
         styles.card,
         {
-          backgroundColor: theme.surface || '#151515',
-          borderColor: theme.border || '#292929',
+          backgroundColor: theme?.glassSurface || (isDark ? 'rgba(20, 21, 25, 0.90)' : '#18181B'),
+          borderColor: theme?.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.14)' : '#2E2F35'),
         },
       ]}
-      activeOpacity={0.84}
+      activeOpacity={0.82}
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       onPress={onPress}
     >
-      {/* Top Header Row: Category Icon Badge & Chevron */}
+      {/* Top Header Row: Outline Accent Icon & Top-Right Diagonal Arrow */}
       <View style={styles.topRow}>
-        <View style={[styles.iconContainer, { backgroundColor: categoryStyle.background }]}>
-          <Icon name={displayIcon} size={21} color={categoryStyle.color} />
-        </View>
+        <Icon
+          name={iconName || 'build'}
+          size={26}
+          color="#F5501C"
+        />
 
-        <View style={styles.chevronBox}>
-          <Icon name="chevron-right" size={18} color={theme.textSecondary} />
-        </View>
+        <Icon
+          name="call-made"
+          size={18}
+          color="#6E6E73"
+        />
       </View>
 
       {/* Content Area */}
       <View style={styles.contentWrap}>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
+        <Text
+          style={styles.title}
+          numberOfLines={2}
+        >
           {title}
         </Text>
-        <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={3}>
+        <Text
+          style={styles.description}
+          numberOfLines={2}
+        >
           {description}
         </Text>
       </View>
@@ -100,13 +61,20 @@ const DashboardActionCard = ({
 
 const styles = StyleSheet.create({
   card: {
-    width: '48.5%',
-    minHeight: 165,
-    borderWidth: 1.5,
+    backgroundColor: 'rgba(20, 21, 25, 0.90)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    width: '48%',
+    minHeight: 132,
+    borderWidth: 1,
     borderRadius: 18,
-    padding: 16,
+    padding: 14,
     marginBottom: 12,
     justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 4,
   },
   topRow: {
     flexDirection: 'row',
@@ -114,32 +82,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  iconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chevronBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   contentWrap: {
-    flex: 1,
     justifyContent: 'flex-end',
   },
   title: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 18,
     letterSpacing: -0.2,
   },
   description: {
     fontFamily: 'Inter-Regular',
     fontSize: 11,
-    lineHeight: 16,
-    marginTop: 5,
+    color: '#8E8E93',
+    lineHeight: 15,
+    marginTop: 3,
   },
 });
 

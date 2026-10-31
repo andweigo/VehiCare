@@ -5,6 +5,7 @@ import {
   Animated,
   DeviceEventEmitter,
   FlatList,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -18,7 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import vehicleApi from '../api/vehicleApi';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
-import useVehicleHealth from '../hooks/useVehicleHealth';
+import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
 import { getHistoryStorageKey, loadActiveChatSessions } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 import {
@@ -31,6 +32,7 @@ import {
   getVehicleIconName,
   getVehicleRecommendations,
   groupRecommendationsByTriSections,
+  isTaskSafetyCritical,
   mergeRecommendations,
   normalizeDiagnosticRecord,
 } from '../utils/maintenanceUtils';
@@ -53,19 +55,23 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   }, [vehicleProfile]);
 
   const {
-    healthPercentage,
-    healthStatus,
-    completedRecommendations,
-    loading: healthLoading,
-    isRecommendationCompleted: isRecCompletedContext,
-    markAsDone: markAsDoneContext,
-    undo: undoContext,
-  } = useVehicleHealth();
+    vehicleProfile: hookVehicleProfile,
+    allRecommendations,
+    smartRecommendations: hookSmartRecommendations,
+    healthPercentage: hookHealthPercentage,
+    healthStatus: hookHealthStatus,
+    loading: hookLoading,
+    isRecommendationCompleted: isRecCompletedHook,
+    markAsDone: markAsDoneHook,
+    undo: undoHook,
+    diagnostics: hookDiagnostics,
+    repairRecords: hookRepairRecords,
+    completedRecommendationIds: hookCompletedIds,
+  } = useMaintenanceRecommendations();
 
-  const [diagnostics, setDiagnostics] = useState([]);
-  const [repairRecords, setRepairRecords] = useState([]);
-  const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
-  const [diagnosticError, setDiagnosticError] = useState(null);
+  const healthPercentage = typeof hookHealthPercentage === 'number' ? hookHealthPercentage : 44;
+  const healthStatus = hookHealthStatus || 'Needs attention';
+  const loading = hookLoading;
 
   const [itemOpacity] = useState(new Animated.Value(0));
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
@@ -155,99 +161,8 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     });
   }, [diagnostics]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | DIAGNOSTIC DATA FETCHING & VEHICLE SCOPING
-  |--------------------------------------------------------------------------
-  */
-
-  const fetchVehicleDiagnostics = useCallback(async () => {
-    if (!vehicleProfile) {
-      setDiagnostics([]);
-      setLoadingDiagnostics(false);
-      return;
-    }
-
-    try {
-      setLoadingDiagnostics(true);
-      setDiagnosticError(null);
-
-      let records = [];
-
-      if (isAuthenticated) {
-        try {
-          const [apiDiags, apiRepairs] = await Promise.all([
-            vehicleApi.getDiagnosticsHistory(),
-            activeVehicleId ? vehicleApi.getRepairRecords({ vehicle_id: activeVehicleId }) : Promise.resolve([]),
-          ]);
-
-          if (Array.isArray(apiDiags) && apiDiags.length > 0) {
-            records = apiDiags;
-          } else {
-            const histRes = await vehicleApi.getHistory({ type: 'diagnosis' });
-            records = histRes?.data || [];
-          }
-
-          if (Array.isArray(apiRepairs) && apiRepairs.length > 0) {
-            setRepairRecords(apiRepairs);
-          }
-        } catch (err) {
-          console.warn('API error fetching diagnostics:', err?.message);
-        }
-      }
-
-      if (!records || records.length === 0) {
-        try {
-          const userId = user?.id || user?.uid || null;
-          const localStr = await AsyncStorage.getItem(getHistoryStorageKey(userId));
-          if (localStr) {
-            const parsed = JSON.parse(localStr);
-            if (Array.isArray(parsed)) {
-              records = parsed.filter(
-                item => item.type === 'diagnosis' || item.diagnosisData || item.symptoms,
-              );
-            }
-          }
-        } catch (err) {
-          console.warn('Local storage error reading history:', err?.message);
-        }
-      }
-
-      const filtered = (records || []).filter(item => {
-        const itemVid =
-          item.vehicle_id ??
-          item.vehicleId ??
-          item.vehicle?.id ??
-          item.vehicle?.vehicle_id ??
-          null;
-
-        if (activeVehicleId !== null && itemVid !== null) {
-          return String(itemVid) === String(activeVehicleId);
-        }
-        return true;
-      });
-
-      setDiagnostics(filtered);
-    } catch (error) {
-      console.warn('Error loading vehicle diagnostics:', error?.message);
-      setDiagnosticError('Recent diagnostic recommendations are temporarily unavailable.');
-    } finally {
-      setLoadingDiagnostics(false);
-    }
-  }, [vehicleProfile, activeVehicleId, isAuthenticated, user]);
-
-  useEffect(() => {
-    fetchVehicleDiagnostics();
-  }, [fetchVehicleDiagnostics]);
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('vehicleHealthChanged', () => {
-      fetchVehicleDiagnostics();
-    });
-    return () => {
-      sub.remove();
-    };
-  }, [fetchVehicleDiagnostics]);
+  const diagnostics = hookDiagnostics || [];
+  const repairRecords = hookRepairRecords || [];
 
   /*
   |--------------------------------------------------------------------------
@@ -255,10 +170,12 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   |--------------------------------------------------------------------------
   */
 
-  const recommendations = useMemo(
-    () => extractSmartRecommendations(diagnostics, repairRecords, vehicleProfile),
-    [diagnostics, repairRecords, vehicleProfile],
-  );
+  const recommendations = useMemo(() => {
+    if (Array.isArray(allRecommendations) && allRecommendations.length > 0) {
+      return allRecommendations;
+    }
+    return Array.isArray(hookSmartRecommendations) ? hookSmartRecommendations : [];
+  }, [allRecommendations, hookSmartRecommendations]);
 
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'do_this_now' | 'coming_up_soon' | 'helpful_tips'
   const [expandedCardIds, setExpandedCardIds] = useState(new Set());
@@ -286,25 +203,12 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   const completedRecommendationIds = useMemo(() => {
     const ids = new Set();
-
-    if (Array.isArray(completedRecommendations)) {
-      completedRecommendations.forEach(item => {
-        if (typeof item === 'string') {
-          ids.add(item);
-        } else if (item && typeof item === 'object') {
-          if (item.id) {
-            ids.add(item.id);
-          } else if (item.recommendationId) {
-            ids.add(item.recommendationId);
-          }
-        }
-      });
+    if (hookCompletedIds instanceof Set) {
+      hookCompletedIds.forEach(id => ids.add(id));
     }
-
     localCompletedIds.forEach(id => ids.add(id));
-
     return ids;
-  }, [completedRecommendations, localCompletedIds]);
+  }, [hookCompletedIds, localCompletedIds]);
 
   const triSections = useMemo(
     () => groupRecommendationsByTriSections(recommendations, completedRecommendationIds, vehicleProfile),
@@ -353,39 +257,39 @@ const SmartRecommendationsScreen = ({ navigation }) => {
 
   const isRecommendationCompleted = useCallback(
     itemOrId => {
-      if (typeof isRecCompletedContext === 'function') {
-        return isRecCompletedContext(itemOrId);
+      if (typeof isRecCompletedHook === 'function') {
+        return isRecCompletedHook(itemOrId);
       }
       const id = typeof itemOrId === 'object' ? itemOrId?.id : itemOrId;
-      return completedRecommendationIds.has(id);
+      return completedRecommendationIds.has(String(id));
     },
-    [isRecCompletedContext, completedRecommendationIds],
+    [isRecCompletedHook, completedRecommendationIds],
   );
 
   const completeRecommendation = useCallback(
     item => {
       if (!item) return;
-      if (typeof markAsDoneContext === 'function') {
-        markAsDoneContext(item);
+      if (typeof markAsDoneHook === 'function') {
+        markAsDoneHook(item);
       } else {
         const id = item?.id || item;
         setLocalCompletedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
       }
     },
-    [markAsDoneContext],
+    [markAsDoneHook],
   );
 
   const undoRecommendation = useCallback(
     itemOrId => {
       if (!itemOrId) return;
-      if (typeof undoContext === 'function') {
-        undoContext(itemOrId);
+      if (typeof undoHook === 'function') {
+        undoHook(itemOrId);
       } else {
         const id = typeof itemOrId === 'object' ? itemOrId?.id : itemOrId;
         setLocalCompletedIds(prev => prev.filter(itemId => itemId !== id));
       }
     },
-    [undoContext],
+    [undoHook],
   );
 
   useEffect(() => {
@@ -414,312 +318,184 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     }).start();
   }, [progressPercentage, progressWidth]);
 
-  const healthBarColor = useMemo(() => {
+  const healthTheme = useMemo(() => {
+    // 1. Optimal (>= 80%): Emerald green
     if (healthPercentage >= 80) {
-      return theme.success || '#35B86B';
+      return {
+        color: '#32D583',
+        bgColor: 'rgba(50, 213, 131, 0.14)',
+        borderColor: 'rgba(50, 213, 131, 0.35)',
+        glowColor: 'rgba(50, 213, 131, 0.20)',
+        label: 'OPTIMAL',
+        conditionText: 'Optimal vehicle condition',
+      };
     }
+    // 2. Good (60 - 79%): Amber / Gold
     if (healthPercentage >= 60) {
-      return theme.accent;
+      return {
+        color: '#F5B942',
+        bgColor: 'rgba(245, 185, 66, 0.14)',
+        borderColor: 'rgba(245, 185, 66, 0.35)',
+        glowColor: 'rgba(245, 185, 66, 0.20)',
+        label: 'GOOD',
+        conditionText: 'Routine maintenance approaching',
+      };
     }
+    // 3. Attention (40 - 59%): Vibrant Orange
     if (healthPercentage >= 40) {
-      return '#D6A23A';
+      return {
+        color: '#FF7337',
+        bgColor: 'rgba(255, 115, 55, 0.14)',
+        borderColor: 'rgba(255, 115, 55, 0.35)',
+        glowColor: 'rgba(255, 115, 55, 0.20)',
+        label: 'ATTENTION',
+        conditionText: 'Inspection recommended',
+      };
     }
-    return '#FF5A5F';
-  }, [healthPercentage, theme]);
+    // 4. Critical (< 40%): Alert Red
+    return {
+      color: '#EF4444',
+      bgColor: 'rgba(239, 68, 68, 0.14)',
+      borderColor: 'rgba(239, 68, 68, 0.35)',
+      glowColor: 'rgba(239, 68, 68, 0.20)',
+      label: 'CRITICAL',
+      conditionText: 'Immediate attention required',
+    };
+  }, [healthPercentage]);
+
+  const healthBarColor = healthTheme.color;
+
+  const isDark = theme?.name === 'dark' || Boolean(theme?.dark);
+  const activeVehiclePhoto =
+    vehicleProfile?.photo_uri ||
+    vehicleProfile?.photoUri ||
+    vehicleProfile?.photo ||
+    null;
+
+  const displayHealth = typeof healthPercentage === 'number' ? healthPercentage : 44;
+
+  const displayStatusLabel = (
+    healthStatus?.label && healthStatus.label !== 'No maintenance activity yet'
+      ? healthStatus.label
+      : (typeof healthStatus === 'string' && healthStatus !== 'No maintenance activity yet'
+          ? healthStatus
+          : (displayHealth >= 80 ? 'Looking good' : 'Needs attention'))
+  );
 
   const vehicleName = getVehicleDisplayName(vehicleProfile, 'Your Vehicle');
-  const vehicleDetails = getVehicleDisplayDetails(vehicleProfile, 'Vehicle information');
+  const vehicleDetails = getVehicleDisplayDetails(vehicleProfile, 'Vehicle information').replace('•', '·');
   const vehicleIconName = getVehicleIconName(vehicleProfile);
 
   const renderRecommendation = ({ item }) => {
-    const completed = isRecommendationCompleted(item.id);
-    const isExpanded = expandedCardIds.has(item.id);
+    const completed = isRecommendationCompleted(item.id || item);
+    const categoryName = typeof item.category === 'string'
+      ? item.category.toUpperCase()
+      : (item.category?.name || 'CARE').toUpperCase();
 
-    const isUrgent =
-      item.section === 'do_this_now' ||
-      item.category_section === 'do_this_now' ||
-      item.priority === 'Immediate' ||
-      item.priority === 'Urgent';
+    const isSafety = item.isSafetyCritical || isTaskSafetyCritical(item);
+    const sourceLabel = item.source_label || (item.source === 'diagnostic'
+      ? 'Diagnostic Follow-up'
+      : (item.source === 'scheduled' ? 'Scheduled Maintenance' : 'Preventive Tip'));
 
-    const isUpcoming =
-      item.section === 'coming_up_soon' ||
-      item.category_section === 'coming_up_soon' ||
-      item.priority === 'Important';
+    const statusTag = isSafety
+      ? 'SAFETY CHECK'
+      : (item.source === 'diagnostic'
+        ? 'INSPECT SOON'
+        : (item.source === 'scheduled' ? 'DUE BY SCHEDULE' : 'PREVENTIVE CARE'));
 
-    const urgencyColor = isUrgent ? '#FF5A5F' : isUpcoming ? '#D6A23A' : '#32D583';
-    const urgencyBg = isUrgent
-      ? 'rgba(255, 90, 95, 0.14)'
-      : isUpcoming
-      ? 'rgba(214, 162, 58, 0.14)'
-      : 'rgba(50, 213, 131, 0.14)';
-    const urgencyLabel = isUrgent ? 'DO THIS NOW' : isUpcoming ? 'COMING UP SOON' : 'HELPFUL TIP';
+    const statusColor = isSafety ? '#FF5A5F' : (item.source === 'diagnostic' ? '#F5501C' : (item.source === 'scheduled' ? '#38BDF8' : '#32D583'));
 
-    const hasGuideDetails = Boolean(
-      item.completion_check || item.warning_signs || item.safety_precaution || item.source === 'diagnostic'
+    const whySuggested = item.why_suggested || (
+      item.source === 'diagnostic'
+        ? (item.relatedProblem ? `Your previous diagnosis mentioned "${item.relatedProblem}".` : 'Identified during recent vehicle diagnostics.')
+        : (item.source === 'scheduled'
+          ? 'Based on standard vehicle maintenance intervals.'
+          : 'General preventive advice tailored for your vehicle type.')
     );
 
+    const timingText = item.timing || item.when_due || (isSafety ? 'Check before your next ride' : 'Confirm using owner manual and actual condition');
+
     return (
-      <Animated.View
-        style={[
-          styles.recommendationWrapper,
-          {
-            opacity: itemOpacity,
-            transform: [
-              {
-                scale: itemOpacity.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.97, 1],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.recommendationCard,
-            {
-              backgroundColor: theme.surface,
-              borderColor: isUrgent ? `${urgencyColor}40` : theme.border,
-            },
-          ]}
-        >
-          {/* TOP METADATA & URGENCY ROW */}
-          <View style={styles.cardTopMetaRow}>
-            <View style={styles.cardBadgesGroup}>
-              <View style={[styles.sourceBadge, { backgroundColor: urgencyBg, borderColor: urgencyColor }]}>
-                <Text style={[styles.sourceBadgeText, { color: urgencyColor }]}>
-                  {urgencyLabel}
-                </Text>
-              </View>
-
-              <View style={[styles.categoryPill, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.05)' }]}>
-                <Text style={[styles.categoryPillText, { color: theme.textSecondary }]}>
-                  {typeof item.category === 'string' ? item.category.toUpperCase() : (item.category?.name || 'CARE').toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            <View style={[styles.impactBadge, { backgroundColor: `${healthBarColor}1A` }]}>
-              <Icon name="bolt" size={13} color={healthBarColor} />
-              <Text style={[styles.impactBadgeText, { color: healthBarColor }]}>
-                +{item.scoreImpact || 5} Health
-              </Text>
-            </View>
+      <View style={[styles.recCard, completed && styles.recCardCompleted]} key={item.id}>
+        {/* Top Badges Row: Category & Status */}
+        <View style={styles.recTopRow}>
+          <View style={styles.catBadge}>
+            <Text style={styles.catBadgeText}>{categoryName}</Text>
           </View>
 
-          {/* TITLE & ICON HEADER */}
-          <TouchableOpacity
-            style={styles.recommendationHeader}
-            activeOpacity={0.75}
-            onPress={() => navigation.navigate('MaintenanceGuide', { item })}
-          >
-            <View style={[styles.recommendationIcon, { backgroundColor: theme.accentSoft }]}>
-              <Icon name={item.icon || 'build'} size={20} color={theme.accent} />
-            </View>
+          <View style={[styles.statusTagBadge, { backgroundColor: `${statusColor}18`, borderColor: `${statusColor}40` }]}>
+            <Text style={[styles.statusTagText, { color: statusColor }]}>{statusTag}</Text>
+          </View>
+        </View>
 
-            <View style={styles.recommendationTitleBlock}>
-              <Text style={[styles.recommendationTitle, { color: theme.text }]} numberOfLines={2}>
-                {item.what_to_do || item.title}
-              </Text>
-            </View>
+        {/* 1. What should I do? */}
+        <Text style={[styles.recTitleText, completed && styles.completedText]}>
+          {item.what_to_do || item.title}
+        </Text>
 
-            <Icon name="chevron-right" size={22} color={theme.textSecondary} />
-          </TouchableOpacity>
+        {/* 2. Why should I do it? */}
+        <Text style={[styles.recSubtitleText, completed && { opacity: 0.6 }]}>
+          {item.why_it_matters || item.reason || item.preventive_action || item.description}
+        </Text>
 
-          {/* RELATED PROBLEM IF DIAGNOSTIC */}
-          {item.source === 'diagnostic' && item.relatedProblem ? (
-            <View style={[styles.relatedBox, { backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.04)', borderColor: theme.border }]}>
-              <Icon name="medical-services" size={12} color={theme.accent} style={{ marginRight: 6 }} />
-              <Text style={[styles.relatedLabel, { color: theme.textSecondary }]}>Related Issue: </Text>
-              <Text style={[styles.relatedTitle, { color: theme.text }]} numberOfLines={1}>
-                {item.relatedProblem}
-              </Text>
-            </View>
-          ) : null}
+        {/* 3. Why this was suggested? (Source Attribution Box) */}
+        <View style={styles.whySuggestedBox}>
+          <View style={styles.whySuggestedHeader}>
+            <Icon name="search" size={13} color="#F5501C" />
+            <Text style={styles.whySuggestedHeaderTitle}>WHY THIS WAS SUGGESTED</Text>
+          </View>
 
-          {/* CORE SUMMARY / WHY IT MATTERS - CLEAN AIRY TEXT */}
-          <Text style={[styles.recommendationSummaryText, { color: theme.textSecondary }]}>
-            {item.why_it_matters || item.reason || item.preventive_action || item.description}
+          <Text style={styles.whySuggestedBodyText}>
+            {whySuggested}
           </Text>
 
-          {/* QUICK METADATA CHIPS ROW */}
-          <View style={styles.chipsRow}>
-            <View style={[styles.metaChip, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.04)', borderColor: theme.border }]}>
-              <Icon name="schedule" size={13} color="#D6A23A" style={{ marginRight: 5 }} />
-              <Text style={[styles.metaChipText, { color: theme.textSecondary }]} numberOfLines={1}>
-                {item.when_due || (item.source === 'diagnostic' ? 'Check before ride' : 'Routine check')}
-              </Text>
+          <View style={styles.whySuggestedFooter}>
+            <View style={styles.sourceMetaRow}>
+              <Icon name="label-outline" size={12} color="#8E8E93" />
+              <Text style={styles.sourceMetaText}>{sourceLabel}</Text>
             </View>
 
-            <View style={[styles.metaChip, { backgroundColor: theme.surfaceAlt || 'rgba(255,255,255,0.04)', borderColor: theme.border }]}>
-              <Icon name="handyman" size={13} color="#35B86B" style={{ marginRight: 5 }} />
-              <Text style={[styles.metaChipText, { color: theme.textSecondary }]} numberOfLines={1}>
-                {item.skill_level || 'Beginner-friendly'}
-              </Text>
+            <View style={styles.sourceMetaRow}>
+              <Icon name="schedule" size={12} color="#8E8E93" />
+              <Text style={styles.sourceMetaText} numberOfLines={1}>{timingText}</Text>
             </View>
           </View>
+        </View>
 
-          {/* VIEW STEP-BY-STEP DIY GUIDE BUTTON */}
+        {/* 4. What should I do next? (Actions Row) */}
+        <View style={styles.recActionRow}>
           <TouchableOpacity
-            style={[
-              styles.viewGuideButton,
-              {
-                backgroundColor: theme.accentSoft,
-                borderColor: theme.accent,
-              },
-            ]}
+            style={styles.viewRecButton}
             activeOpacity={0.8}
             onPress={() => navigation.navigate('MaintenanceGuide', { item })}
           >
-            <View style={styles.viewGuideButtonLeft}>
-              <Icon name="menu-book" size={15} color={theme.accent} style={{ marginRight: 7 }} />
-              <Text style={[styles.viewGuideButtonText, { color: theme.accent }]}>
-                View Step-by-Step DIY Guide
-              </Text>
-            </View>
-            <Icon name="arrow-forward" size={16} color={theme.accent} />
+            <Icon name="north-east" size={14} color="#F5501C" />
+            <Text style={styles.viewRecButtonText}>View inspection guide</Text>
           </TouchableOpacity>
 
-          {/* COLLAPSIBLE ACTION GUIDE & SAFETY SECTION */}
-          {hasGuideDetails && (
-            <View style={styles.guideWrapper}>
-              <TouchableOpacity
-                style={[
-                  styles.guideToggleButton,
-                  {
-                    backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.04)',
-                    borderColor: theme.border,
-                  },
-                ]}
-                activeOpacity={0.75}
-                onPress={() => toggleExpandCard(item.id)}
-              >
-                <View style={styles.guideToggleLeft}>
-                  <Icon name="info-outline" size={14} color={theme.accent} style={{ marginRight: 6 }} />
-                  <Text style={[styles.guideToggleText, { color: theme.text }]}>
-                    Action Guide & Safety Checklist
-                  </Text>
-                </View>
-                <Icon
-                  name={isExpanded ? 'expand-less' : 'expand-more'}
-                  size={19}
-                  color={theme.textSecondary}
-                />
-              </TouchableOpacity>
-
-              {isExpanded && (
-                <View style={[styles.guideDetailsCard, { backgroundColor: theme.surfaceAlt || 'rgba(255, 255, 255, 0.03)', borderColor: theme.border }]}>
-                  {item.completion_check ? (
-                    <View style={styles.guideDetailRow}>
-                      <Icon name="check-circle-outline" size={14} color="#35B86B" style={{ marginRight: 8, marginTop: 2 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.guideDetailHeading, { color: '#35B86B' }]}>
-                          HOW TO VERIFY IT'S DONE
-                        </Text>
-                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
-                          {item.completion_check}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {item.warning_signs ? (
-                    <View style={[styles.guideDetailRow, { marginTop: item.completion_check ? 10 : 0 }]}>
-                      <Icon name="warning-amber" size={14} color="#D6A23A" style={{ marginRight: 8, marginTop: 2 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.guideDetailHeading, { color: '#D6A23A' }]}>
-                          WARNING SIGNS TO MONITOR
-                        </Text>
-                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
-                          {item.warning_signs}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {item.safety_precaution ? (
-                    <View style={[styles.guideDetailRow, { marginTop: (item.completion_check || item.warning_signs) ? 10 : 0 }]}>
-                      <Icon name="shield" size={14} color="#FF5A5F" style={{ marginRight: 8, marginTop: 2 }} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.guideDetailHeading, { color: '#FF5A5F' }]}>
-                          SAFETY BOUNDARY
-                        </Text>
-                        <Text style={[styles.guideDetailBody, { color: theme.text }]}>
-                          {item.safety_precaution}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {item.source === 'diagnostic' ? (
-                    <TouchableOpacity
-                      style={[styles.viewDiagnosisButton, { marginTop: 10, borderColor: theme.accent }]}
-                      onPress={() => handleOpenDiagnosisModal(item)}
-                      activeOpacity={0.75}
-                    >
-                      <Icon name="visibility" size={14} color={theme.accent} style={{ marginRight: 6 }} />
-                      <Text style={[styles.viewDiagnosisText, { color: theme.accent }]}>View Full Diagnosis Report</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* CARD FOOTER */}
-          <View style={styles.recommendationFooter}>
-            <View style={styles.priorityWrap}>
-              <Text style={[styles.priorityLabel, { color: theme.textSecondary }]}>
-                PRIORITY: <Text style={{ color: urgencyColor, fontWeight: '700' }}>{item.priority.toUpperCase()}</Text>
-              </Text>
-            </View>
-
-            {completed ? (
-              <View style={styles.completedRow}>
-                <View style={styles.completedBadgeWrap}>
-                  <Icon name="check-circle" size={16} color={theme.success || '#35B86B'} />
-                  <Text style={[styles.completedStatusText, { color: theme.success || '#35B86B' }]}>
-                    Done
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.undoButton, { borderColor: theme.border }]}
-                  onPress={() => undoRecommendation(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Undo ${item.title}`}
-                >
-                  <Text style={[styles.undoText, { color: theme.textSecondary }]}>Undo</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[styles.completeButton, { backgroundColor: theme.accent }]}
-                onPress={() => completeRecommendation(item)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={`Mark ${item.title} as done`}
-              >
-                <Icon name="check" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text
-                  style={[
-                    styles.completeButtonText,
-                    {
-                      color: '#FFFFFF',
-                    },
-                  ]}
-                >
-                  Mark as Done
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <TouchableOpacity
+            style={[
+              styles.doneCheckBtn,
+              completed && styles.doneCheckBtnActive,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => completed ? undoRecommendation(item) : completeRecommendation(item)}
+          >
+            <Icon
+              name={completed ? 'check-circle' : 'radio-button-unchecked'}
+              size={17}
+              color={completed ? '#32D583' : '#8E8E93'}
+            />
+            <Text style={[styles.doneCheckText, completed && { color: '#32D583' }]}>
+              {completed ? 'Inspected' : 'Mark Inspected'}
+            </Text>
+          </TouchableOpacity>
         </View>
-      </Animated.View>
+      </View>
     );
   };
 
-  if (healthLoading || loadingDiagnostics) {
+  if (loading) {
     return (
       <SafeAreaView
         style={[
@@ -802,552 +578,265 @@ const SmartRecommendationsScreen = ({ navigation }) => {
           backgroundColor: theme.background,
         },
       ]}
+      edges={['top']}
     >
       <ScrollView
         ref={mainScrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* TOP HEADER */}
         <View style={styles.screenHeader}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.8}
+            >
+              <Icon name="arrow-back" size={20} color={theme.text} />
+            </TouchableOpacity>
+
+            <View>
+              <Text style={[styles.eyebrow, { color: theme.textSecondary }]}>
+                PERSONALIZED CARE
+              </Text>
+              <Text style={[styles.screenTitle, { color: theme.text }]}>
+                Smart Recommendations
+              </Text>
+            </View>
+          </View>
+
           <TouchableOpacity
             style={[
-              styles.backButton,
+              styles.iconBtn,
               {
                 backgroundColor: theme.surface,
                 borderColor: theme.border,
               },
             ]}
-            onPress={() => navigation.goBack()}
             activeOpacity={0.8}
+            onPress={() => navigation.openDrawer?.() || navigation.getParent()?.openDrawer?.()}
+            accessibilityLabel="Open Menu"
           >
-            <Icon name="arrow-back" size={22} color={theme.text} />
+            <Icon name="menu" size={20} color={theme.text} />
           </TouchableOpacity>
-
-          <View style={styles.titleBlock}>
-            <Text
-              style={[
-                styles.screenTitle,
-                {
-                  color: theme.text,
-                },
-              ]}
-            >
-              Smart Recommendations
-            </Text>
-            <Text
-              style={[
-                styles.screenSubtitle,
-                {
-                  color: theme.textSecondary,
-                },
-              ]}
-            >
-              Personalized advice for your vehicle
-            </Text>
-          </View>
         </View>
 
+        {/* COMPACT VEHICLE HEADER & SECONDARY HEALTH CHIP */}
         <View
           style={[
-            styles.vehicleSummary,
+            styles.compactVehicleCard,
             {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
+              backgroundColor: isDark ? '#16161A' : theme.surface,
+              borderColor: isDark ? '#232328' : theme.border,
             },
           ]}
         >
-          <Text
-            style={[
-              styles.sectionLabel,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
+          <TouchableOpacity
+            style={styles.compactVehicleRow}
+            activeOpacity={0.82}
+            onPress={() => navigation.navigate('Vehicles')}
           >
-            RECOMMENDATIONS FOR
-          </Text>
-          <View style={styles.vehicleSummaryHeader}>
             <View
               style={[
-                styles.vehicleIconContainer,
-                {
-                  backgroundColor: theme.accentSoft,
-                },
+                styles.compactVehicleIconBox,
+                { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
               ]}
             >
-              <Icon
-                name={vehicleIconName}
-                size={24}
-                color={theme.accent}
-              />
+              {activeVehiclePhoto ? (
+                <Image
+                  source={{ uri: activeVehiclePhoto }}
+                  style={styles.compactVehiclePhoto}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Icon
+                  name={getVehicleIconName(vehicleProfile)}
+                  size={22}
+                  color="#F5501C"
+                />
+              )}
             </View>
 
-            <View style={styles.vehicleSummaryText}>
+            <View style={styles.compactVehicleInfo}>
               <Text
-                style={[
-                  styles.vehicleSummaryTitle,
-                  {
-                    color: theme.text,
-                  },
-                ]}
+                style={[styles.compactVehicleTitle, { color: isDark ? '#FFFFFF' : theme.text }]}
                 numberOfLines={1}
-                ellipsizeMode="tail"
               >
                 {vehicleName}
               </Text>
               <Text
-                style={[
-                  styles.vehicleSummaryDetails,
-                  {
-                    color: theme.textSecondary,
-                  },
-                ]}
+                style={[styles.compactVehicleSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}
                 numberOfLines={1}
-                ellipsizeMode="tail"
               >
                 {vehicleDetails}
               </Text>
             </View>
-          </View>
-        </View>
 
-        <View
-          style={[
-            styles.healthSummary,
-            {
-              backgroundColor: theme.surface,
-              borderColor: theme.border,
-            },
-          ]}
-        >
-          <Text
+            <View style={styles.compactSwitchPill}>
+              <Text style={styles.compactSwitchText}>Switch</Text>
+              <Icon name="unfold-more" size={16} color="#F5501C" />
+            </View>
+          </TouchableOpacity>
+
+          {/* Compact Secondary Health Score Row */}
+          <TouchableOpacity
             style={[
-              styles.sectionLabel,
-              {
-                color: theme.textSecondary,
-              },
+              styles.compactHealthRow,
+              { borderTopColor: isDark ? '#232328' : '#E5E7EB' },
             ]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('VehicleHealth')}
           >
-            CURRENT VEHICLE HEALTH
-          </Text>
-
-          <View style={styles.healthValueRow}>
-            <Text
-              style={[
-                styles.healthValue,
-                {
-                  color: healthBarColor,
-                },
-              ]}
-            >
-              {healthPercentage}
-            </Text>
-            <Text
-              style={[
-                styles.healthPercent,
-                {
-                  color: healthBarColor,
-                },
-              ]}
-            >
-              %
-            </Text>
-          </View>
-
-          <Text
-            style={[
-              styles.healthStatusLabel,
-              {
-                color: healthBarColor,
-              },
-            ]}
-          >
-            {typeof healthStatus === 'object' ? (healthStatus?.label || 'Looking Good') : (healthStatus || 'Looking Good')}
-          </Text>
-
-          <View
-            style={[
-              styles.healthTrack,
-              {
-                backgroundColor: theme.border,
-              },
-            ]}
-          >
-            <Animated.View
-              style={[
-                styles.healthFill,
-                {
-                  width: `${healthPercentage}%`,
-                  backgroundColor: healthBarColor,
-                },
-              ]}
-            />
-          </View>
-
-          <Text
-            style={[
-              styles.healthExplanation,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
-            Based on your vehicle information, recent diagnostic results, and completed maintenance actions.
-          </Text>
-        </View>
-
-        {/* DIAGNOSTIC STATE INFORMATIONAL NOTICE */}
-        {diagnosticError ? (
-          <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Icon name="info-outline" size={20} color={theme.accent} style={{ marginRight: 10 }} />
-            <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
-              Recent diagnostic recommendations are temporarily unavailable. Showing preventive maintenance recommendations instead.
-            </Text>
-          </View>
-        ) : !loadingDiagnostics && recommendations.length === 0 ? (
-          <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Icon name="check-circle-outline" size={20} color={theme.accent} style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.noticeTitle, { color: theme.text }]}>No recent diagnostic issues were found.</Text>
-              <Text style={[styles.noticeSubtitle, { color: theme.textSecondary }]}>
-                VehiCare will continue to provide preventive maintenance recommendations based on your vehicle.
+            <View style={styles.compactHealthLeft}>
+              <View
+                style={[
+                  styles.compactHealthDot,
+                  { backgroundColor: displayHealth >= 80 ? '#32D583' : (displayHealth >= 60 ? '#F5B942' : (displayHealth >= 40 ? '#FF7337' : '#EF4444')) },
+                ]}
+              />
+              <Text style={[styles.compactHealthLabel, { color: isDark ? '#C2B5AF' : theme.textSecondary }]}>
+                Health: <Text style={{ fontWeight: '700', color: isDark ? '#FFFFFF' : theme.text }}>{displayHealth}%</Text> · {displayStatusLabel}
               </Text>
             </View>
+            <Icon name="chevron-right" size={16} color={isDark ? '#8E8E93' : theme.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* PROGRESS CARD */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeaderRow}>
+            <Text style={styles.progressTitle}>Your progress</Text>
+            <Text style={styles.progressCountText}>
+              {completedCount} of {recommendations.length} completed
+            </Text>
           </View>
-        ) : null}
 
-        <View style={styles.progressSection}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              {
-                color: theme.text,
-              },
-            ]}
-          >
-            YOUR PROGRESS
-          </Text>
-          <Text
-            style={[
-              styles.sectionSubtitle,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
-            {completedCount} of {recommendations.length} recommendations completed
-          </Text>
-
-          <View
-            style={[
-              styles.progressTrack,
-              {
-                backgroundColor: theme.border,
-              },
-            ]}
-          >
+          <View style={styles.progressTrack}>
             <Animated.View
               style={[
                 styles.progressFill,
                 {
+                  backgroundColor: healthTheme.color,
                   width: progressWidth.interpolate({
                     inputRange: [0, 100],
                     outputRange: ['0%', '100%'],
                   }),
-                  backgroundColor: theme.accent,
                 },
               ]}
             />
           </View>
         </View>
 
-        {allCompleted ? (
-          <View
-            style={[
-              styles.completeSummary,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Icon
-              name="check-circle"
-              size={28}
-              color={theme.success || '#35B86B'}
-            />
-            <View style={styles.completeSummaryText}>
-              <Text
-                style={[
-                  styles.completeSummaryTitle,
-                  {
-                    color: theme.text,
-                  },
-                ]}
-              >
-                Vehicle looking good
-              </Text>
-              <Text
-                style={[
-                  styles.completeSummarySubtitle,
-                  {
-                    color: theme.textSecondary,
-                  },
-                ]}
-              >
-                You've completed all of VehiCare's current recommendations for this vehicle. Keep following your maintenance schedule to maintain its health.
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
+        {/* FILTER PILLS */}
         {recommendations.length > 0 ? (
-          <View style={styles.tabFilterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterPillsRow}
+          >
             <TouchableOpacity
               style={[
-                styles.tabFilterPill,
-                {
-                  backgroundColor: activeTab === 'all' ? theme.accent : theme.surface,
-                  borderColor: activeTab === 'all' ? theme.accent : theme.border,
-                },
+                styles.filterPill,
+                activeTab === 'all' && styles.filterPillActive,
               ]}
               onPress={() => handleTabChange('all')}
               activeOpacity={0.8}
             >
               <Text
                 style={[
-                  styles.tabFilterText,
-                  { color: activeTab === 'all' ? '#FFFFFF' : theme.text },
+                  styles.filterPillText,
+                  activeTab === 'all' && styles.filterPillTextActive,
                 ]}
               >
-                All
+                All {recommendations.length}
               </Text>
-              <View
-                style={[
-                  styles.tabFilterCount,
-                  {
-                    backgroundColor: activeTab === 'all' ? 'rgba(0,0,0,0.25)' : theme.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    fontSize: 10,
-                    fontWeight: '700',
-                    color: activeTab === 'all' ? '#FFFFFF' : theme.textSecondary,
-                  }}
-                >
-                  {triSections.totalCount}
-                </Text>
-              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.tabFilterPill,
-                {
-                  backgroundColor: activeTab === 'do_this_now' ? '#FF5A5F' : theme.surface,
-                  borderColor: activeTab === 'do_this_now' ? '#FF5A5F' : theme.border,
-                },
+                styles.filterPill,
+                activeTab === 'do_this_now' && styles.filterPillActive,
               ]}
               onPress={() => handleTabChange('do_this_now')}
               activeOpacity={0.8}
             >
-              <Icon
-                name="warning"
-                size={13}
-                color={activeTab === 'do_this_now' ? '#FFFFFF' : '#FF5A5F'}
-                style={{ marginRight: 2 }}
-              />
               <Text
                 style={[
-                  styles.tabFilterText,
-                  { color: activeTab === 'do_this_now' ? '#FFFFFF' : theme.text },
+                  styles.filterPillText,
+                  activeTab === 'do_this_now' && styles.filterPillTextActive,
                 ]}
               >
-                Do This Now
+                Do This Now {triSections.doThisNow.length > 0 ? triSections.doThisNow.length : ''}
               </Text>
-              {triSections.doThisNow.length > 0 && (
-                <View
-                  style={[
-                    styles.tabFilterCount,
-                    {
-                      backgroundColor: activeTab === 'do_this_now' ? 'rgba(0,0,0,0.25)' : 'rgba(255, 90, 95, 0.2)',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '700',
-                      color: activeTab === 'do_this_now' ? '#FFFFFF' : '#FF5A5F',
-                    }}
-                  >
-                    {triSections.doThisNow.length}
-                  </Text>
-                </View>
-              )}
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.tabFilterPill,
-                {
-                  backgroundColor: activeTab === 'coming_up_soon' ? '#D6A23A' : theme.surface,
-                  borderColor: activeTab === 'coming_up_soon' ? '#D6A23A' : theme.border,
-                },
+                styles.filterPill,
+                activeTab === 'coming_up_soon' && styles.filterPillActive,
               ]}
               onPress={() => handleTabChange('coming_up_soon')}
               activeOpacity={0.8}
             >
-              <Icon
-                name="event"
-                size={13}
-                color={activeTab === 'coming_up_soon' ? '#FFFFFF' : '#D6A23A'}
-                style={{ marginRight: 2 }}
-              />
               <Text
                 style={[
-                  styles.tabFilterText,
-                  { color: activeTab === 'coming_up_soon' ? '#FFFFFF' : theme.text },
+                  styles.filterPillText,
+                  activeTab === 'coming_up_soon' && styles.filterPillTextActive,
                 ]}
               >
-                Coming Soon
+                Coming Soon {triSections.comingUpSoon.length > 0 ? triSections.comingUpSoon.length : ''}
               </Text>
-              {triSections.comingUpSoon.length > 0 && (
-                <View
-                  style={[
-                    styles.tabFilterCount,
-                    {
-                      backgroundColor: activeTab === 'coming_up_soon' ? 'rgba(0,0,0,0.25)' : 'rgba(214, 162, 58, 0.2)',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '700',
-                      color: activeTab === 'coming_up_soon' ? '#FFFFFF' : '#D6A23A',
-                    }}
-                  >
-                    {triSections.comingUpSoon.length}
-                  </Text>
-                </View>
-              )}
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.tabFilterPill,
-                {
-                  backgroundColor: activeTab === 'helpful_tips' ? (theme.success || '#35B86B') : theme.surface,
-                  borderColor: activeTab === 'helpful_tips' ? (theme.success || '#35B86B') : theme.border,
-                },
+                styles.filterPill,
+                activeTab === 'helpful_tips' && styles.filterPillActive,
               ]}
               onPress={() => handleTabChange('helpful_tips')}
               activeOpacity={0.8}
             >
-              <Icon
-                name="lightbulb"
-                size={13}
-                color={activeTab === 'helpful_tips' ? '#FFFFFF' : (theme.success || '#35B86B')}
-                style={{ marginRight: 2 }}
-              />
               <Text
                 style={[
-                  styles.tabFilterText,
-                  { color: activeTab === 'helpful_tips' ? '#FFFFFF' : theme.text },
+                  styles.filterPillText,
+                  activeTab === 'helpful_tips' && styles.filterPillTextActive,
                 ]}
               >
-                Helpful Tips
+                Helpful Tips {triSections.helpfulTips.length > 0 ? triSections.helpfulTips.length : ''}
               </Text>
-              {triSections.helpfulTips.length > 0 && (
-                <View
-                  style={[
-                    styles.tabFilterCount,
-                    {
-                      backgroundColor: activeTab === 'helpful_tips' ? 'rgba(0,0,0,0.25)' : 'rgba(50, 213, 131, 0.2)',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '700',
-                      color: activeTab === 'helpful_tips' ? '#FFFFFF' : (theme.success || '#35B86B'),
-                    }}
-                  >
-                    {triSections.helpfulTips.length}
-                  </Text>
-                </View>
-              )}
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         ) : null}
 
+        {/* SECTION HEADER */}
+        <View style={styles.sectionHeaderRow}>
+          <Icon name="event" size={17} color="#F5501C" />
+          <Text style={styles.sectionTitleText}>
+            {activeTab === 'do_this_now'
+              ? 'Do this now'
+              : activeTab === 'coming_up_soon'
+              ? 'Coming up soon'
+              : activeTab === 'helpful_tips'
+              ? 'Helpful tips'
+              : 'Coming up soon'}
+          </Text>
+        </View>
+
+        {/* RECOMMENDATION LIST */}
         <View style={styles.recommendationList}>
           {currentTabItems.length === 0 ? (
-            <View style={[styles.noticeCard, { backgroundColor: theme.surface, borderColor: theme.border, marginVertical: 15 }]}>
-              <Icon name="check-circle" size={20} color={theme.success || '#35B86B'} style={{ marginRight: 10 }} />
-              <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
+            <View style={styles.emptyNoticeBox}>
+              <Icon name="check-circle" size={20} color="#32D583" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyNoticeText}>
                 No pending items in this category. Everything is up to date!
               </Text>
-            </View>
-          ) : activeTab === 'all' && currentTabItems.length <= REC_PAGE_SIZE ? (
-            <View>
-              {/* 1. DO THIS NOW SECTION */}
-              {triSections.doThisNow.length > 0 && (
-                <View style={{ marginBottom: 20 }}>
-                  <View style={styles.triSectionHeader}>
-                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(255, 90, 95, 0.16)', borderColor: '#FF5A5F' }]}>
-                      <Icon name="warning" size={14} color="#FF5A5F" />
-                      <Text style={[styles.triSectionBadgeText, { color: '#FF5A5F' }]}>DO THIS NOW</Text>
-                    </View>
-                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
-                      High relevance: critical safety checks & active diagnostic issues
-                    </Text>
-                  </View>
-                  {triSections.doThisNow.map(item => (
-                    <View key={item.id}>{renderRecommendation({ item })}</View>
-                  ))}
-                </View>
-              )}
-
-              {/* 2. COMING UP SOON SECTION */}
-              {triSections.comingUpSoon.length > 0 && (
-                <View style={{ marginBottom: 20 }}>
-                  <View style={styles.triSectionHeader}>
-                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(214, 162, 58, 0.16)', borderColor: '#D6A23A' }]}>
-                      <Icon name="event" size={14} color="#D6A23A" />
-                      <Text style={[styles.triSectionBadgeText, { color: '#D6A23A' }]}>COMING UP SOON</Text>
-                    </View>
-                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
-                      Scheduled maintenance approaching due intervals
-                    </Text>
-                  </View>
-                  {triSections.comingUpSoon.map(item => (
-                    <View key={item.id}>{renderRecommendation({ item })}</View>
-                  ))}
-                </View>
-              )}
-
-              {/* 3. HELPFUL TIPS SECTION */}
-              {triSections.helpfulTips.length > 0 && (
-                <View style={{ marginBottom: 20 }}>
-                  <View style={styles.triSectionHeader}>
-                    <View style={[styles.triSectionBadge, { backgroundColor: 'rgba(50, 213, 131, 0.16)', borderColor: '#32D583' }]}>
-                      <Icon name="lightbulb" size={14} color="#32D583" />
-                      <Text style={[styles.triSectionBadgeText, { color: '#32D583' }]}>HELPFUL TIPS</Text>
-                    </View>
-                    <Text style={[styles.triSectionSubtitle, { color: theme.textSecondary }]}>
-                      Simple preventive care and useful habits for beginners
-                    </Text>
-                  </View>
-                  {triSections.helpfulTips.map(item => (
-                    <View key={item.id}>{renderRecommendation({ item })}</View>
-                  ))}
-                </View>
-              )}
             </View>
           ) : (
             <View>
@@ -1360,24 +849,20 @@ const SmartRecommendationsScreen = ({ navigation }) => {
           {/* PAGINATION CONTROLS */}
           {currentTabItems.length > REC_PAGE_SIZE && (
             <View style={styles.paginationContainer}>
-              <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
+              <Text style={styles.paginationSummary}>
                 Showing {((recPage - 1) * REC_PAGE_SIZE) + 1}–{Math.min(recPage * REC_PAGE_SIZE, currentTabItems.length)} of {currentTabItems.length} recommendations
               </Text>
               <View style={styles.paginationControls}>
                 <TouchableOpacity
                   style={[
                     styles.pageNavButton,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
-                      opacity: recPage === 1 ? 0.4 : 1,
-                    },
+                    { opacity: recPage === 1 ? 0.4 : 1 },
                   ]}
                   disabled={recPage === 1}
                   onPress={() => handlePageChange(Math.max(1, recPage - 1))}
                 >
-                  <Icon name="chevron-left" size={18} color={theme.text} />
-                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
+                  <Icon name="chevron-left" size={18} color="#FFFFFF" />
+                  <Text style={styles.pageNavButtonText}>Prev</Text>
                 </TouchableOpacity>
 
                 <View style={styles.pagePillsRow}>
@@ -1388,16 +873,14 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                         key={pageNum}
                         style={[
                           styles.pagePill,
-                          isActive
-                            ? { backgroundColor: theme.accent, borderColor: theme.accent }
-                            : { backgroundColor: theme.surface, borderColor: theme.border },
+                          isActive && styles.pagePillActive,
                         ]}
                         onPress={() => handlePageChange(pageNum)}
                       >
                         <Text
                           style={[
                             styles.pagePillText,
-                            { color: isActive ? '#FFFFFF' : theme.text },
+                            isActive && styles.pagePillTextActive,
                           ]}
                         >
                           {pageNum}
@@ -1410,21 +893,25 @@ const SmartRecommendationsScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[
                     styles.pageNavButton,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
-                      opacity: recPage >= totalRecPages ? 0.4 : 1,
-                    },
+                    { opacity: recPage >= totalRecPages ? 0.4 : 1 },
                   ]}
                   disabled={recPage >= totalRecPages}
                   onPress={() => handlePageChange(Math.min(totalRecPages, recPage + 1))}
                 >
-                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
-                  <Icon name="chevron-right" size={18} color={theme.text} />
+                  <Text style={styles.pageNavButtonText}>Next</Text>
+                  <Icon name="chevron-right" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             </View>
           )}
+        </View>
+
+        {/* FOOTER NOTE */}
+        <View style={styles.footerNoteRow}>
+          <Icon name="auto-awesome" size={14} color="#F5501C" />
+          <Text style={styles.footerNoteText}>
+            Tailored to your vehicle, recent diagnostics and completed maintenance.
+          </Text>
         </View>
       </ScrollView>
 
@@ -1720,418 +1207,375 @@ const styles = StyleSheet.create({
   screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
   },
-  titleBlock: {
-    flex: 1,
-  },
-  screenTitle: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 22,
-    lineHeight: 28,
-  },
-  screenSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    lineHeight: 17,
-    marginTop: 4,
-  },
-  vehicleSummary: {
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 18,
-  },
-  sectionLabel: {
-    fontFamily: 'Inter-SemiBold',
+  eyebrow: {
+    fontFamily: 'Inter-Bold',
     fontSize: 10,
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  vehicleSummaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vehicleIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  vehicleSummaryText: {
-    flex: 1,
-  },
-  vehicleSummaryTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  vehicleSummaryDetails: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  healthSummary: {
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 18,
-  },
-  healthValueRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 10,
-  },
-  healthValue: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 38,
-    lineHeight: 44,
-  },
-  healthPercent: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 22,
-    lineHeight: 28,
-    marginLeft: 6,
-  },
-  healthStatusLabel: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 14,
-    lineHeight: 18,
-    marginTop: 6,
-  },
-  healthTrack: {
-    width: '100%',
-    height: 12,
-    borderRadius: 999,
-    overflow: 'hidden',
-    marginTop: 14,
-  },
-  healthFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  healthExplanation: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 14,
-  },
-  noticeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 18,
-  },
-  noticeTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 13.5,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
-  noticeSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 16,
+  screenTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 22,
+    letterSpacing: -0.4,
   },
-  noticeText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 17,
+
+  /* COMPACT VEHICLE CARD (Identical to MaintenanceScreen) */
+  compactVehicleCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    marginBottom: 16,
+  },
+  compactVehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 12,
+  },
+  compactVehicleIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  compactVehiclePhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  compactVehicleInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  progressSection: {
-    marginBottom: 18,
+  compactVehicleTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
   },
-  sectionTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  sectionSubtitle: {
+  compactVehicleSubtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 2,
+  },
+  compactSwitchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+  },
+  compactSwitchText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#F5501C',
+  },
+  compactHealthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    paddingTop: 10,
+  },
+  compactHealthLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactHealthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  compactHealthLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+  },
+
+  /* PROGRESS CARD */
+  progressCard: {
+    backgroundColor: '#16161A',
+    borderColor: '#232328',
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+  },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  progressCountText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#8E8E93',
   },
   progressTrack: {
-    width: '100%',
-    height: 10,
-    borderRadius: 999,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#26262B',
     overflow: 'hidden',
     marginTop: 10,
   },
   progressFill: {
     height: '100%',
-    borderRadius: 999,
+    backgroundColor: '#F5501C',
+    borderRadius: 3,
   },
-  completeSummary: {
+
+  /* FILTER PILLS */
+  filterPillsRow: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: '#16161A',
+    borderColor: '#232328',
+  },
+  filterPillActive: {
+    backgroundColor: '#F5501C',
+    borderColor: '#F5501C',
+  },
+  filterPillText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+  filterPillTextActive: {
+    fontFamily: 'Outfit-Bold',
+    color: '#FFFFFF',
+  },
+
+  /* SECTION HEADER */
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 18,
+    gap: 6,
+    marginBottom: 12,
   },
-  completeSummaryText: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  completeSummaryTitle: {
-    fontFamily: 'Outfit-SemiBold',
+  sectionTitleText: {
+    fontFamily: 'Outfit-Bold',
     fontSize: 16,
-    lineHeight: 22,
+    color: '#FFFFFF',
   },
-  completeSummarySubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 4,
-  },
+
+  /* RECOMMENDATION LIST */
   recommendationList: {
-    marginBottom: 30,
+    marginBottom: 20,
   },
-  recommendationListContent: {
-    paddingBottom: 10,
+  emptyNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#16161A',
+    borderWidth: 1,
+    borderColor: '#232328',
+    borderRadius: 14,
+    padding: 14,
+    marginVertical: 12,
   },
-  recommendationWrapper: {
-    marginBottom: 14,
+  emptyNoticeText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    color: '#8E8E93',
+    flex: 1,
   },
-  recommendationCard: {
+
+  /* RECOMMENDATION CARD */
+  recCard: {
+    backgroundColor: '#16161A',
+    borderColor: '#232328',
     borderWidth: 1,
     borderRadius: 18,
     padding: 16,
+    marginBottom: 12,
   },
-  cardTopMetaRow: {
+  recCardCompleted: {
+    opacity: 0.75,
+  },
+  completedText: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  recTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
   },
-  cardBadgesGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  categoryPill: {
+  catBadge: {
+    backgroundColor: '#222228',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  categoryPillText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9.5,
+  catBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
     letterSpacing: 0.8,
+    color: '#FFFFFF',
   },
-  impactBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  statusTagBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 999,
-    gap: 3,
-  },
-  impactBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 10.5,
-  },
-  recommendationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  recommendationIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  recommendationTitleBlock: {
-    flex: 1,
-  },
-  sourceBadge: {
+    borderRadius: 8,
     borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
   },
-  sourceBadgeText: {
+  statusTagText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 9,
+    fontSize: 10,
     letterSpacing: 0.6,
   },
-  recommendationTitle: {
+  recTitleText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 15.5,
-    lineHeight: 21,
+    fontSize: 15,
+    color: '#FFFFFF',
+    marginTop: 10,
   },
-  relatedBox: {
+  recSubtitleText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  whySuggestedBox: {
+    backgroundColor: '#1A1716',
+    borderWidth: 1,
+    borderColor: '#33241C',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  whySuggestedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 10,
+    gap: 5,
+    marginBottom: 6,
   },
-  relatedLabel: {
-    fontFamily: 'Inter-SemiBold',
+  whySuggestedHeaderTitle: {
+    fontFamily: 'Inter-Bold',
     fontSize: 10,
-    letterSpacing: 0.3,
+    letterSpacing: 0.8,
+    color: '#F5501C',
   },
-  relatedTitle: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
-    flex: 1,
-  },
-  recommendationSummaryText: {
+  whySuggestedBodyText: {
     fontFamily: 'Inter-Regular',
     fontSize: 12.5,
+    color: '#E4E4E7',
     lineHeight: 18,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  chipsRow: {
+  whySuggestedFooter: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  metaChip: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2B2019',
+    paddingTop: 8,
   },
-  metaChipText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11,
-  },
-  guideWrapper: {
-    marginBottom: 12,
-  },
-  guideToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  guideToggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  guideToggleText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11.5,
-  },
-  guideDetailsCard: {
-    marginTop: 6,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  guideDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  guideDetailHeading: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9.5,
-    letterSpacing: 0.6,
-    marginBottom: 2,
-  },
-  guideDetailBody: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11.5,
-    lineHeight: 16,
-  },
-  viewDiagnosisButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  viewDiagnosisText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11.5,
-  },
-  recommendationFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  priorityWrap: {
-    flex: 1,
-  },
-  priorityLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  completeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  completeButtonText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 11.5,
-    letterSpacing: 0.3,
-  },
-  completedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  completedBadgeWrap: {
+  sourceMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  completedStatusText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 12,
-  },
-  undoButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  undoText: {
-    fontFamily: 'Inter-SemiBold',
+  sourceMetaText: {
+    fontFamily: 'Inter-Medium',
     fontSize: 11,
+    color: '#9CA3AF',
   },
+  recActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#232328',
+  },
+  viewRecButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  viewRecButtonText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+    color: '#F5501C',
+  },
+  doneCheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#232328',
+  },
+  doneCheckBtnActive: {
+    borderColor: 'rgba(50, 213, 131, 0.4)',
+    backgroundColor: 'rgba(50, 213, 131, 0.1)',
+  },
+  doneCheckText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+
+  /* FOOTER NOTE */
+  footerNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 14,
+    marginBottom: 36,
+    paddingHorizontal: 20,
+  },
+  footerNoteText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    textAlign: 'center',
+    flex: 1,
+  },
+
+  /* PAGINATION */
   paginationContainer: {
-    marginTop: 18,
+    marginTop: 16,
     paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopWidth: 1,
+    borderTopColor: '#232328',
     alignItems: 'center',
     gap: 10,
     marginBottom: 10,
@@ -2139,7 +1583,7 @@ const styles = StyleSheet.create({
   paginationSummary: {
     fontFamily: 'Inter-Medium',
     fontSize: 11.5,
-    letterSpacing: 0.3,
+    color: '#8E8E93',
   },
   paginationControls: {
     flexDirection: 'row',
@@ -2154,11 +1598,14 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
+    borderColor: '#232328',
+    backgroundColor: '#16161A',
     gap: 4,
   },
   pageNavButtonText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
+    color: '#FFFFFF',
   },
   pagePillsRow: {
     flexDirection: 'row',
@@ -2170,13 +1617,23 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     borderWidth: 1,
+    borderColor: '#232328',
+    backgroundColor: '#16161A',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
   },
+  pagePillActive: {
+    backgroundColor: '#F5501C',
+    borderColor: '#F5501C',
+  },
   pagePillText: {
     fontFamily: 'Inter-Bold',
     fontSize: 12,
+    color: '#8E8E93',
+  },
+  pagePillTextActive: {
+    color: '#FFFFFF',
   },
 
   /* MODAL STYLES */

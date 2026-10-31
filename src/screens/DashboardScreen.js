@@ -22,7 +22,7 @@ import DashboardVehicleProfileModal from '../components/DashboardVehicleProfileM
 import NeedHelpSignInModal from '../components/NeedHelpSignInModal';
 import RecentActivityCard from '../components/RecentActivityCard';
 import Sidebar from '../components/Sidebar';
-import VehicleHealthCard from '../components/VehicleHealthCard';
+import VehicleHealthSpeedometer from '../components/VehicleHealthSpeedometer';
 import AIUsageCard from '../components/AIUsageCard';
 import AIUsageDetailsModal from '../components/AIUsageDetailsModal';
 import { useAIUsage } from '../context/AIUsageContext';
@@ -34,6 +34,7 @@ import { useVehicle } from '../context/VehicleContext';
 import useNeedHelpSignInModal from '../hooks/useNeedHelpSignInModal';
 import useRecentActivities from '../hooks/useRecentActivities';
 
+import { BRAND, BRAND_SECONDARY } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import { handleActivityPress } from '../utils/activityUtils';
 
@@ -163,6 +164,7 @@ const getVehicleIconName = (vehicleType, vehicleProfile = null) => {
 
 const DashboardScreen = ({ navigation }) => {
   const { theme } = useTheme();
+  const isDark = theme.name === 'dark';
   const { isOpen, openSidebar } = useSidebar();
   const { isAuthenticated, loginGoogle, refreshUser } = useAuth();
   const {
@@ -235,6 +237,29 @@ const DashboardScreen = ({ navigation }) => {
       'Your Vehicle',
     );
 
+  const vehicleBrand =
+    getDisplayValue(
+      vehicleProfile?.custom_brand ||
+        vehicleProfile?.vehicle_brand ||
+        vehicleProfile?.vehicleBrand ||
+        vehicleProfile?.brand,
+      '',
+    );
+
+  const vehicleModel =
+    getDisplayValue(
+      vehicleProfile?.custom_model ||
+        vehicleProfile?.vehicle_model ||
+        vehicleProfile?.vehicleModel ||
+        vehicleProfile?.model,
+      '',
+    );
+
+  const vehicleBrandAndModel =
+    [vehicleBrand, vehicleModel].filter(Boolean).join(' ').trim() ||
+    vehicleName ||
+    'Your Vehicle';
+
   const vehicleDetails =
     getVehicleDisplayDetails(
       vehicleProfile,
@@ -266,6 +291,16 @@ const DashboardScreen = ({ navigation }) => {
       rawVehicleType,
       vehicleProfile,
     );
+
+  const vehiclePhotoUri =
+    vehicleProfile?.photo_url ||
+    vehicleProfile?.image_url ||
+    vehicleProfile?.photo ||
+    vehicleProfile?.image ||
+    vehicleProfile?.custom_photo ||
+    vehicleProfile?.avatar ||
+    vehicleProfile?.thumbnail ||
+    null;
 
   // ==================================================
   // AUTH PROMPT
@@ -379,46 +414,33 @@ const DashboardScreen = ({ navigation }) => {
   const actionCards = [
     {
       iconName: 'build',
-      categoryKey: 'maint',
-      title: 'Keep It Maintained',
-      description:
-        'Stay on top of services and maintenance reminders.',
-      feature:
-        'Keep It Maintained',
+      title: 'Maintenance',
+      description: 'Services & reminders',
+      feature: 'Keep It Maintained',
       requiresAuth: true,
       routeName: 'Maintenance',
     },
     {
       iconName: 'storefront',
-      categoryKey: 'shop',
-      title: 'Need Professional Help?',
-      description:
-        'Find nearby repair shops when your vehicle needs help.',
-      feature:
-        'Need Professional Help',
+      title: 'Find a pro',
+      description: 'Nearby repair shops',
+      feature: 'Need Professional Help',
       requiresAuth: false,
       routeName: 'RepairShops',
     },
     {
-      iconName: 'medical-services',
-      categoryKey: 'diag',
-      title: 'Something Wrong?',
-      description:
-        'Diagnose a current vehicle problem with AI.',
-      feature:
-        'Ask VehiCare',
+      iconName: 'show-chart',
+      title: 'Vehicle health',
+      description: 'See what needs care',
+      feature: 'Vehicle Health',
       requiresAuth: true,
-      routeName:
-        'AskVehiCare',
+      routeName: 'VehicleHealth',
     },
     {
       iconName: 'auto-awesome',
-      categoryKey: 'smart',
-      title: 'Smart Recommendations',
-      description:
-        'Get personalized maintenance advice based on symptoms and history.',
-      feature:
-        'Smart Recommendations',
+      title: 'Smart recommendations',
+      description: 'Your next steps',
+      feature: 'Smart Recommendations',
       requiresAuth: true,
       routeName: 'SmartRecommendations',
     },
@@ -479,9 +501,9 @@ const DashboardScreen = ({ navigation }) => {
                     styles.profileButton,
                     {
                       backgroundColor:
-                        theme.surfaceAlt,
+                        theme.name === 'dark' ? '#1E1F22' : theme.surfaceAlt,
                       borderColor:
-                        theme.border,
+                        theme.name === 'dark' ? '#28292D' : theme.border,
                     },
                   ]}
                   activeOpacity={0.8}
@@ -491,7 +513,7 @@ const DashboardScreen = ({ navigation }) => {
                 >
                   <Icon
                     name="menu"
-                    size={24}
+                    size={22}
                     color={theme.text}
                   />
                 </TouchableOpacity>
@@ -500,19 +522,15 @@ const DashboardScreen = ({ navigation }) => {
             </View>
 
             {/* ==================================================
-                VEHICLE CARD
+                ACTIVE VEHICLE CARD
             ================================================== */}
 
             <TouchableOpacity
               style={[
                 styles.vehicleCard,
                 {
-                  backgroundColor:
-                    theme.surfaceAlt,
-                  borderColor:
-                    theme.accent,
-                  shadowColor:
-                    theme.shadow,
+                  backgroundColor: theme.glassSurface || (isDark ? 'rgba(20, 21, 25, 0.90)' : '#18181B'),
+                  borderColor: theme.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.14)' : '#2E2F35'),
                 },
               ]}
               activeOpacity={0.85}
@@ -528,266 +546,196 @@ const DashboardScreen = ({ navigation }) => {
                 )
               }
             >
-              <View
-                style={[
-                  styles.vehicleIconContainer,
-                  {
-                    backgroundColor:
-                      theme.accentSoft,
-                  },
-                ]}
-              >
-                <Icon
-                  name={
-                    vehicleIconName
-                  }
-                  size={28}
-                  color={theme.accent}
-                />
+              <View style={styles.vehicleIconContainer}>
+                {vehiclePhotoUri ? (
+                  <Image
+                    source={{ uri: vehiclePhotoUri }}
+                    style={styles.vehicleCardImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Icon
+                    name={
+                      vehicleIconName
+                    }
+                    size={24}
+                    color={BRAND}
+                  />
+                )}
               </View>
 
               <View
                 style={styles.vehicleInfo}
               >
-                <Text
-                  style={[
-                    styles.vehicleLabel,
-                    {
-                      color:
-                        theme.accent,
-                    },
-                  ]}
-                >
-                  YOUR VEHICLE
+                <Text style={styles.vehicleLabel}>
+                  ACTIVE VEHICLE
                 </Text>
 
                 <Text
-                  style={[
-                    styles.vehicleName,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
+                  style={styles.vehicleName}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
-                  {vehicleName}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.vehicleDetails,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {vehicleDetails}
+                  {vehicleBrandAndModel}
                 </Text>
               </View>
 
               <View
-                style={styles.arrowButton}
+                style={styles.garageAction}
               >
                 <Icon
-                  name="chevron-right"
-                  size={28}
-                  color="#777777"
+                  name="unfold-more"
+                  size={20}
+                  color="#8E8E93"
                 />
+                <Text style={styles.garageText}>
+                  Garage
+                </Text>
               </View>
             </TouchableOpacity>
 
             {/* ==================================================
-                AI CARD
+                VEHICLE HEALTH SPEEDOMETER CLUSTER
+            ================================================== */}
+
+            <VehicleHealthSpeedometer
+              containerStyle={{ marginBottom: 14 }}
+              onPress={() =>
+                handleProtectedFeature(
+                  'Vehicle Health',
+                  'VehicleHealth',
+                )
+              }
+            />
+
+            {/* ==================================================
+                DIAGNOSIS HERO BANNER ("Something wrong?")
+            ================================================== */}
+
+            <View
+              style={[
+                styles.heroBanner,
+                {
+                  backgroundColor: theme.glassWarmSurface || (isDark ? 'rgba(32, 22, 18, 0.90)' : '#221814'),
+                  borderColor: theme.glassWarmBorder || (isDark ? 'rgba(245, 80, 28, 0.35)' : '#3D271D'),
+                },
+              ]}
+            >
+              <View style={styles.heroTopRow}>
+                <Icon
+                  name="crop-free"
+                  size={26}
+                  color={BRAND}
+                  style={styles.heroIcon}
+                />
+                <View style={styles.heroTextCol}>
+                  <Text style={styles.heroTitle}>
+                    Something wrong?
+                  </Text>
+                  <Text style={styles.heroSubtitle}>
+                    Tell VehiCare what you're experiencing.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.heroButton}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (isAuthenticated) {
+                    navigation.navigate('AskVehiCare');
+                    return;
+                  }
+
+                  openAuthPrompt('Ask VehiCare', {
+                    name: 'AskVehiCare',
+                    params: null,
+                  });
+                }}
+              >
+                <Icon
+                  name="call-made"
+                  size={18}
+                  color="#FFFFFF"
+                  style={styles.heroBtnIcon}
+                />
+                <Text style={styles.heroButtonText}>Start a diagnosis</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ==================================================
+                HOW CAN WE HELP? (2x2 GRID)
+            ================================================== */}
+
+            <View style={styles.sectionHeader}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  {
+                    color: theme.text,
+                  },
+                ]}
+              >
+                How can we help?
+              </Text>
+            </View>
+
+            <View style={styles.actionsGrid}>
+              {actionCards.map(card => (
+                <DashboardActionCard
+                  key={card.title}
+                  iconName={card.iconName}
+                  title={card.title}
+                  description={card.description}
+                  onPress={() =>
+                    handleProtectedFeature(
+                      card.feature,
+                      card.routeName,
+                      card.routeParams,
+                    )
+                  }
+                />
+              ))}
+            </View>
+
+            {/* ==================================================
+                YOUR RECENT ACTIVITY (SINGLE-ROW ENTRY)
             ================================================== */}
 
             <TouchableOpacity
               style={[
-                styles.aiCard,
+                styles.recentActivityRow,
                 {
-                  backgroundColor:
-                    theme.surfaceAlt,
-                  borderColor:
-                    theme.accent,
+                  backgroundColor: theme.glassSurface || (isDark ? 'rgba(20, 21, 25, 0.90)' : '#18181B'),
+                  borderColor: theme.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.14)' : '#2E2F35'),
                 },
               ]}
-              activeOpacity={0.85}
-              onPress={() => {
-                if (
-                  isAuthenticated
-                ) {
-                  navigation.navigate(
-                    'AskVehiCare',
-                  );
-
-                  return;
-                }
-
-                openAuthPrompt(
-                  'Ask VehiCare',
-                  {
-                    name:
-                      'AskVehiCare',
-                    params: null,
-                  },
-                );
-              }}
+              activeOpacity={0.82}
+              onPress={() => navigation.navigate('Activity')}
             >
-              <View
-                style={[
-                  styles.aiIconContainer,
-                  {
-                    backgroundColor:
-                      'transparent',
-                  },
-                ]}
-              >
-                <Image
-                  source={require('../assets/logo.png')}
-                  style={
-                    styles.aiLogo
-                  }
-                  resizeMode="contain"
+              <View style={styles.activityIconCircle}>
+                <Icon
+                  name="history"
+                  size={20}
+                  color="#FFFFFF"
                 />
               </View>
 
-              <View
-                style={styles.aiContent}
-              >
-                <Text
-                  style={[
-                    styles.aiSmallLabel,
-                    {
-                      color:
-                        theme.accent,
-                    },
-                  ]}
-                >
-                  NEED HELP WITH YOUR VEHICLE?
+              <View style={styles.activityTextCol}>
+                <Text style={styles.activityRowTitle}>
+                  Your recent activity
                 </Text>
-
-                <Text
-                  style={[
-                    styles.aiTitle,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                >
-                  Something wrong?
-                </Text>
-
-                <Text
-                  style={[
-                    styles.aiDescription,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                >
-                  Tell VehiCare what
-                  you're experiencing.
+                <Text style={styles.activityRowSubtitle}>
+                  Diagnoses, chats & maintenance
                 </Text>
               </View>
 
               <Icon
                 name="chevron-right"
-                size={28}
-                color={
-                  theme.textSecondary
-                }
+                size={22}
+                color="#6E6E73"
               />
             </TouchableOpacity>
-
-            {/* ==================================================
-                HELP SECTION
-            ================================================== */}
-
-            <View
-              style={
-                styles.sectionHeader
-              }
-            >
-              <View>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                >
-                  How can we help?
-                </Text>
-
-                <Text
-                  style={[
-                    styles.sectionSubtitle,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                >
-                  Take care of your
-                  vehicle with ease
-                </Text>
-              </View>
-            </View>
-
-            {/* ==================================================
-                ACTIONS
-            ================================================== */}
-
-            <View
-              style={styles.actions}
-            >
-              {actionCards.map(
-                card => (
-                  <DashboardActionCard
-                    key={
-                      card.title
-                    }
-                    iconName={
-                      card.iconName
-                    }
-                    categoryKey={
-                      card.categoryKey
-                    }
-                    title={
-                      card.title
-                    }
-                    description={
-                      card.description
-                    }
-                    onPress={() =>
-                      handleProtectedFeature(
-                        card.feature,
-                        card.routeName,
-                        card.routeParams,
-                      )
-                    }
-                  />
-                ),
-              )}
-            </View>
-
-            {/* ==================================================
-                RECENT ACTIVITY
-            ================================================== */}
-
-            <RecentActivityCard
-              activities={recentActivities}
-              onViewAll={() => navigation.navigate('Activity')}
-              onItemPress={activity => handleActivityPress(activity, navigation)}
-            />
 
             {/* ==================================================
                 AI USAGE QUOTA CARD
@@ -797,190 +745,10 @@ const DashboardScreen = ({ navigation }) => {
               onPress={openDetailsModal}
               onViewDetails={openDetailsModal}
               onUpgrade={() => navigation.navigate('ManagePlan')}
+              style={{
+                marginBottom: 20,
+              }}
             />
-
-            {/* ==================================================
-                VEHICLE HEALTH
-            ================================================== */}
-
-            <View
-              style={styles.actions}
-            >
-              <VehicleHealthCard
-                onPress={() =>
-                  handleProtectedFeature(
-                    'Vehicle Health',
-                    'VehicleHealth',
-                  )
-                }
-              />
-            </View>
-
-            {/* ==================================================
-                VEHICLE INFORMATION
-            ================================================== */}
-
-            <View
-              style={[
-                styles.infoCard,
-                {
-                  backgroundColor:
-                    theme.surfaceAlt,
-                  borderColor:
-                    theme.border,
-                },
-              ]}
-            >
-              <View
-                style={styles.infoHeader}
-              >
-                <View>
-                  <Text
-                    style={[
-                      styles.infoTitle,
-                      {
-                        color:
-                          theme.text,
-                      },
-                    ]}
-                  >
-                    Your Vehicle
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.infoSubtitle,
-                      {
-                        color:
-                          theme.textSecondary,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {vehicleName}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        theme.statusBadgeBackground,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.statusDot,
-                      {
-                        backgroundColor:
-                          theme.success,
-                      },
-                    ]}
-                  />
-
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color:
-                          theme.statusBadgeText,
-                      },
-                    ]}
-                  >
-                    ACTIVE
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.divider,
-                  {
-                    backgroundColor:
-                      theme.border,
-                  },
-                ]}
-              />
-
-              <View
-                style={
-                  styles.infoStats
-                }
-              >
-                <View
-                  style={styles.stat}
-                >
-                  <Text
-                    style={[
-                      styles.statValue,
-                      {
-                        color:
-                          theme.text,
-                      },
-                    ]}
-                  >
-                    {vehicleYear ||
-                      '—'}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.statLabel,
-                      {
-                        color:
-                          theme.textSecondary,
-                      },
-                    ]}
-                  >
-                    YEAR
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.statDivider,
-                    {
-                      backgroundColor:
-                        theme.border,
-                    },
-                  ]}
-                />
-
-                <View
-                  style={styles.stat}
-                >
-                  <Text
-                    style={[
-                      styles.statValue,
-                      {
-                        color:
-                          theme.text,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {vehicleType ||
-                      '—'}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.statLabel,
-                      {
-                        color:
-                          theme.textSecondary,
-                      },
-                    ]}
-                  >
-                    TYPE
-                  </Text>
-                </View>
-              </View>
-            </View>
 
           </View>
         </ScrollView>
@@ -1111,23 +879,22 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent:
       'space-between',
-    marginBottom: 24,
+    marginBottom: 18,
   },
 
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
 
   profileButton: {
-    width: 45,
-    height: 45,
+    width: 44,
+    height: 44,
     flexShrink: 0,
-    borderRadius: 15,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent:
@@ -1140,241 +907,229 @@ const styles = StyleSheet.create({
   // ==================================================
 
   vehicleCard: {
-    minHeight: 104,
+    backgroundColor: 'rgba(20, 21, 25, 0.90)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    minHeight: 88,
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 16,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    elevation: 3,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 5,
   },
 
   vehicleIconContainer: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245, 80, 28, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 80, 28, 0.30)',
     alignItems: 'center',
-    justifyContent:
-      'center',
+    justifyContent: 'center',
     marginRight: 14,
+    overflow: 'hidden',
+  },
+
+  vehicleCardImage: {
+    width: '100%',
+    height: '100%',
   },
 
   vehicleInfo: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
 
   vehicleLabel: {
-    fontFamily:
-      'Inter-SemiBold',
+    fontFamily: 'Inter-Bold',
     fontSize: 9,
+    fontWeight: '700',
+    color: '#8E8E93',
     letterSpacing: 1.1,
-    marginBottom: 4,
+    marginBottom: 2,
   },
 
   vehicleName: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 18,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: 2,
   },
 
   vehicleDetails: {
-    fontFamily:
-      'Inter-Regular',
+    fontFamily: 'Inter-Regular',
     fontSize: 11,
+    color: '#8E8E93',
+  },
+
+  garageAction: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+    paddingHorizontal: 4,
+  },
+
+  garageText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 9,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+
+  // ==================================================
+  // DIAGNOSIS HERO BANNER
+  // ==================================================
+
+  heroBanner: {
+    backgroundColor: 'rgba(32, 22, 18, 0.90)',
+    borderColor: 'rgba(245, 80, 28, 0.35)',
+    borderRadius: 22,
+    borderWidth: 1.2,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#F5501C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 7,
+  },
+
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+
+  heroIcon: {
+    marginTop: 2,
+    marginRight: 12,
+  },
+
+  heroTextCol: {
+    flex: 1,
+  },
+
+  heroTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+
+  heroSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#D4CDC8',
+    lineHeight: 16,
     marginTop: 3,
   },
 
-  arrowButton: {
-    width: 28,
-    height: 40,
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    flexShrink: 0,
-  },
-
-  // ==================================================
-  // AI CARD
-  // ==================================================
-
-  aiCard: {
-    minHeight: 112,
-    borderWidth: 1,
-    borderRadius: 21,
-    padding: 17,
+  heroButton: {
+    backgroundColor: '#F5501C',
+    height: 46,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 27,
+    justifyContent: 'center',
+    marginTop: 14,
+    shadowColor: '#F5501C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
   },
 
-  aiIconContainer: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    marginRight: 14,
-    flexShrink: 0,
+  heroBtnIcon: {
+    marginRight: 6,
   },
 
-  aiLogo: {
-    width: 60,
-    height: 60,
-  },
-
-  aiContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  aiSmallLabel: {
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 0.9,
-    marginBottom: 4,
-  },
-
-  aiTitle: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 19,
-  },
-
-  aiDescription: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 11,
-    marginTop: 4,
-    lineHeight: 16,
+  heroButtonText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
   // ==================================================
-  // SECTION
+  // SECTION & 2x2 ACTIONS GRID
   // ==================================================
 
   sectionHeader: {
-    marginBottom: 14,
+    marginBottom: 10,
   },
 
   sectionTitle: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 20,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16.5,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 
-  sectionSubtitle: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 11,
-    marginTop: 3,
-  },
-
-  // ==================================================
-  // ACTIONS
-  // ==================================================
-
-  actions: {
+  actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent:
-      'space-between',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
 
   // ==================================================
-  // VEHICLE INFORMATION
+  // RECENT ACTIVITY ROW
   // ==================================================
 
-  infoCard: {
+  recentActivityRow: {
+    backgroundColor: 'rgba(20, 21, 25, 0.90)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     borderWidth: 1,
-    borderRadius: 19,
-    padding: 16,
-    marginBottom: 20,
-  },
-
-  infoHeader: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent:
-      'space-between',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 4,
   },
 
-  infoTitle: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 16,
-  },
-
-  infoSubtitle: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 11,
-    marginTop: 3,
-  },
-
-  statusBadge: {
-    flexDirection: 'row',
+  activityIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
     alignItems: 'center',
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    justifyContent: 'center',
+    marginRight: 14,
   },
 
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-
-  statusText: {
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 0.6,
-  },
-
-  divider: {
-    height: 1,
-    marginVertical: 15,
-  },
-
-  infoStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  stat: {
+  activityTextCol: {
     flex: 1,
-    minWidth: 0,
   },
 
-  statValue: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 15,
+  activityRowTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2,
   },
 
-  statLabel: {
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 8,
-    letterSpacing: 0.8,
-    marginTop: 4,
-  },
-
-  statDivider: {
-    width: 1,
-    height: 30,
-    marginHorizontal: 15,
+  activityRowSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
   },
 });
 

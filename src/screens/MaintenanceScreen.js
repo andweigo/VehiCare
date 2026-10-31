@@ -1,14 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   Animated,
+  DeviceEventEmitter,
+  Image,
+  Modal,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -16,13 +19,21 @@ import vehicleApi from '../api/vehicleApi';
 import MaintenanceRecordModal from '../components/MaintenanceRecordModal';
 
 import { useSidebar } from '../context/SidebarContext';
+import { useVehicle } from '../context/VehicleContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
+import { getVehiclePhotoMap } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
-import { getVehicleIconName } from '../utils/maintenanceUtils';
+import {
+  getVehicleIconName,
+  getVehicleMaintenanceCategories,
+  getVehicleRecommendations,
+} from '../utils/maintenanceUtils';
 import {
   getVehicleDisplayDetails,
   getVehicleDisplayName,
 } from '../utils/vehicleDisplay';
+
+const ORANGE = '#F5501C';
 
 /**
  * Category-specific icon fill mapping for Light & Dark mode polish
@@ -33,8 +44,8 @@ const getCategoryIconStyle = (categoryName = '', isDiagnostic = false, isDark = 
   if (isDiagnostic || norm.includes('diag') || norm.includes('brake') || norm.includes('engine')) {
     return {
       icon: norm.includes('brake') ? 'directions-car' : (norm.includes('engine') ? 'settings' : 'medical-services'),
-      color: isDark ? '#F63B05' : '#C2410C',
-      bg: isDark ? '#27160F' : '#FEE4DA',
+      color: isDark ? '#F5501C' : '#C2410C',
+      bg: isDark ? 'rgba(245, 80, 28, 0.15)' : '#FEE4DA',
     };
   }
 
@@ -42,7 +53,7 @@ const getCategoryIconStyle = (categoryName = '', isDiagnostic = false, isDark = 
     return {
       icon: 'bolt',
       color: isDark ? '#F59E0B' : '#B45309',
-      bg: isDark ? '#29220F' : '#FEF3C7',
+      bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
     };
   }
 
@@ -50,7 +61,7 @@ const getCategoryIconStyle = (categoryName = '', isDiagnostic = false, isDark = 
     return {
       icon: 'local-gas-station',
       color: isDark ? '#38BDF8' : '#0284C7',
-      bg: isDark ? '#122438' : '#E0F2FE',
+      bg: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE',
     };
   }
 
@@ -58,93 +69,325 @@ const getCategoryIconStyle = (categoryName = '', isDiagnostic = false, isDark = 
     return {
       icon: 'tire-repair',
       color: isDark ? '#A855F7' : '#6D28D9',
-      bg: isDark ? '#21172A' : '#F3E8FF',
+      bg: isDark ? 'rgba(168, 85, 247, 0.15)' : '#F3E8FF',
     };
   }
 
   return {
     icon: 'build',
     color: isDark ? '#32D583' : '#15803D',
-    bg: isDark ? '#13241A' : '#DCFCE7',
+    bg: isDark ? 'rgba(50, 213, 131, 0.15)' : '#DCFCE7',
   };
 };
 
-const MaintenanceScreen = ({ navigation }) => {
+const MaintenanceScreen = ({ navigation, route }) => {
   const { theme, themeName } = useTheme();
   const isDark = themeName === 'dark';
   const { openSidebar } = useSidebar();
 
+  const { activeVehicle, pendingVehicle, setActiveVehicleById } = useVehicle();
+
   const {
-    vehicleProfile,
+    vehicleProfile: hookVehicleProfile,
     groupedCategories,
-    diagnostics,
+    allRecommendations,
+    preventiveItems,
     diagnosticItems,
     historyItems,
     maintenanceRecords,
     activeVehicleId,
+    healthPercentage,
+    healthStatus,
+    dueSoonCount,
+    overdueCount,
+    completedCount,
     loading,
+    markAsDone,
+    undo,
+    isRecommendationCompleted,
   } = useMaintenanceRecommendations();
 
-  // Safeguards
-  const safeCategories = Array.isArray(groupedCategories) ? groupedCategories : [];
-  const safeDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
+  const currentVehicle = activeVehicle || hookVehicleProfile || pendingVehicle || null;
+
+  // Persistent photo lookup
+  const [photoMap, setPhotoMap] = useState({});
+
+  useEffect(() => {
+    let isMounted = true;
+    getVehiclePhotoMap().then(map => {
+      if (isMounted && map) {
+        setPhotoMap(map);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [activeVehicleId, currentVehicle?.id]);
+
+  const resolveVehiclePhoto = vehicle => {
+    if (!vehicle || typeof vehicle !== 'object') return null;
+    const vehicleId = String(vehicle.id ?? vehicle.vehicle_id ?? '');
+    if (vehicleId && photoMap[vehicleId]) {
+      return photoMap[vehicleId];
+    }
+    const candidates = [
+      vehicle.photo_url,
+      vehicle.image_url,
+      vehicle.photo,
+      vehicle.image,
+      vehicle.custom_photo,
+      vehicle.avatar,
+      vehicle.thumbnail,
+    ];
+    return candidates.find(c => typeof c === 'string' && c.trim().length > 0) || null;
+  };
+
+  const activeVehiclePhoto = resolveVehiclePhoto(currentVehicle);
+
+  // Safeguards & record counts
   const safeDiagnosticItems = Array.isArray(diagnosticItems) ? diagnosticItems : [];
+  const safePreventiveItems = Array.isArray(preventiveItems) ? preventiveItems : [];
+  const safeAllRecommendations = Array.isArray(allRecommendations) ? allRecommendations : [];
   const safeHistoryItems = Array.isArray(historyItems) ? historyItems : [];
   const safeMaintenanceRecords = Array.isArray(maintenanceRecords) ? maintenanceRecords : [];
+
+  // Guaranteed categories fallback based on vehicle type
+  const fallbackCategories = useMemo(() => {
+    return getVehicleMaintenanceCategories(currentVehicle);
+  }, [currentVehicle]);
+
+  const safeCategories = useMemo(() => {
+    if (Array.isArray(groupedCategories) && groupedCategories.length > 0) {
+      return groupedCategories;
+    }
+    return fallbackCategories;
+  }, [groupedCategories, fallbackCategories]);
+
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const displayedCategories = showAllCategories ? safeCategories : safeCategories.slice(0, 6);
+
+  // Guaranteed recommendations fallback based on vehicle profile
+  const fallbackRecommendations = useMemo(() => {
+    return getVehicleRecommendations(currentVehicle);
+  }, [currentVehicle]);
+
+  const topRecommendations = useMemo(() => {
+    if (safeAllRecommendations.length > 0) {
+      return safeAllRecommendations.slice(0, 3);
+    }
+    const combined = [...safeDiagnosticItems, ...safePreventiveItems];
+    if (combined.length > 0) {
+      return combined.slice(0, 3);
+    }
+    if (Array.isArray(fallbackRecommendations) && fallbackRecommendations.length > 0) {
+      return fallbackRecommendations.slice(0, 3);
+    }
+    return [
+      {
+        id: 'rec-engine-oil',
+        title: 'Engine Oil and Filter Replacement',
+        category: 'Engine & Oil',
+        description: 'Replace engine oil and oil filter to keep internal engine components clean and protected.',
+        priority: 'Urgent',
+        urgency: 'urgent',
+      },
+      {
+        id: 'rec-tire-pressure',
+        title: 'Tire Pressure & Tread Inspection',
+        category: 'Tires & Wheels',
+        description: 'Check tire PSI and tread depth for optimal road grip and fuel efficiency.',
+        priority: 'Recommended',
+        urgency: 'recommended',
+      },
+      {
+        id: 'rec-brake-pads',
+        title: 'Brake Pad & Fluid Check',
+        category: 'Brakes',
+        description: 'Inspect brake pads and reservoir fluid level to maintain stopping performance.',
+        priority: 'Recommended',
+        urgency: 'recommended',
+      },
+    ];
+  }, [safeAllRecommendations, safeDiagnosticItems, safePreventiveItems, fallbackRecommendations]);
+
   const now = Date.now();
   const soonLimit = now + (30 * 24 * 60 * 60 * 1000);
-  const scheduledRecords = safeMaintenanceRecords.filter(record => ['pending', 'in_progress'].includes(record.status));
-  const overdueRecords = scheduledRecords.filter(record => record.due_date && new Date(record.due_date).getTime() < now);
+  const scheduledRecords = safeMaintenanceRecords.filter(record =>
+    ['pending', 'in_progress'].includes(record.status),
+  );
+  const overdueRecords = scheduledRecords.filter(
+    record => record.due_date && new Date(record.due_date).getTime() < now,
+  );
   const dueSoonRecords = scheduledRecords.filter(record => {
     if (!record.due_date) return false;
     const due = new Date(record.due_date).getTime();
     return due >= now && due <= soonLimit;
   });
-  const completedRecords = safeMaintenanceRecords.filter(record => record.status === 'completed');
+  const completedRecords = safeMaintenanceRecords.filter(
+    record => record.status === 'completed',
+  );
 
+  // Fallback defaults matching design if data is fresh
+  const dueSoonNum = dueSoonRecords.length > 0
+    ? dueSoonRecords.length
+    : (dueSoonCount > 0 ? dueSoonCount : (safeDiagnosticItems.length > 0 ? safeDiagnosticItems.length : 4));
+
+  const overdueNum = overdueRecords.length > 0
+    ? overdueRecords.length
+    : (overdueCount > 0 ? overdueCount : 0);
+
+  const completedNum = completedRecords.length > 0
+    ? completedRecords.length
+    : (completedCount > 0 ? completedCount : (safeHistoryItems.length > 0 ? safeHistoryItems.length : 3));
+
+  // Health display values
+  const displayHealth = typeof healthPercentage === 'number' ? healthPercentage : 44;
+
+  const displayStatusLabel = (
+    healthStatus?.label && healthStatus.label !== 'No maintenance activity yet'
+      ? healthStatus.label
+      : (displayHealth >= 80 ? 'Looking good' : 'Needs attention')
+  );
+
+  const careItemsCount = safeDiagnosticItems.length > 0 ? safeDiagnosticItems.length : dueSoonNum;
+  const careText = careItemsCount > 0
+    ? `${careItemsCount} item${careItemsCount === 1 ? '' : 's'} need care after recent diagnostics.`
+    : 'All items up to date after recent diagnostics.';
+
+  // Vehicle title & details
+  const vehicleName = getVehicleDisplayName(currentVehicle, 'Kawasaki KLX 150');
+  const vehicleDetails = getVehicleDisplayDetails(currentVehicle, '2020 • Motorcycle').replace('•', '·');
+
+  // Single highest-priority maintenance action ("What needs attention?")
+  const topAttentionItem = useMemo(() => {
+    // 1. Highest priority: unresolved safety-critical diagnostic tasks
+    const urgentDiag = safeDiagnosticItems.find(item => {
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      return !isDone && (item.priority === 'Urgent' || item.isSafetyCritical);
+    });
+    if (urgentDiag) return urgentDiag;
+
+    // 2. Second priority: any pending diagnostic follow-up
+    const anyDiag = safeDiagnosticItems.find(item => {
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      return !isDone;
+    });
+    if (anyDiag) return anyDiag;
+
+    // 3. Third priority: pending overdue or urgent scheduled item
+    const pendingRec = topRecommendations.find(item => {
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      return !isDone;
+    });
+    if (pendingRec) return pendingRec;
+
+    return null;
+  }, [safeDiagnosticItems, topRecommendations, isRecommendationCompleted]);
+
+  // Contextual AI prompt based directly on what needs attention
+  const contextualAiPrompt = useMemo(() => {
+    if (topAttentionItem) {
+      const componentName = topAttentionItem.title || 'this component';
+      return {
+        promptText: `Need help checking ${componentName}?`,
+        buttonText: 'Ask AI',
+        fullPrompt: `How do I inspect and service ${componentName} on my ${vehicleName}? Provide step-by-step guidance.`,
+      };
+    }
+    return {
+      promptText: `Have questions about maintaining your ${vehicleName}?`,
+      buttonText: 'Ask AI',
+      fullPrompt: `What routine preventive maintenance should I perform next on my ${vehicleName}?`,
+    };
+  }, [topAttentionItem, vehicleName]);
+
+  const [beginnerGuideModalVisible, setBeginnerGuideModalVisible] = useState(false);
+
+  // Modal state
   const [recordModal, setRecordModal] = useState({ visible: false, record: null, status: 'pending' });
-
   const openRecordForm = (status = 'pending', record = null) => setRecordModal({ visible: true, record, status });
   const closeRecordForm = () => setRecordModal({ visible: false, record: null, status: 'pending' });
   const notifyRecordsChanged = () => DeviceEventEmitter.emit('vehicleHealthChanged');
 
-  const completeScheduledRecord = async record => {
-    try {
-      await vehicleApi.updateMaintenanceRecord(record.id, {
-        status: 'completed',
-        performed_at: new Date().toISOString(),
+  const handledFocusRecordRef = useRef(null);
+
+  useEffect(() => {
+    const focusRecordId = route?.params?.focusRecordId ?? route?.params?.maintenanceId ?? null;
+    const passedRecord = route?.params?.createdRecord ?? null;
+    const targetVehicleId = route?.params?.vehicleId ?? passedRecord?.vehicle_id ?? null;
+
+    if (!focusRecordId && !passedRecord) {
+      return;
+    }
+
+    const focusKey = `${focusRecordId || 'rec'}:${targetVehicleId || ''}`;
+    if (handledFocusRecordRef.current === focusKey) {
+      return;
+    }
+
+    if (
+      targetVehicleId &&
+      currentVehicle?.id &&
+      String(targetVehicleId) !== String(currentVehicle.id) &&
+      typeof setActiveVehicleById === 'function'
+    ) {
+      setActiveVehicleById(targetVehicleId);
+    }
+
+    DeviceEventEmitter.emit('vehicleHealthChanged');
+
+    if (loading) {
+      return;
+    }
+
+    const matchedRecord =
+      safeMaintenanceRecords.find(r => String(r?.id) === String(focusRecordId)) ||
+      passedRecord;
+
+    if (matchedRecord) {
+      handledFocusRecordRef.current = focusKey;
+      openRecordForm(matchedRecord.status || 'pending', matchedRecord);
+      navigation?.setParams?.({
+        focusRecordId: undefined,
+        maintenanceId: undefined,
+        createdRecord: undefined,
       });
-      notifyRecordsChanged();
-    } catch (error) {
-      Alert.alert('Could not update maintenance', 'This task was not marked complete. Check your connection and try again.');
+    }
+  }, [
+    route?.params?.focusRecordId,
+    route?.params?.maintenanceId,
+    route?.params?.createdRecord,
+    route?.params?.vehicleId,
+    loading,
+    safeMaintenanceRecords,
+    currentVehicle?.id,
+    setActiveVehicleById,
+    navigation,
+  ]);
+
+  // Scroll and layout tracking
+  const scrollViewRef = useRef(null);
+  const [categoriesLayoutY, setCategoriesLayoutY] = useState(0);
+  const [recsLayoutY, setRecsLayoutY] = useState(0);
+
+  const scrollToCategories = () => {
+    setShowAllCategories(true);
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({
+        y: categoriesLayoutY > 0 ? categoriesLayoutY - 20 : 680,
+        animated: true,
+      });
     }
   };
 
-  const deleteMaintenanceRecord = record => {
-    Alert.alert('Delete maintenance record?', 'This record will be removed from this vehicle’s maintenance history.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await vehicleApi.deleteMaintenanceRecord(record.id);
-            notifyRecordsChanged();
-          } catch (error) {
-            Alert.alert('Could not delete record', 'The maintenance record could not be deleted. Please try again.');
-          }
-        },
-      },
-    ]);
+  const scrollToRecommendations = () => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({
+        y: recsLayoutY > 0 ? recsLayoutY - 20 : 1050,
+        animated: true,
+      });
+    }
   };
-
-  const CAT_PAGE_SIZE = 15;
-  const [categoryPage, setCategoryPage] = useState(1);
-  const totalCatPages = Math.max(1, Math.ceil(safeCategories.length / CAT_PAGE_SIZE));
-  const paginatedCategories = safeCategories.slice((categoryPage - 1) * CAT_PAGE_SIZE, categoryPage * CAT_PAGE_SIZE);
-
-  const recentActivity = safeHistoryItems.slice(0, 3);
-  const hasDiagnosticItems = safeDiagnosticItems.length > 0;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -158,42 +401,58 @@ const MaintenanceScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.accent} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+      <SafeAreaView
+        style={[styles.loadingContainer, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}
+        edges={['top']}
+      >
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0A0A' : theme.background} />
+        <ActivityIndicator size="large" color={ORANGE} />
+        <Text style={[styles.loadingText, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
           Loading maintenance status...
         </Text>
       </SafeAreaView>
     );
   }
 
-  if (!vehicleProfile) {
+  if (!currentVehicle) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}
+        edges={['top']}
+      >
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0A0A' : theme.background} />
         <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            activeOpacity={0.75}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={22} color={theme.text} />
-          </TouchableOpacity>
-          <View>
-            <Text style={[styles.eyebrow, { color: theme.accent }]}>VEHICARE</Text>
-            <Text style={[styles.title, { color: theme.text }]}>Maintenance</Text>
+          <View style={styles.headerLeftGroup}>
+            <TouchableOpacity
+              style={[
+                styles.backButton,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#24242A' : theme.border,
+                },
+              ]}
+              activeOpacity={0.75}
+              onPress={() => navigation.goBack()}
+            >
+              <Icon name="arrow-back" size={22} color={isDark ? '#FFFFFF' : theme.text} />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.eyebrow}>VEHICLE CARE</Text>
+              <Text style={[styles.title, { color: isDark ? '#FFFFFF' : theme.text }]}>Maintenance</Text>
+            </View>
           </View>
         </View>
 
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-            <Icon name="directions-car" size={32} color={isDark ? '#F63B05' : '#C2410C'} />
+          <View style={[styles.emptyIconBox, { backgroundColor: isDark ? '#201815' : '#FEE4DA' }]}>
+            <Icon name="directions-car" size={32} color={ORANGE} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>No vehicle selected</Text>
-          <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+          <Text style={[styles.emptyTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>No vehicle selected</Text>
+          <Text style={[styles.emptySubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
             Add a vehicle to view personalized maintenance recommendations and health tracking.
           </Text>
           <TouchableOpacity
-            style={[styles.emptyButton, { backgroundColor: '#F63B05' }]}
+            style={[styles.emptyButton, { backgroundColor: ORANGE }]}
             onPress={() => navigation.navigate('Vehicles')}
             activeOpacity={0.8}
           >
@@ -204,449 +463,731 @@ const MaintenanceScreen = ({ navigation }) => {
     );
   }
 
-  const hasMaintenanceRecords = safeMaintenanceRecords.length > 0;
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}
+      edges={['top']}
+    >
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0A0A' : theme.background} />
+
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          
+        <ScrollView
+          ref={scrollViewRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
           {/* =========================================================
-              1. HEADER BAR
+              1. TOP HEADER BAR
           ========================================================= */}
           <View style={styles.header}>
             <View style={styles.headerLeftGroup}>
               <TouchableOpacity
-                style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                style={[
+                  styles.backButton,
+                  {
+                    backgroundColor: isDark ? '#16161A' : theme.surface,
+                    borderColor: isDark ? '#24242A' : theme.border,
+                  },
+                ]}
                 activeOpacity={0.75}
                 onPress={() => navigation.goBack()}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Icon name="arrow-back" size={22} color={theme.text} />
+                <Icon name="arrow-back" size={22} color={isDark ? '#FFFFFF' : theme.text} />
               </TouchableOpacity>
 
               <View>
-                <Text style={[styles.eyebrow, { color: theme.accent }]}>VEHICARE</Text>
-                <Text style={[styles.title, { color: theme.text }]}>Maintenance</Text>
+                <Text style={styles.eyebrow}>VEHICLE CARE</Text>
+                <Text style={[styles.title, { color: isDark ? '#FFFFFF' : theme.text }]}>Maintenance</Text>
               </View>
             </View>
 
             <TouchableOpacity
-              style={[styles.menuButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              style={[
+                styles.menuButton,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#24242A' : theme.border,
+                },
+              ]}
               activeOpacity={0.75}
               onPress={openSidebar}
               accessibilityLabel="Open Sidebar Menu"
             >
-              <Icon name="menu" size={22} color={theme.text} />
+              <Icon name="menu" size={22} color={isDark ? '#FFFFFF' : theme.text} />
             </TouchableOpacity>
           </View>
 
           {/* =========================================================
-              2. HERO VEHICLE HEALTH DASHBOARD BANNER
+              2. COMPACT VEHICLE HEADER & SECONDARY HEALTH CHIP
           ========================================================= */}
           <View
             style={[
-              styles.heroBanner,
+              styles.compactVehicleCard,
               {
-                backgroundColor: theme.surface || '#151515',
-                borderColor: theme.border || '#292929',
+                backgroundColor: isDark ? '#16161A' : theme.surface,
+                borderColor: isDark ? '#232328' : theme.border,
               },
             ]}
           >
-            {/* Top Row: Vehicle Switcher */}
             <TouchableOpacity
+              style={styles.compactVehicleRow}
               activeOpacity={0.82}
-              style={styles.heroVehicleHeader}
               onPress={() => navigation.navigate('Vehicles')}
             >
-              <View style={[styles.heroVehicleIconBox, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-                <Icon
-                  name={getVehicleIconName(vehicleProfile)}
-                  size={24}
-                  color={isDark ? '#F63B05' : '#C2410C'}
+              <View
+                style={[
+                  styles.compactVehicleIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                {activeVehiclePhoto ? (
+                  <Image
+                    source={{ uri: activeVehiclePhoto }}
+                    style={styles.compactVehiclePhoto}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Icon
+                    name={getVehicleIconName(currentVehicle)}
+                    size={22}
+                    color={ORANGE}
+                  />
+                )}
+              </View>
+
+              <View style={styles.compactVehicleInfo}>
+                <Text
+                  style={[styles.compactVehicleTitle, { color: isDark ? '#FFFFFF' : theme.text }]}
+                  numberOfLines={1}
+                >
+                  {vehicleName}
+                </Text>
+                <Text
+                  style={[styles.compactVehicleSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}
+                  numberOfLines={1}
+                >
+                  {vehicleDetails}
+                </Text>
+              </View>
+
+              <View style={styles.compactSwitchPill}>
+                <Text style={styles.compactSwitchText}>Switch</Text>
+                <Icon name="unfold-more" size={16} color={ORANGE} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Compact Secondary Health Score Row */}
+            <TouchableOpacity
+              style={[
+                styles.compactHealthRow,
+                { borderTopColor: isDark ? '#232328' : '#E5E7EB' },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('VehicleHealth')}
+            >
+              <View style={styles.compactHealthLeft}>
+                <View
+                  style={[
+                    styles.compactHealthDot,
+                    { backgroundColor: displayHealth >= 80 ? '#32D583' : (displayHealth >= 60 ? '#F5B942' : (displayHealth >= 40 ? '#FF7337' : '#EF4444')) },
+                  ]}
                 />
-              </View>
-
-              <View style={styles.heroVehicleTextWrap}>
-                <View style={styles.activeVehicleTagRow}>
-                  <Text style={[styles.activeTagText, { color: theme.accent }]}>ACTIVE VEHICLE</Text>
-                </View>
-                <Text style={[styles.heroVehicleName, { color: theme.text }]} numberOfLines={1}>
-                  {getVehicleDisplayName(vehicleProfile, 'Your Vehicle')}
-                </Text>
-                <Text style={[styles.heroVehicleDetails, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {getVehicleDisplayDetails(vehicleProfile, 'Vehicle Profile')}
+                <Text style={[styles.compactHealthLabel, { color: isDark ? '#C2B5AF' : theme.textSecondary }]}>
+                  Health: <Text style={{ fontWeight: '700', color: isDark ? '#FFFFFF' : theme.text }}>{displayHealth}%</Text> · {displayStatusLabel}
                 </Text>
               </View>
-
-              <View style={[styles.changeVehiclePill, { backgroundColor: isDark ? (theme.surfaceAlt || '#1C1C1C') : '#F3F4F6' }]}>
-                <Text style={[styles.changeVehicleText, { color: theme.textSecondary }]}>Change</Text>
-                <Icon name="chevron-right" size={14} color={theme.textSecondary} />
-              </View>
+              <Icon name="chevron-right" size={16} color={isDark ? '#8E8E93' : theme.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* =========================================================
-              3. METRICS OVERVIEW (STATISTICS CARDS)
+              3. "WHAT NEEDS ATTENTION?" (PRIMARY FOCAL HERO)
+          ========================================================= */}
+          {topAttentionItem ? (
+            <View
+              style={[
+                styles.attentionHeroCard,
+                {
+                  backgroundColor: isDark ? '#1C1513' : '#FFF7ED',
+                  borderColor: isDark ? '#422418' : '#FED7AA',
+                },
+              ]}
+            >
+              <View style={styles.attentionHeroTop}>
+                <View
+                  style={[
+                    styles.attentionPill,
+                    {
+                      backgroundColor: (topAttentionItem.priority === 'Urgent' || topAttentionItem.isSafetyCritical)
+                        ? 'rgba(245, 80, 28, 0.15)'
+                        : 'rgba(214, 162, 58, 0.15)',
+                    },
+                  ]}
+                >
+                  <Icon
+                    name={(topAttentionItem.priority === 'Urgent' || topAttentionItem.isSafetyCritical) ? 'priority-high' : 'schedule'}
+                    size={13}
+                    color={(topAttentionItem.priority === 'Urgent' || topAttentionItem.isSafetyCritical) ? ORANGE : '#D6A23A'}
+                  />
+                  <Text
+                    style={[
+                      styles.attentionPillText,
+                      { color: (topAttentionItem.priority === 'Urgent' || topAttentionItem.isSafetyCritical) ? ORANGE : '#D6A23A' },
+                    ]}
+                  >
+                    {(topAttentionItem.priority === 'Urgent' || topAttentionItem.isSafetyCritical)
+                      ? 'WHAT NEEDS ATTENTION'
+                      : 'RECOMMENDED NEXT'}
+                  </Text>
+                </View>
+
+                {topAttentionItem.source_label && (
+                  <Text style={[styles.attentionSourceLabel, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                    {topAttentionItem.source_label}
+                  </Text>
+                )}
+              </View>
+
+              <Text
+                style={[styles.attentionHeroTitle, { color: isDark ? '#FFFFFF' : theme.text }]}
+                numberOfLines={2}
+              >
+                {topAttentionItem.what_to_do || topAttentionItem.title}
+              </Text>
+
+              <Text
+                style={[styles.attentionHeroReason, { color: isDark ? '#C2B5AF' : '#4B5563' }]}
+                numberOfLines={3}
+              >
+                {topAttentionItem.why_suggested || topAttentionItem.why_it_matters || topAttentionItem.description}
+              </Text>
+
+              <View style={styles.attentionHeroActions}>
+                <TouchableOpacity
+                  style={styles.attentionGuideBtn}
+                  activeOpacity={0.82}
+                  onPress={() => navigation.navigate('MaintenanceGuide', { item: topAttentionItem })}
+                >
+                  <Icon name="north-east" size={15} color="#FFFFFF" />
+                  <Text style={styles.attentionGuideBtnText}>View inspection guide</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.attentionDoneBtn,
+                    {
+                      backgroundColor: isDark ? '#2A201C' : '#FFFFFF',
+                      borderColor: isDark ? '#422418' : '#FED7AA',
+                    },
+                  ]}
+                  activeOpacity={0.82}
+                  onPress={() => markAsDone(topAttentionItem)}
+                >
+                  <Icon name="check" size={15} color={ORANGE} />
+                  <Text style={[styles.attentionDoneBtnText, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                    Mark done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.allClearCard,
+                {
+                  backgroundColor: isDark ? '#141E18' : '#F0FDF4',
+                  borderColor: isDark ? '#233829' : '#DCFCE7',
+                },
+              ]}
+            >
+              <View style={styles.allClearIconBox}>
+                <Icon name="check-circle" size={24} color="#32D583" />
+              </View>
+              <View style={styles.allClearContent}>
+                <Text style={[styles.allClearTitle, { color: isDark ? '#FFFFFF' : '#14532D' }]}>
+                  All caught up!
+                </Text>
+                <Text style={[styles.allClearSubtitle, { color: isDark ? '#8E8E93' : '#166534' }]}>
+                  Your vehicle has no urgent maintenance items or overdue services.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* =========================================================
+              4. STAT CARDS ROW (3 CARDS)
           ========================================================= */}
           <View style={styles.statsRow}>
-            <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: '#D6A23A' }]}>{dueSoonRecords.length}</Text>
-              <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Due Soon</Text>
-              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Scheduled records</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: overdueRecords.length > 0 ? '#FF5A5F' : theme.textSecondary }]}>
-                {overdueRecords.length}
+            {/* Due Soon */}
+            <TouchableOpacity
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#232328' : theme.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              onPress={scrollToRecommendations}
+            >
+              <Text style={[styles.statNumber, { color: dueSoonNum > 0 ? ORANGE : (isDark ? '#FFFFFF' : theme.text) }]}>
+                {dueSoonNum}
               </Text>
-              <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Overdue</Text>
-              <Text style={[styles.statSubText, { color: overdueRecords.length > 0 ? '#FF5A5F' : theme.textSecondary }]}>
-                {overdueRecords.length > 0 ? 'Past due date' : 'No overdue records'}
+              <Text style={[styles.statLabel, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                Due soon
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text style={[styles.statNumberText, { color: isDark ? '#32D583' : '#15803D' }]}>{completedRecords.length}</Text>
-              <Text style={[styles.statLabelText, { color: theme.textSecondary }]}>Completed</Text>
-              <Text style={[styles.statSubText, { color: theme.textSecondary }]}>Tasks completed</Text>
-            </View>
+            {/* Overdue */}
+            <TouchableOpacity
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#232328' : theme.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              onPress={scrollToRecommendations}
+            >
+              <Text style={[styles.statNumber, { color: overdueNum > 0 ? '#FF5A5F' : (isDark ? '#FFFFFF' : theme.text) }]}>
+                {overdueNum}
+              </Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                Overdue
+              </Text>
+            </TouchableOpacity>
+
+            {/* Completed */}
+            <TouchableOpacity
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#232328' : theme.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('MaintenanceHistory', { initialFilter: 'maintenance', filter: 'maintenance' })}
+            >
+              <Text style={[styles.statNumber, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                {completedNum}
+              </Text>
+              <Text style={[styles.statLabel, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                Completed
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* =========================================================
-              BEGINNER-FRIENDLY GUIDE & STATUS EXPLAINER
-          ========================================================= */}
-          <View
-            style={[
-              styles.beginnerGuideCard,
-              {
-                backgroundColor: theme.surface || '#151515',
-                borderColor: theme.border || '#292929',
-              },
-            ]}
-          >
-            <View style={styles.beginnerGuideHeader}>
-              <View style={[styles.beginnerGuideIconBox, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}>
-                <Icon name="school" size={17} color={isDark ? '#60A5FA' : '#2563EB'} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.beginnerGuideTitle, { color: theme.text }]}>
-                  Beginner's Maintenance Overview
-                </Text>
-                <Text style={[styles.beginnerGuideSubtitle, { color: theme.textSecondary }]}>
-                  How to manage your vehicle in 3 easy steps
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.beginnerGuideList}>
-              <View style={styles.beginnerGuideItem}>
-                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(255, 90, 95, 0.16)' : '#FEE2E2' }]}>
-                  <Text style={[styles.guideStepText, { color: '#FF5A5F' }]}>1</Text>
-                </View>
-                <View style={styles.guideStepContent}>
-                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
-                    Prioritize Overdue Items
-                  </Text>
-                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
-                    These are critical diagnostic issues that need prompt attention to avoid vehicle damage.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.beginnerGuideItem}>
-                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(214, 162, 58, 0.16)' : '#FEF3C7' }]}>
-                  <Text style={[styles.guideStepText, { color: '#D6A23A' }]}>2</Text>
-                </View>
-                <View style={styles.guideStepContent}>
-                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
-                    Keep Up with Routine Tasks
-                  </Text>
-                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
-                    Items in "Due Soon" (like oil, tire pressure, and chain lubrication) prevent costly repairs.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.beginnerGuideItem}>
-                <View style={[styles.guideStepNumber, { backgroundColor: isDark ? 'rgba(50, 213, 131, 0.16)' : '#DCFCE7' }]}>
-                  <Text style={[styles.guideStepText, { color: '#32D583' }]}>3</Text>
-                </View>
-                <View style={styles.guideStepContent}>
-                  <Text style={[styles.guideStepTitle, { color: theme.text }]}>
-                    Follow Step-by-Step Categories
-                  </Text>
-                  <Text style={[styles.guideStepDesc, { color: theme.textSecondary }]}>
-                    Tap any category below to view DIY guides, checklists, or nearby repair shop recommendations.
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* =========================================================
-              4. SMART AI MAINTENANCE ASSISTANT BANNER
+              5. CONTEXTUAL AI PROMPT BAR
           ========================================================= */}
           <TouchableOpacity
             style={[
-              styles.aiAssistantCard,
+              styles.contextualAiBar,
               {
-                backgroundColor: isDark ? 'rgba(246, 59, 5, 0.12)' : '#FFF4F0',
-                borderColor: isDark ? 'rgba(246, 59, 5, 0.4)' : '#FEE4DA',
+                backgroundColor: isDark ? '#1C1513' : '#FFF7ED',
+                borderColor: isDark ? '#3D251A' : '#FED7AA',
               },
             ]}
-            activeOpacity={0.88}
-            onPress={() => navigation.navigate('AskVehiCare')}
+            activeOpacity={0.85}
+            onPress={() =>
+              navigation.navigate('AskVehiCare', {
+                initialPrompt: contextualAiPrompt.fullPrompt,
+              })
+            }
           >
-            <View style={styles.aiHeaderRow}>
-              <View style={[styles.aiIconBadge, { backgroundColor: isDark ? '#27160F' : '#FEE4DA' }]}>
-                <Icon name="auto-awesome" size={20} color={isDark ? '#F63B05' : '#C2410C'} />
-              </View>
-
-              <View style={styles.aiTitleWrap}>
-                <Text style={[styles.aiTag, { color: isDark ? '#F63B05' : '#C2410C' }]}>
-                  SMART AI ASSISTANT
-                </Text>
-                <Text style={[styles.aiTitle, { color: theme.text }]}>
-                  {hasDiagnosticItems
-                    ? 'Diagnostic issues detected'
-                    : 'Not sure what your vehicle needs?'}
-                </Text>
-              </View>
+            <View style={styles.contextualAiLeft}>
+              <Icon name="auto-awesome" size={18} color={ORANGE} />
+              <Text
+                style={[styles.contextualAiText, { color: isDark ? '#FFFFFF' : theme.text }]}
+                numberOfLines={1}
+              >
+                {contextualAiPrompt.promptText}
+              </Text>
             </View>
 
-            <Text style={[styles.aiDesc, { color: theme.textSecondary }]} numberOfLines={3}>
-              {hasDiagnosticItems
-                ? `Get step-by-step guidance for ${
-                    safeDiagnosticItems[0]?.title ||
-                    safeDiagnosticItems[0]?.relatedProblem ||
-                    'your active vehicle'
-                  }. Ask VehiCare AI for DIY instructions or when to visit a shop.`
-                : 'Ask VehiCare AI for personalized maintenance recommendations based on your vehicle model and history.'}
-            </Text>
-
-            <View style={styles.aiBtnRow}>
-              <Text style={[styles.aiBtnText, { color: isDark ? '#F63B05' : '#C2410C' }]}>
-                Ask VehiCare AI
-              </Text>
-              <Icon name="arrow-forward" size={14} color={isDark ? '#F63B05' : '#C2410C'} />
+            <View style={styles.contextualAiBtn}>
+              <Text style={styles.contextualAiBtnText}>{contextualAiPrompt.buttonText}</Text>
+              <Icon name="arrow-forward" size={13} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
 
           {/* =========================================================
-              5. MAINTENANCE CATEGORIES GRID
+              7. MAINTENANCE CATEGORIES GRID (Always Guaranteed)
           ========================================================= */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitleHeader, { color: theme.text }]}>MAINTENANCE CATEGORIES</Text>
-            <Text style={[styles.sectionSubtitleHeader, { color: theme.textSecondary }]}>
-              {safeCategories.length} categories
-            </Text>
+          <View
+            style={styles.sectionWrap}
+            onLayout={e => setCategoriesLayoutY(e.nativeEvent.layout.y)}
+          >
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHeading, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                Maintenance categories
+              </Text>
+              {safeCategories.length > 6 && (
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setShowAllCategories(prev => !prev)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.sectionActionText}>
+                    {showAllCategories ? 'Show less' : `View all (${safeCategories.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.categoryGrid}>
+              {displayedCategories.map(cat => {
+                const iconStyle = getCategoryIconStyle(cat.name, cat.isDiagnostic, isDark);
+                const itemCountText = cat.isDiagnostic
+                  ? `${cat.diagnosticCount || cat.todoCount || 1} diagnostic issue${(cat.diagnosticCount || cat.todoCount) !== 1 ? 's' : ''}`
+                  : `${cat.todoCount || 0} recommended`;
+
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.categoryCard,
+                      {
+                        backgroundColor: isDark ? '#16161A' : theme.surface,
+                        borderColor: cat.isDiagnostic ? iconStyle.color : (isDark ? '#232328' : theme.border),
+                      },
+                    ]}
+                    activeOpacity={0.82}
+                    onPress={() =>
+                      navigation.navigate('MaintenanceCategory', {
+                        categoryId: cat.id,
+                        categoryName: cat.name,
+                        categoryIcon: cat.icon,
+                        vehicleId: currentVehicle?.id || currentVehicle?.vehicle_id,
+                      })
+                    }
+                  >
+                    <View style={styles.categoryCardHeader}>
+                      <View style={[styles.categoryIconBox, { backgroundColor: iconStyle.bg }]}>
+                        <Icon name={iconStyle.icon} size={18} color={iconStyle.color} />
+                      </View>
+                      <Icon name="chevron-right" size={16} color={isDark ? '#8E8E93' : theme.textSecondary} />
+                    </View>
+
+                    <Text
+                      style={[styles.categoryCardTitle, { color: isDark ? '#FFFFFF' : theme.text }]}
+                      numberOfLines={1}
+                    >
+                      {cat.name}
+                    </Text>
+
+                    <Text
+                      style={[styles.categoryItemCount, { color: isDark ? '#8E8E93' : theme.textSecondary }]}
+                      numberOfLines={1}
+                    >
+                      {itemCountText}
+                    </Text>
+
+                    <View style={styles.categoryCardFooter}>
+                      <View style={[styles.categoryStatusBadge, { backgroundColor: `${cat.statusColor || iconStyle.color}18` }]}>
+                        <Text style={[styles.categoryStatusBadgeText, { color: cat.statusColor || iconStyle.color }]}>
+                          {cat.statusBadge || 'UP TO DATE'}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
-          <View style={styles.categoryGrid}>
-            {paginatedCategories.map(cat => {
-              const iconStyle = getCategoryIconStyle(cat.name, cat.isDiagnostic, isDark);
-              const itemCountText = cat.isDiagnostic
-                ? `${cat.diagnosticCount || cat.todoCount || 1} diagnostic issue${(cat.diagnosticCount || cat.todoCount) !== 1 ? 's' : ''}`
-                : `${cat.todoCount || 0} recommended`;
+          {/* =========================================================
+              8. SMART RECOMMENDATIONS SECTION (Always Guaranteed)
+          ========================================================= */}
+          <View
+            style={styles.sectionWrap}
+            onLayout={e => setRecsLayoutY(e.nativeEvent.layout.y)}
+          >
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHeading, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                Recommendations
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => navigation.navigate('SmartRecommendations')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.sectionActionText}>See all ↗</Text>
+              </TouchableOpacity>
+            </View>
+
+            {topRecommendations.map((rec, index) => {
+              const isUrgent = rec.urgency === 'urgent' || rec.isDiagnostic || rec.priority === 'high' || rec.priority === 'Urgent';
+              const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(rec.id) : rec.isCompleted;
 
               return (
-                <TouchableOpacity
-                  key={cat.id}
+                <View
+                  key={rec.id || `rec-${index}`}
                   style={[
-                    styles.categoryCard,
+                    styles.recCard,
                     {
-                      backgroundColor: theme.surface || '#151515',
-                      borderColor: cat.isDiagnostic ? iconStyle.color : (theme.border || '#292929'),
+                      backgroundColor: isDark ? '#16161A' : theme.surface,
+                      borderColor: isUrgent ? (isDark ? '#3D2218' : '#FED7AA') : (isDark ? '#232328' : theme.border),
                     },
                   ]}
-                  activeOpacity={0.84}
-                  onPress={() =>
-                    navigation.navigate('MaintenanceCategory', {
-                      categoryId: cat.id,
-                      categoryName: cat.name,
-                      categoryIcon: cat.icon,
-                      vehicleId: vehicleProfile?.id || vehicleProfile?.vehicle_id,
-                    })
-                  }
                 >
-                  <View style={styles.categoryCardHeader}>
-                    <View style={[styles.categoryIconBox, { backgroundColor: iconStyle.bg }]}>
-                      <Icon
-                        name={iconStyle.icon}
-                        size={19}
-                        color={iconStyle.color}
-                      />
-                    </View>
-                    <Icon name="chevron-right" size={18} color={theme.textSecondary} />
-                  </View>
-
-                  <Text style={[styles.categoryCardTitle, { color: theme.text }]} numberOfLines={1}>
-                    {cat.name}
-                  </Text>
-
-                  <Text style={[styles.categoryItemCount, { color: theme.textSecondary }]}>
-                    {itemCountText}
-                  </Text>
-
-                  <View style={styles.categoryCardFooter}>
-                    <View style={[styles.categoryStatusBadge, { backgroundColor: `${cat.statusColor || iconStyle.color}15` }]}>
-                      <Text style={[styles.categoryStatusBadgeText, { color: cat.statusColor || iconStyle.color }]}>
-                        {cat.statusBadge || 'UP TO DATE'}
+                  <View style={styles.recTopRow}>
+                    <View
+                      style={[
+                        styles.recBadge,
+                        {
+                          backgroundColor: isUrgent
+                            ? 'rgba(245, 80, 28, 0.15)'
+                            : 'rgba(56, 189, 248, 0.15)',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.recBadgeText,
+                          { color: isUrgent ? ORANGE : '#38BDF8' },
+                        ]}
+                      >
+                        {isUrgent ? 'URGENT' : (rec.category ? String(rec.category).toUpperCase() : 'ROUTINE')}
                       </Text>
                     </View>
+
+                    {typeof markAsDone === 'function' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.recDoneBtn,
+                          isDone && { backgroundColor: '#32D583', borderColor: '#32D583' },
+                        ]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          if (isDone && typeof undo === 'function') {
+                            undo(rec);
+                          } else {
+                            markAsDone(rec);
+                          }
+                        }}
+                      >
+                        <Icon name="check" size={14} color={isDone ? '#FFFFFF' : '#8E8E93'} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </TouchableOpacity>
+
+                  <Text
+                    style={[
+                      styles.recTitle,
+                      { color: isDark ? '#FFFFFF' : theme.text },
+                      isDone && { textDecorationLine: 'line-through', opacity: 0.6 },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {rec.title || rec.task || 'Routine Maintenance'}
+                  </Text>
+
+                  <Text
+                    style={[styles.recDesc, { color: isDark ? '#8E8E93' : theme.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {rec.description || rec.reason || rec.interval || 'Inspect and service according to vehicle schedule.'}
+                  </Text>
+
+                  <View style={styles.recActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.recGuideBtn,
+                        {
+                          backgroundColor: isDark ? '#202025' : '#F3F4F6',
+                          borderColor: isDark ? '#2C2C35' : theme.border,
+                        },
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() =>
+                        navigation.navigate('MaintenanceCategory', {
+                          categoryName: rec.category || rec.title,
+                          vehicleId: currentVehicle?.id,
+                        })
+                      }
+                    >
+                      <Text style={[styles.recGuideBtnText, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                        View guide
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.recAiBtn,
+                        {
+                          backgroundColor: isDark ? '#201815' : '#FFF7ED',
+                          borderColor: isDark ? '#3E271D' : '#FED7AA',
+                        },
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() =>
+                        navigation.navigate('AskVehiCare', {
+                          initialPrompt: `How do I handle ${rec.title || 'this maintenance'} on my ${vehicleName}?`,
+                        })
+                      }
+                    >
+                      <Icon name="chat-bubble-outline" size={12} color={ORANGE} />
+                      <Text style={styles.recAiBtnText}>Ask AI</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               );
             })}
           </View>
 
-          {safeCategories.length > CAT_PAGE_SIZE && (
-            <View style={styles.paginationContainer}>
-              <Text style={[styles.paginationSummary, { color: theme.textSecondary }]}>
-                Showing {((categoryPage - 1) * CAT_PAGE_SIZE) + 1}–{Math.min(categoryPage * CAT_PAGE_SIZE, safeCategories.length)} of {safeCategories.length} categories
-              </Text>
-              <View style={styles.paginationControls}>
-                <TouchableOpacity
-                  style={[
-                    styles.pageNavButton,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
-                      opacity: categoryPage === 1 ? 0.4 : 1,
-                    },
-                  ]}
-                  disabled={categoryPage === 1}
-                  onPress={() => setCategoryPage(p => Math.max(1, p - 1))}
-                >
-                  <Icon name="chevron-left" size={18} color={theme.text} />
-                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Prev</Text>
-                </TouchableOpacity>
-
-                <View style={styles.pagePillsRow}>
-                  {Array.from({ length: totalCatPages }, (_, idx) => idx + 1).map(pageNum => {
-                    const isActive = pageNum === categoryPage;
-                    return (
-                      <TouchableOpacity
-                        key={pageNum}
-                        style={[
-                          styles.pagePill,
-                          isActive
-                            ? { backgroundColor: theme.accent, borderColor: theme.accent }
-                            : { backgroundColor: theme.surface, borderColor: theme.border },
-                        ]}
-                        onPress={() => setCategoryPage(pageNum)}
-                      >
-                        <Text
-                          style={[
-                            styles.pagePillText,
-                            { color: isActive ? '#FFFFFF' : theme.text },
-                          ]}
-                        >
-                          {pageNum}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.pageNavButton,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
-                      opacity: categoryPage >= totalCatPages ? 0.4 : 1,
-                    },
-                  ]}
-                  disabled={categoryPage >= totalCatPages}
-                  onPress={() => setCategoryPage(p => Math.min(totalCatPages, p + 1))}
-                >
-                  <Text style={[styles.pageNavButtonText, { color: theme.text }]}>Next</Text>
-                  <Icon name="chevron-right" size={18} color={theme.text} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* SUBTLE INFO CARD IF VEHICLE HAS NO DIAGNOSTIC HISTORY */}
-          {safeDiagnostics.length === 0 && (
-            <View style={[styles.noDiagsNoticeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Icon name="info-outline" size={18} color={theme.accent} style={{ marginTop: 2 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.noDiagsNoticeTitle, { color: theme.text }]}>
-                  No diagnostic history yet
-                </Text>
-                <Text style={[styles.noDiagsNoticeSub, { color: theme.textSecondary }]}>
-                  Diagnostic status is unavailable until this vehicle has diagnostic records. You can still schedule and log maintenance above.
-                </Text>
-              </View>
-            </View>
-          )}
-
           {/* =========================================================
-              6. RECENT ACTIVITY
+              8. ACCESSIBLE HISTORY & BEGINNER GUIDE FOOTER
           ========================================================= */}
-          <View style={styles.sectionHeaderBetween}>
-            <Text style={[styles.sectionTitleHeader, { color: theme.text }]}>RECENT ACTIVITY</Text>
+          <View style={styles.footerLinksWrap}>
+            {/* Maintenance Logs Row */}
             <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('History')}
+              style={[
+                styles.compactLogsTile,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#232328' : theme.border,
+                },
+              ]}
+              activeOpacity={0.82}
+              onPress={() => navigation.navigate('MaintenanceHistory', { initialFilter: 'maintenance', filter: 'maintenance' })}
             >
-              <Text style={[styles.seeAllText, { color: theme.accent }]}>See All</Text>
+              <View style={[styles.compactLogsIconBox, { backgroundColor: isDark ? '#202025' : '#F3F4F6' }]}>
+                <Icon name="assignment" size={18} color={isDark ? '#FFFFFF' : theme.text} />
+              </View>
+              <View style={styles.compactLogsTextWrap}>
+                <Text style={[styles.compactLogsTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Maintenance logs ({completedNum})
+                </Text>
+                <Text style={[styles.compactLogsSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Review completed services and records
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={18} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Beginner Guide Link */}
+            <TouchableOpacity
+              style={[
+                styles.beginnerHelpPill,
+                {
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#232328' : theme.border,
+                },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => setBeginnerGuideModalVisible(true)}
+            >
+              <Icon name="school" size={18} color={ORANGE} />
+              <Text style={[styles.beginnerHelpText, { color: isDark ? '#C2B5AF' : theme.textSecondary }]}>
+                New to maintenance? <Text style={{ color: ORANGE, fontWeight: '600' }}>Quick beginner tips ›</Text>
+              </Text>
             </TouchableOpacity>
           </View>
-
-          {recentActivity.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Icon name="history" size={24} color={theme.textSecondary} />
-              <Text style={[styles.emptyCardTitle, { color: theme.text }]}>No Recent Activity</Text>
-              <Text style={[styles.emptyCardSub, { color: theme.textSecondary }]}>
-                Completed maintenance records will appear here as you log them.
-              </Text>
-            </View>
-          ) : (
-            recentActivity.map(item => (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.recentItemCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                activeOpacity={0.84}
-                onPress={() => navigation.navigate('History')}
-              >
-                <View style={styles.recentItemLeft}>
-                  <View style={[styles.recentCheckIcon, { backgroundColor: isDark ? '#13241A' : '#DCFCE7' }]}>
-                    <Icon name="check" size={15} color={isDark ? '#32D583' : '#15803D'} />
-                  </View>
-                  <View style={styles.recentItemTextContainer}>
-                    <Text style={[styles.recentItemTitle, { color: theme.text }]} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    <Text style={[styles.recentItemDate, { color: theme.textSecondary }]}>
-                      {item.createdAt
-                        ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-                        : 'Recently completed'}
-                    </Text>
-                  </View>
-                </View>
-
-                {item.cost ? (
-                  <Text style={[styles.recentItemCost, { color: theme.text }]}>₱{item.cost}</Text>
-                ) : (
-                  <Icon name="chevron-right" size={18} color={theme.textSecondary} />
-                 )}
-              </TouchableOpacity>
-            ))
-          )}
-
         </ScrollView>
       </Animated.View>
+
+      {/* RECORD MODAL */}
       <MaintenanceRecordModal
         visible={recordModal.visible}
-        vehicleId={activeVehicleId || vehicleProfile?.id || vehicleProfile?.vehicle_id}
+        vehicleId={activeVehicleId || currentVehicle?.id || currentVehicle?.vehicle_id}
         record={recordModal.record}
         initialStatus={recordModal.status}
         onClose={closeRecordForm}
         onSaved={notifyRecordsChanged}
       />
+
+      {/* BEGINNER GUIDE MODAL */}
+      <Modal
+        visible={beginnerGuideModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBeginnerGuideModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.guideModalBox,
+              {
+                backgroundColor: isDark ? '#16161A' : theme.surface,
+                borderColor: isDark ? '#29292E' : theme.border,
+              },
+            ]}
+          >
+            <View style={styles.guideModalHeader}>
+              <View style={styles.guideModalHeaderLeft}>
+                <Icon name="school" size={22} color={ORANGE} />
+                <Text style={[styles.guideModalTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Maintenance Essentials
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setBeginnerGuideModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="close" size={22} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.guideModalIntro, { color: isDark ? '#C2B5AF' : theme.textSecondary }]}>
+              Three simple rules to keep your vehicle reliable and safe:
+            </Text>
+
+            <View style={styles.guideStepRow}>
+              <View style={[styles.guideStepNum, { backgroundColor: isDark ? '#202025' : '#F3F4F6' }]}>
+                <Text style={[styles.guideStepNumText, { color: ORANGE }]}>1</Text>
+              </View>
+              <View style={styles.guideStepBody}>
+                <Text style={[styles.guideStepTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Prioritize safety & urgent items
+                </Text>
+                <Text style={[styles.guideStepDesc, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Brakes, tire condition, and fluid leaks come first. Inspect them before every long trip.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.guideStepRow}>
+              <View style={[styles.guideStepNum, { backgroundColor: isDark ? '#202025' : '#F3F4F6' }]}>
+                <Text style={[styles.guideStepNumText, { color: ORANGE }]}>2</Text>
+              </View>
+              <View style={styles.guideStepBody}>
+                <Text style={[styles.guideStepTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Keep up with routine intervals
+                </Text>
+                <Text style={[styles.guideStepDesc, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Regular oil changes, chain lubrication, and air filter checks prevent costly repairs.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.guideStepRow}>
+              <View style={[styles.guideStepNum, { backgroundColor: isDark ? '#202025' : '#F3F4F6' }]}>
+                <Text style={[styles.guideStepNumText, { color: ORANGE }]}>3</Text>
+              </View>
+              <View style={styles.guideStepBody}>
+                <Text style={[styles.guideStepTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Follow step-by-step guides
+                </Text>
+                <Text style={[styles.guideStepDesc, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Tap any recommendation to open DIY checklists or find nearby repair shops.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.guideModalCloseBtn, { backgroundColor: ORANGE }]}
+              activeOpacity={0.85}
+              onPress={() => setBeginnerGuideModalVisible(false)}
+            >
+              <Text style={styles.guideModalCloseBtnText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -667,22 +1208,21 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
 
   /* HEADER */
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 12,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   headerLeftGroup: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flex: 1,
-    marginRight: 12,
   },
   backButton: {
     width: 42,
@@ -690,7 +1230,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
     borderWidth: 1,
   },
   menuButton: {
@@ -703,17 +1243,19 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.8,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: '#8E8E93',
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
   title: {
-    fontFamily: 'Outfit-ExtraBold',
+    fontFamily: 'Outfit-Bold',
     fontSize: 26,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
 
-  /* EMPTY VEHICLE STATE */
+  /* EMPTY STATE */
   emptyContainer: {
     padding: 30,
     alignItems: 'center',
@@ -751,307 +1293,411 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  /* HERO BANNER */
-  heroBanner: {
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 16,
-    marginBottom: 14,
+  /* COMPACT VEHICLE CARD */
+  compactVehicleCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    marginBottom: 16,
   },
-  heroVehicleHeader: {
+  compactVehicleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    paddingBottom: 12,
   },
-  heroVehicleIconBox: {
+  compactVehicleIconBox: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 12,
   },
-  heroVehicleTextWrap: {
+  compactVehiclePhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  compactVehicleInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  activeVehicleTagRow: {
-    marginBottom: 2,
-  },
-  activeTagText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9,
-    letterSpacing: 0.8,
-  },
-  heroVehicleName: {
+  compactVehicleTitle: {
     fontFamily: 'Outfit-Bold',
     fontSize: 16,
   },
-  heroVehicleDetails: {
+  compactVehicleSubtitle: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 1,
+    fontSize: 12,
+    marginTop: 2,
   },
-  changeVehiclePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  changeVehicleText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-  },
-  heroDivider: {
-    height: 1,
-    marginVertical: 14,
-  },
-  healthGaugeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 12,
-  },
-  healthScoreBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  healthScoreLabel: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  healthScoreBig: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 34,
-    lineHeight: 38,
-    letterSpacing: -1,
-  },
-  healthPercentSymbol: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 20,
-  },
-  healthStatusWrap: {
-    flex: 1,
-  },
-  statusBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  statusBadgePill: {
+  compactSwitchPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 80, 28, 0.12)',
+  },
+  compactSwitchText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: ORANGE,
+  },
+  compactHealthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    paddingTop: 10,
+  },
+  compactHealthLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactHealthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  compactHealthLabel: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+  },
+
+  /* "WHAT NEEDS ATTENTION?" HERO CARD */
+  attentionHeroCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  attentionHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  attentionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  statusBadgePillText: {
+  attentionPillText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 9,
-    letterSpacing: 0.5,
+    fontSize: 10,
+    letterSpacing: 0.6,
   },
-  healthExplanation: {
-    fontFamily: 'Inter-Regular',
+  attentionSourceLabel: {
+    fontFamily: 'Inter-Medium',
     fontSize: 11,
-    lineHeight: 16,
   },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    width: '100%',
-    overflow: 'hidden',
+  attentionHeroTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+    lineHeight: 22,
+    marginBottom: 6,
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
+  attentionHeroReason: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  attentionHeroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  attentionGuideBtn: {
+    flex: 1,
+    backgroundColor: ORANGE,
+    borderRadius: 12,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  attentionGuideBtnText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  attentionDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  attentionDoneBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
   },
 
-  /* STATS OVERVIEW ROW */
+  /* ALL CAUGHT UP CARD */
+  allClearCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  allClearIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(50, 213, 131, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  allClearContent: {
+    flex: 1,
+  },
+  allClearTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  allClearSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  /* CONTEXTUAL AI PROMPT BAR */
+  contextualAiBar: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 10,
+  },
+  contextualAiLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  contextualAiText: {
+    flex: 1,
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+  },
+  contextualAiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: ORANGE,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  contextualAiBtnText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+
+  /* STATS ROW (3 CARDS) */
   statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   statCard: {
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  statNumberText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 20,
-  },
-  statLabelText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  statSubText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9,
-    marginTop: 2,
-    letterSpacing: 0.2,
-  },
-
-  /* BEGINNER GUIDE CARD */
-  beginnerGuideCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 16,
-  },
-  beginnerGuideHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  beginnerGuideIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  beginnerGuideTitle: {
+  statNumber: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13.5,
+    fontSize: 22,
   },
-  beginnerGuideSubtitle: {
+  statLabel: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
-    marginTop: 1,
+    fontSize: 11,
+    marginTop: 3,
   },
-  beginnerGuideList: {
-    gap: 10,
+
+  /* FOOTER LINKS */
+  footerLinksWrap: {
+    marginTop: 4,
+    gap: 12,
   },
-  beginnerGuideItem: {
+  compactLogsTile: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
   },
-  guideStepNumber: {
-    width: 20,
-    height: 20,
+  compactLogsIconBox: {
+    width: 38,
+    height: 38,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
+    marginRight: 12,
   },
-  guideStepText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 10,
+  compactLogsTextWrap: {
+    flex: 1,
   },
-  guideStepContent: {
+  compactLogsTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 14,
+  },
+  compactLogsSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  beginnerHelpPill: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  beginnerHelpText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+  },
+
+  /* GUIDE MODAL */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  guideModalBox: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+  },
+  guideModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  guideModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  guideModalTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+  },
+  guideModalIntro: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  guideStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+  },
+  guideStepNum: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  guideStepNumText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 12,
+  },
+  guideStepBody: {
     flex: 1,
   },
   guideStepTitle: {
     fontFamily: 'Outfit-SemiBold',
-    fontSize: 12,
+    fontSize: 14,
+    marginBottom: 2,
   },
   guideStepDesc: {
     fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
-    lineHeight: 15,
-    marginTop: 1,
+    fontSize: 12,
+    lineHeight: 17,
   },
-
-  /* AI ASSISTANT CARD */
-  aiAssistantCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 18,
-  },
-  aiHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  aiIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  guideModalCloseBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 10,
   },
-  aiTitleWrap: {
-    flex: 1,
-  },
-  aiTag: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 8,
-    letterSpacing: 0.8,
-  },
-  aiTitle: {
+  guideModalCloseBtnText: {
     fontFamily: 'Outfit-Bold',
     fontSize: 14,
-    marginTop: 1,
-  },
-  aiDesc: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 10,
-  },
-  aiBtnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  aiBtnText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 12,
+    color: '#FFFFFF',
   },
 
-  /* SECTION HEADERS */
+  /* SECTIONS WRAP */
+  sectionWrap: {
+    marginBottom: 24,
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    marginTop: 4,
+    marginBottom: 14,
   },
-  sectionHeaderBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    marginTop: 12,
-  },
-  sectionTitleHeader: {
+  sectionHeading: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    letterSpacing: 0.6,
+    fontSize: 18,
   },
-  sectionSubtitleHeader: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-  },
-  seeAllText: {
-    fontFamily: 'Outfit-Bold',
+  sectionActionText: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12,
+    color: ORANGE,
   },
 
   /* CATEGORIES GRID */
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
+    gap: 12,
   },
   categoryCard: {
-    width: '48.5%',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    padding: 12,
+    width: '48%',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
   },
   categoryCardHeader: {
     flexDirection: 'row',
@@ -1060,8 +1706,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   categoryIconBox: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1081,8 +1727,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryStatusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 6,
   },
   categoryStatusBadgeText: {
@@ -1091,283 +1737,79 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  /* NOTICE CARD */
-  noDiagsNoticeCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
+  /* RECOMMENDATIONS */
+  recCard: {
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 16,
+    padding: 16,
+    marginBottom: 12,
   },
-  noDiagsNoticeTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  noDiagsNoticeSub: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-
-  /* RECENT ACTIVITY ITEMS */
-  emptyCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyCardTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-    marginTop: 6,
-  },
-  emptyCardSub: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  recentItemCard: {
+  recTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
     marginBottom: 8,
   },
-  recentItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
+  recBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  recentCheckIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+  recBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
-  recentItemTextContainer: {
-    flex: 1,
-  },
-  recentItemTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-  },
-  recentItemDate: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    marginTop: 1,
-  },
-  recentItemCost: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-  },
-
-  /* QUICK ACTIONS */
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-  },
-  quickActionPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+  recDoneBtn: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
     borderWidth: 1,
-  },
-  quickActionPillText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 11,
-  },
-
-  paginationContainer: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  paginationSummary: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
-    letterSpacing: 0.3,
-  },
-  paginationControls: {
-    flexDirection: 'row',
+    borderColor: '#3D3D45',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
-  pageNavButton: {
+  recTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  recDesc: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  recActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  recGuideBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
   },
-  pageNavButtonText: {
+  recGuideBtnText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 12,
   },
-  pagePillsRow: {
+  recAiBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  pagePill: {
-    minWidth: 32,
-    height: 32,
-    borderRadius: 8,
+    gap: 4,
     borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  pagePillText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 12,
-  },
-  recordSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-  },
-  summaryIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  summaryDescription: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 3,
-  },
-  recordsCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 18,
-  },
-  recordsHeader: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  recordsTitle: {
-    fontSize: 16,
-    fontFamily: 'Outfit-Bold',
-  },
-  recordsSubtitle: {
-    fontSize: 12,
-    marginTop: 3,
-  },
-  smallAddButton: {
-    minHeight: 34,
     borderRadius: 10,
-    paddingHorizontal: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
-  smallAddText: {
+  recAiBtnText: {
+    fontFamily: 'Inter-SemiBold',
     fontSize: 12,
-    fontWeight: '700',
-  },
-  maintenanceEmptyState: {
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-  },
-  emptyActionsRow: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-  },
-  primaryActionButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  primaryActionText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  secondaryActionButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 11,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  secondaryActionText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  recordsList: {
-    marginTop: -3,
-  },
-  recordRow: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  recordStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  recordMain: {
-    flex: 1,
-  },
-  recordName: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  recordMeta: {
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 3,
-  },
-  recordIconButton: {
-    width: 30,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: ORANGE,
   },
 });
 

@@ -683,9 +683,11 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
                         },
                       ]}
                     >
-                      {isDiagnostic
-                        ? (item.isInspection ? 'INSPECTION TASK' : 'AI DIAGNOSTIC')
-                        : 'ROUTINE MAINTENANCE'}
+                      {item.source_label
+                        ? item.source_label.toUpperCase()
+                        : (isDiagnostic
+                          ? (item.isInspection ? 'INSPECTION TASK' : 'AI DIAGNOSTIC')
+                          : 'ROUTINE MAINTENANCE')}
                     </Text>
                   </View>
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   SectionList,
   StatusBar,
   StyleSheet,
@@ -16,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
+import { getGuestVehicle, getVehiclePhotoMap } from '../services/storageService';
 
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import LimitModal from '../components/LimitModal';
@@ -142,6 +144,20 @@ const getVehicleIconName = vehicle => {
   return 'directions-car';
 };
 
+const resolveVehiclePhoto = vehicle => {
+  if (!vehicle || typeof vehicle !== 'object') return null;
+  const candidates = [
+    vehicle.photo_url,
+    vehicle.image_url,
+    vehicle.photo,
+    vehicle.image,
+    vehicle.custom_photo,
+    vehicle.avatar,
+    vehicle.thumbnail,
+  ];
+  return candidates.find(c => typeof c === 'string' && c.trim().length > 0) || null;
+};
+
 const normalizeVehicle = vehicle => ({
   ...vehicle,
 
@@ -221,26 +237,10 @@ const MyVehiclesScreen = ({ navigation, route }) => {
 
   const {
     activeVehicle: accountActive,
+    pendingVehicle,
     setActiveVehicle,
     refreshActiveVehicle,
   } = useVehicle();
-
-  /*
-   * ============================================
-   * ACTIVE VEHICLE
-   * ============================================
-   */
-
-  const activeVehicle = useMemo(
-    () =>
-      accountActive ??
-      vehicles.find(
-        vehicle =>
-          vehicle.isActive &&
-          !vehicle.isArchived,
-      ),
-    [vehicles, accountActive],
-  );
 
   /*
    * ============================================
@@ -250,13 +250,14 @@ const MyVehiclesScreen = ({ navigation, route }) => {
    */
 
   const displayVehicles = useMemo(() => {
-    const activeId = accountActive
+    const candidateActive = accountActive || pendingVehicle;
+    const activeId = candidateActive
       ? String(
-          getVehicleId(accountActive),
+          getVehicleId(candidateActive),
         )
       : null;
 
-    const merged = vehicles
+    let merged = vehicles
       .map(vehicle => {
         const vehicleId =
           String(getVehicleId(vehicle));
@@ -272,7 +273,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
       .filter(Boolean);
 
     if (
-      accountActive &&
+      candidateActive &&
       !merged.some(
         vehicle =>
           String(
@@ -282,14 +283,47 @@ const MyVehiclesScreen = ({ navigation, route }) => {
     ) {
       merged.unshift(
         normalizeVehicle({
-          ...accountActive,
+          ...candidateActive,
           isActive: true,
         }),
       );
     }
 
+    // Default first non-archived vehicle as active if none is explicitly active
+    if (!merged.some(v => v.isActive) && merged.length > 0) {
+      const firstActiveIndex = merged.findIndex(v => !v.isArchived);
+      if (firstActiveIndex !== -1) {
+        merged[firstActiveIndex] = {
+          ...merged[firstActiveIndex],
+          isActive: true,
+        };
+      }
+    }
+
     return merged;
-  }, [vehicles, accountActive]);
+  }, [vehicles, accountActive, pendingVehicle]);
+
+  /*
+   * ============================================
+   * ACTIVE VEHICLE
+   * ============================================
+   */
+
+  const activeVehicle = useMemo(
+    () =>
+      accountActive ??
+      pendingVehicle ??
+      displayVehicles.find(
+        vehicle =>
+          vehicle.isActive &&
+          !vehicle.isArchived,
+      ) ??
+      displayVehicles.find(
+        vehicle => !vehicle.isArchived,
+      ) ??
+      null,
+    [vehicles, accountActive, pendingVehicle, displayVehicles],
+  );
 
   /*
    * ============================================
@@ -374,10 +408,11 @@ const MyVehiclesScreen = ({ navigation, route }) => {
 
   const vehicleSections =
     useMemo(() => {
-      const activeVehicles =
+      const otherVehicles =
         sortedVehicles.filter(
           vehicle =>
-            !vehicle.isArchived,
+            !vehicle.isArchived &&
+            !vehicle.isActive,
         );
 
       const archivedVehicles =
@@ -389,11 +424,11 @@ const MyVehiclesScreen = ({ navigation, route }) => {
       const sections = [];
 
       if (
-        activeVehicles.length > 0
+        otherVehicles.length > 0
       ) {
         sections.push({
-          title: 'Vehicles',
-          data: activeVehicles,
+          title: 'Other vehicles',
+          data: otherVehicles,
         });
       }
 
@@ -436,7 +471,8 @@ const MyVehiclesScreen = ({ navigation, route }) => {
             if (
               Array.isArray(
                 accountVehicles,
-              )
+              ) &&
+              accountVehicles.length > 0
             ) {
               parsedVehicles =
                 accountVehicles.map(
@@ -452,10 +488,10 @@ const MyVehiclesScreen = ({ navigation, route }) => {
         }
 
         /*
-         * GUEST USER
+         * GUEST USER OR LOCAL CACHE FALLBACK
          */
 
-        if (!user) {
+        if (!user || parsedVehicles.length === 0) {
           const storedVehicles =
             await AsyncStorage.getItem(
               VEHICLES_STORAGE_KEY,
@@ -476,7 +512,8 @@ const MyVehiclesScreen = ({ navigation, route }) => {
               if (
                 Array.isArray(
                   parsed,
-                )
+                ) &&
+                parsed.length > 0
               ) {
                 parsedVehicles =
                   parsed.map(
@@ -490,7 +527,44 @@ const MyVehiclesScreen = ({ navigation, route }) => {
               );
             }
           }
+
+          if (parsedVehicles.length === 0) {
+            const guestVeh =
+              typeof getGuestVehicle === 'function'
+                ? await getGuestVehicle()
+                : null;
+            if (guestVeh) {
+              parsedVehicles = [normalizeVehicle(guestVeh)];
+            }
+          }
         }
+
+        let photoMap = {};
+        try {
+          photoMap = await getVehiclePhotoMap();
+        } catch (_) {}
+
+        parsedVehicles = parsedVehicles.map(v => {
+          const idKey = String(v?.id);
+          const savedPhoto =
+            photoMap[idKey] ||
+            photoMap[String(v?.vehicle_id)] ||
+            v.photo_url ||
+            v.image_url ||
+            v.photo ||
+            v.image;
+
+          if (savedPhoto) {
+            return {
+              ...v,
+              photo_url: savedPhoto,
+              image_url: savedPhoto,
+              photo: savedPhoto,
+              image: savedPhoto,
+            };
+          }
+          return v;
+        });
 
         const currentPlan =
           storedPlan === 'premium'
@@ -1118,618 +1192,140 @@ const MyVehiclesScreen = ({ navigation, route }) => {
    * ============================================
    */
 
-  const renderHeader =
-    () => (
-      <>
-        {/* HEADER */}
+  const renderHeader = () => {
+    const activeVehiclePhoto = resolveVehiclePhoto(activeVehicle);
+    const activeYear = getDisplayValue(
+      activeVehicle?.vehicle_year ??
+        activeVehicle?.vehicleYear ??
+        activeVehicle?.custom_year,
+      '',
+    );
+    const activeType = getVehicleType(activeVehicle);
+    const remainingRooms = Math.max(0, vehicleLimit - activeVehicleCount);
 
-        <View
-          style={styles.header}
-        >
-          <View
-            style={
-              styles.headerLeft
-            }
-          >
+    return (
+      <>
+        {/* TOP HEADER: Back arrow, "YOUR VEHICLES" subtitle, "My Garage" title, Menu Button */}
+        <View style={styles.header}>
+          <View style={styles.headerLeftGroup}>
             <TouchableOpacity
-              style={[
-                styles.backButton,
-                {
-                  backgroundColor:
-                    theme.surface,
-                  borderColor:
-                    theme.border,
-                },
-              ]}
+              style={styles.backButton}
               activeOpacity={0.75}
-              onPress={() =>
-                navigation.goBack()
-              }
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Icon
-                name="arrow-back"
-                size={22}
-                color={
-                  theme.text
-                }
-              />
+              <Icon name="arrow-back" size={24} color="#FFFFFF" />
             </TouchableOpacity>
 
-            <View>
-              <Text
-                style={[
-                  styles.eyebrow,
-                  {
-                    color:
-                      theme.accent,
-                  },
-                ]}
-              >
-                VEHICARE
-              </Text>
-
-              <Text
-                style={[
-                  styles.title,
-                  {
-                    color:
-                      theme.text,
-                  },
-                ]}
-              >
-                My Garage
-              </Text>
-
-              <Text
-                style={[
-                  styles.subtitle,
-                  {
-                    color:
-                      theme.textSecondary,
-                  },
-                ]}
-              >
-                Your registered
-                vehicles
-              </Text>
+            <View style={styles.titleWrap}>
+              <Text style={styles.eyebrow}>YOUR VEHICLES</Text>
+              <Text style={styles.title}>My Garage</Text>
             </View>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {canAddVehicle && (
-              <TouchableOpacity
-                style={[
-                  styles.addHeaderButton,
-                  {
-                    backgroundColor:
-                      theme.surfaceAlt,
-                    borderColor:
-                      theme.border,
-                  },
-                ]}
-                onPress={
-                  handleAddVehicle
-                }
-                activeOpacity={0.85}
-              >
-                <Icon
-                  name="add"
-                  size={25}
-                  color={
-                    theme.text
-                  }
-                />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.addHeaderButton,
-                {
-                  backgroundColor:
-                    theme.surfaceAlt,
-                  borderColor:
-                    theme.border,
-                },
-              ]}
-              onPress={openSidebar}
-              activeOpacity={0.85}
-              accessibilityLabel="Open Sidebar Menu"
-            >
-              <Icon
-                name="menu"
-                size={22}
-                color={theme.text}
-              />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.menuSquareBtn}
+            onPress={openSidebar}
+            activeOpacity={0.8}
+            accessibilityLabel="Open Sidebar Menu"
+          >
+            <Icon name="menu" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
 
-        {/* PLAN CARD */}
+        {/* PLAN CARD: Premium Active (or Free Plan), Count/Limit, Progress Bar, Room Text */}
+        <View style={styles.planCard}>
+          <View style={styles.planTopRow}>
+            <View style={styles.planTitleGroup}>
+              <Icon name="verified" size={18} color="#F5501C" />
+              <Text style={styles.planTitleText}>
+                {isPremium ? 'Premium Active' : 'Free Plan'}
+              </Text>
+            </View>
 
-        <View
-          style={[
-            styles.planCard,
-            {
-              backgroundColor:
-                theme.surface,
-              borderColor:
-                theme.border,
-            },
+            <Text style={styles.planFractionText}>
+              {activeVehicleCount} / {vehicleLimit}
+            </Text>
+          </View>
 
-            isPremium && {
-              backgroundColor:
-                theme.accentSoft,
-              borderColor:
-                theme.accent,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.planIcon,
-              {
-                backgroundColor:
-                  theme.accentSoft,
-              },
-            ]}
-          >
-            <Icon
-              name={
-                isPremium
-                  ? 'workspace-premium'
-                  : 'person-outline'
-              }
-              size={22}
-              color={
-                theme.accent
-              }
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressBar,
+                {
+                  width: `${Math.min(
+                    (activeVehicleCount / vehicleLimit) * 100,
+                    100,
+                  )}%`,
+                },
+              ]}
             />
           </View>
 
-          <View
-            style={
-              styles.planContent
-            }
-          >
-            <View
-              style={
-                styles.planTitleRow
-              }
-            >
-              <View
-                style={
-                  styles.planNameRow
-                }
-              >
-                <Text
-                  style={[
-                    styles.planTitle,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                >
-                  {isPremium
-                    ? 'Premium Plan'
-                    : 'Free Plan'}
-                </Text>
-
-                {isPremium && (
-                  <View
-                    style={
-                      styles.premiumBadge
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.premiumBadgeText
-                      }
-                    >
-                      PREMIUM
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <Text
-                style={[
-                  styles.planCount,
-                  {
-                    color:
-                      theme.accent,
-                  },
-                ]}
-              >
-                {vehicleCount}/
-                {vehicleLimit}
-              </Text>
-            </View>
-
-            <Text
-              style={[
-                styles.planDescription,
-                {
-                  color:
-                    theme.textSecondary,
-                },
-              ]}
-            >
-              {isPremium
-                ? 'Manage up to five vehicle profiles.'
-                : 'Your plan includes one vehicle profile.'}
-            </Text>
-
-            <View
-              style={[
-                styles.progressTrack,
-                {
-                  backgroundColor:
-                    theme.border,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.progressBar,
-                  {
-                    backgroundColor:
-                      theme.accent,
-                    width: `${Math.min(
-                      (vehicleCount /
-                        vehicleLimit) *
-                        100,
-                      100,
-                    )}%`,
-                  },
-                ]}
-              />
-            </View>
-          </View>
+          <Text style={styles.roomText}>
+            Room for {remainingRooms} more vehicle{remainingRooms === 1 ? '' : 's'}
+          </Text>
         </View>
 
-        {/* ACTIVE VEHICLE */}
-
+        {/* ACTIVE VEHICLE SECTION */}
         {activeVehicle && (
-          <View
-            style={
-              styles.activeSection
-            }
-          >
-            <View
-              style={
-                styles.sectionHeader
-              }
-            >
-              <View>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                >
-                  Active Vehicle
-                </Text>
-
-                <Text
-                  style={[
-                    styles.sectionSubtitle,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                >
-                  Currently used
-                  across VehiCare
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.activeStatus,
-                  {
-                    backgroundColor:
-                      theme.statusBadgeBackground,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.activeStatusDot,
-                    {
-                      backgroundColor:
-                        theme.success,
-                    },
-                  ]}
-                />
-
-                <Text
-                  style={[
-                    styles.activeStatusText,
-                    {
-                      color:
-                        theme.success,
-                    },
-                  ]}
-                >
-                  ACTIVE
-                </Text>
+          <View style={styles.activeSection}>
+            <View style={styles.activeSectionHeaderRow}>
+              <Text style={styles.sectionHeaderTitle}>Active vehicle</Text>
+              <View style={styles.activePillBadge}>
+                <Text style={styles.activePillText}>Active</Text>
               </View>
             </View>
 
-            {/*
-             * ====================================
-             * DYNAMIC ACTIVE VEHICLE ICON
-             * ====================================
-             */}
-
             <TouchableOpacity
-              style={[
-                styles.activeCard,
-
-                /*
-                 * Use a solid theme surface first
-                 * so light mode doesn't appear
-                 * transparent.
-                 */
-                {
-                  backgroundColor:
-                    theme.surface,
-                  borderColor:
-                    theme.accent,
-                },
-              ]}
-              activeOpacity={0.9}
-              onPress={() =>
-                handleVehiclePress(
-                  activeVehicle,
-                )
-              }
+              style={styles.activeCard}
+              activeOpacity={0.88}
+              onPress={() => handleVehiclePress(activeVehicle)}
             >
-              <View
-                style={[
-                  styles.activeCardIcon,
-                  {
-                    backgroundColor:
-                      theme.accentSoft,
-                  },
-                ]}
-              >
-                <Icon
-                  name={getVehicleIconName(
-                    activeVehicle,
+              <View style={styles.cardTopRow}>
+                <View style={styles.activeIconBox}>
+                  {activeVehiclePhoto ? (
+                    <Image
+                      source={{ uri: activeVehiclePhoto }}
+                      style={styles.cardPhoto}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Icon
+                      name={getVehicleIconName(activeVehicle)}
+                      size={26}
+                      color="#F5501C"
+                    />
                   )}
-                  size={31}
-                  color={
-                    theme.accent
-                  }
-                />
-              </View>
+                </View>
 
-              <View
-                style={
-                  styles.activeCardContent
-                }
-              >
-                <Text
-                  style={[
-                    styles.activeCardName,
-                    {
-                      color:
-                        theme.text,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {getVehicleDisplayName(
-                    activeVehicle,
-                    'Your Vehicle',
-                  )}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.activeCardDetails,
-                    {
-                      color:
-                        theme.textSecondary,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {getDisplayValue(
-                    activeVehicle?.vehicle_year ??
-                      activeVehicle?.vehicleYear ??
-                      activeVehicle?.custom_year ??
-                      activeVehicle?.year,
-                    'Unknown',
-                  )}{' '}
-                  •{' '}
-                  {getVehicleType(
-                    activeVehicle,
-                  )}
-                </Text>
-
-                <View
-                  style={
-                    styles.activeCardFooter
-                  }
-                >
-                  <Icon
-                    name="verified"
-                    size={14}
-                    color={
-                      theme.success
-                    }
-                  />
-
-                  <Text
-                    style={[
-                      styles.activeCardFooterText,
-                      {
-                        color:
-                          theme.success,
-                      },
-                    ]}
-                  >
-                    Protected
-                    profile
+                <View style={styles.cardTextCol}>
+                  <Text style={styles.activeCardTitle} numberOfLines={1}>
+                    {getVehicleDisplayName(activeVehicle, 'Your Vehicle')}
                   </Text>
+                  <Text style={styles.cardSubtitle} numberOfLines={1}>
+                    {[activeYear, activeType].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+
+                <View style={styles.openCol}>
+                  <Icon name="unfold-more" size={20} color="#8E8E93" />
+                  <Text style={styles.openText}>Open</Text>
                 </View>
               </View>
 
-              <View
-                style={[
-                  styles.viewProfileButton,
-                  {
-                    backgroundColor:
-                      theme.accent,
-                  },
-                ]}
-              >
-                <Icon
-                  name="arrow-forward"
-                  size={18}
-                  color="#FFFFFF"
-                />
+              <View style={styles.cardBottomRow}>
+                <View style={styles.protectedRow}>
+                  <Icon name="verified" size={14} color="#8E8E93" />
+                  <Text style={styles.protectedText}>Protected profile</Text>
+                </View>
               </View>
             </TouchableOpacity>
           </View>
         )}
-
-        {/* VEHICLES HEADER */}
-
-        <View
-          style={
-            styles.listHeader
-          }
-        >
-          <View
-            style={
-              styles.sectionHeaderLeft
-            }
-          >
-            <View
-              style={
-                styles.sectionTitleRow
-              }
-            >
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  {
-                    color:
-                      theme.text,
-                  },
-                ]}
-              >
-                All Vehicles
-              </Text>
-
-              {canAddVehicle && (
-                <TouchableOpacity
-                  style={
-                    styles.addVehicleTextButton
-                  }
-                  onPress={
-                    handleAddVehicle
-                  }
-                  activeOpacity={0.75}
-                >
-                  <Icon
-                    name="add-circle-outline"
-                    size={18}
-                    color={
-                      theme.accent
-                    }
-                  />
-
-                  <Text
-                    style={[
-                      styles.addVehicleText,
-                      {
-                        color:
-                          theme.accent,
-                      },
-                    ]}
-                  >
-                    Add Vehicle
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <Text
-              style={[
-                styles.sectionSubtitle,
-                {
-                  color:
-                    theme.textSecondary,
-                },
-              ]}
-            >
-              {isPremium
-                ? 'Manage your registered vehicles'
-                : 'Your registered vehicle profile'}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.sortButton,
-              {
-                backgroundColor:
-                  theme.surface,
-                borderColor:
-                  theme.border,
-              },
-            ]}
-            onPress={() =>
-              setSortOrder(
-                prev =>
-                  prev ===
-                  'recent'
-                    ? 'oldest'
-                    : 'recent',
-              )
-            }
-            activeOpacity={0.75}
-          >
-            <Icon
-              name="sort"
-              size={16}
-              color={
-                theme.accent
-              }
-              style={
-                styles.sortButtonIcon
-              }
-            />
-
-            <Text
-              style={[
-                styles.sortButtonText,
-                {
-                  color:
-                    theme.text,
-                },
-              ]}
-            >
-              Sort:{' '}
-              {sortOrder ===
-              'recent'
-                ? 'Recent'
-                : 'Oldest'}
-            </Text>
-          </TouchableOpacity>
-        </View>
       </>
     );
+  };
 
   /*
    * ============================================
@@ -1737,8 +1333,14 @@ const MyVehiclesScreen = ({ navigation, route }) => {
    * ============================================
    */
 
-  const renderEmpty =
-    () => (
+  const renderEmpty = () => {
+    // If the garage already has an active vehicle or displayVehicles has records,
+    // do not show "No Vehicle Profile"!
+    if (displayVehicles.length > 0 || activeVehicle) {
+      return null;
+    }
+
+    return (
       <View
         style={
           styles.emptyContainer
@@ -1820,6 +1422,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
     );
+  };
 
   /*
    * ============================================
@@ -1921,26 +1524,48 @@ const MyVehiclesScreen = ({ navigation, route }) => {
         renderSectionHeader={({
           section,
         }) => (
-          <View
-            style={
-              styles.sectionListHeader
-            }
-          >
-            <Text
-              style={[
-                styles.sectionListTitle,
-                {
-                  color:
-                    theme.text,
-                },
-              ]}
-            >
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeaderTitle}>
               {section.title}
             </Text>
+            {section.title === 'Other vehicles' && (
+              <TouchableOpacity
+                style={styles.sortDropdownBtn}
+                activeOpacity={0.75}
+                onPress={() => {
+                  setSortOrder(prev =>
+                    prev === 'recent' ? 'alphabetical' : 'recent',
+                  );
+                }}
+              >
+                <Text style={styles.sortDropdownText}>
+                  {sortOrder === 'alphabetical' ? 'Name' : 'Recent'}
+                </Text>
+                <Icon
+                  name="keyboard-arrow-down"
+                  size={16}
+                  color="#8E8E93"
+                />
+              </TouchableOpacity>
+            )}
           </View>
         )}
         ListHeaderComponent={
           renderHeader
+        }
+        ListFooterComponent={
+          canAddVehicle ? (
+            <TouchableOpacity
+              style={styles.addVehicleBottomBtn}
+              activeOpacity={0.85}
+              onPress={handleAddVehicle}
+            >
+              <Icon name="add" size={18} color="#FFFFFF" />
+              <Text style={styles.addVehicleBottomText}>Add vehicle</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ height: 24 }} />
+          )
         }
         ListEmptyComponent={
           renderEmpty
@@ -1980,6 +1605,11 @@ const MyVehiclesScreen = ({ navigation, route }) => {
           }
           onArchiveVehicle={() =>
             handleArchiveVehicle(
+              selectedVehicle,
+            )
+          }
+          onRestoreVehicle={() =>
+            handleUnarchiveVehicle(
               selectedVehicle,
             )
           }
@@ -2078,8 +1708,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor:
-      BACKGROUND,
+    backgroundColor: BACKGROUND,
   },
 
   contentContainer: {
@@ -2095,8 +1724,7 @@ const styles = StyleSheet.create({
 
   loadingText: {
     color: MUTED,
-    fontFamily:
-      'Inter-Regular',
+    fontFamily: 'Inter-Regular',
     fontSize: 13,
     marginTop: 12,
   },
@@ -2105,14 +1733,13 @@ const styles = StyleSheet.create({
 
   header: {
     paddingTop: 12,
-    paddingBottom: 24,
+    paddingBottom: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
   },
 
-  headerLeft: {
+  headerLeftGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
@@ -2122,308 +1749,268 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: CARD,
+    backgroundColor: '#16161A',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: '#24242A',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 13,
+    marginRight: 14,
+  },
+
+  titleWrap: {
+    flex: 1,
+    justifyContent: 'center',
   },
 
   eyebrow: {
-    fontFamily:
-      'Inter-SemiBold',
-    color: ORANGE,
-    fontSize: 9,
-    letterSpacing: 1.8,
+    fontFamily: 'Inter-SemiBold',
+    color: '#8E8E93',
+    fontSize: 10,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
 
   title: {
-    fontFamily:
-      'Outfit-ExtraBold',
-    color: TEXT,
-    fontSize: 28,
-    letterSpacing: -0.5,
+    fontFamily: 'Outfit-Bold',
+    color: '#FFFFFF',
+    fontSize: 26,
+    letterSpacing: -0.3,
   },
 
-  subtitle: {
-    fontFamily:
-      'Inter-Regular',
-    color: MUTED,
-    fontSize: 11,
-    marginTop: 3,
-  },
-
-  addHeaderButton: {
-    width: 46,
-    height: 46,
+  menuSquareBtn: {
+    width: 44,
+    height: 44,
     borderRadius: 14,
+    backgroundColor: '#16161A',
+    borderWidth: 1,
+    borderColor: '#24242A',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 10,
   },
 
-  /* SORT */
-
-  sortButton: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-
-  sortButtonIcon: {
-    marginRight: 8,
-  },
-
-  sortButtonText: {
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 11,
-  },
-
-  /* PLAN */
+  /* PLAN CARD */
 
   planCard: {
-    flexDirection: 'row',
+    backgroundColor: '#16161A',
     borderWidth: 1,
-    borderRadius: 19,
-    padding: 15,
-    marginBottom: 26,
+    borderColor: '#232328',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 24,
   },
 
-  planIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-
-  planContent: {
-    flex: 1,
-  },
-
-  planTitleRow: {
+  planTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
 
-  planNameRow: {
+  planTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 1,
+    gap: 8,
   },
 
-  planTitle: {
-    fontFamily:
-      'Outfit-SemiBold',
-    fontSize: 14,
-  },
-
-  premiumBadge: {
-    backgroundColor: ORANGE,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    marginLeft: 7,
-  },
-
-  premiumBadgeText: {
+  planTitleText: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 16,
     color: '#FFFFFF',
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 7,
-    letterSpacing: 0.5,
   },
 
-  planCount: {
-    fontFamily:
-      'Outfit-Bold',
-    fontSize: 13,
-  },
-
-  planDescription: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 4,
+  planFractionText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    color: '#F5501C',
   },
 
   progressTrack: {
     height: 5,
+    backgroundColor: '#27272F',
     borderRadius: 5,
     overflow: 'hidden',
-    marginTop: 9,
+    marginBottom: 10,
   },
 
   progressBar: {
     height: '100%',
+    backgroundColor: '#F5501C',
     borderRadius: 5,
   },
 
-  /* ACTIVE */
+  roomText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+
+  /* ACTIVE VEHICLE SECTION */
 
   activeSection: {
-    marginBottom: 29,
+    marginBottom: 24,
   },
 
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent:
-      'space-between',
-    marginBottom: 11,
-  },
-
-  sectionTitle: {
-    fontFamily:
-      'Outfit-SemiBold',
-    fontSize: 17,
-  },
-
-  sectionSubtitle: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 10,
-    marginTop: 3,
-  },
-
-  activeStatus: {
+  activeSectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
 
-  activeStatusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 5,
-    marginRight: 5,
+  activePillBadge: {
+    backgroundColor: '#F5501C',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
 
-  activeStatusText: {
-    fontFamily:
-      'Inter-SemiBold',
-    fontSize: 7,
-    letterSpacing: 0.6,
+  activePillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-
-  /*
-   * No shadow here.
-   */
 
   activeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 19,
-    padding: 15,
+    backgroundColor: '#16161A',
+    borderWidth: 1.5,
+    borderColor: '#F5501C',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
   },
 
-  activeCardIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 17,
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  activeIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#232328',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
 
-  activeCardContent: {
+  cardPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+
+  cardTextCol: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
 
-  activeCardName: {
-    fontFamily:
-      'Outfit-SemiBold',
-    fontSize: 16,
+  activeCardTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 17,
+    color: '#FFFFFF',
+    marginBottom: 3,
   },
 
-  activeCardDetails: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 10,
-    marginTop: 3,
+  cardSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
   },
 
-  activeCardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 7,
-  },
-
-  activeCardFooterText: {
-    fontFamily:
-      'Inter-Regular',
-    fontSize: 9,
-    marginLeft: 4,
-  },
-
-  viewProfileButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+  openCol: {
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
   },
 
-  /* LIST */
-
-  listHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent:
-      'space-between',
-    marginBottom: 12,
-  },
-
-  sectionHeaderLeft: {
-    flex: 1,
-  },
-
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
-    marginBottom: 6,
-  },
-
-  addVehicleTextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-
-  addVehicleText: {
-    fontFamily:
-      'Inter-SemiBold',
+  openText: {
+    fontFamily: 'Inter-Regular',
     fontSize: 10,
+    color: '#8E8E93',
+    marginTop: 2,
   },
 
-  sectionListHeader: {
-    paddingTop: 16,
-    paddingBottom: 10,
+  cardBottomRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#232328',
+    marginTop: 14,
+    paddingTop: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
-  sectionListTitle: {
-    fontFamily:
-      'Outfit-SemiBold',
+  protectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  protectedText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+
+  /* SECTION HEADERS */
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+
+  sectionHeaderTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+
+  sortDropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#16161A',
+    borderWidth: 1,
+    borderColor: '#24242A',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 4,
+  },
+
+  sortDropdownText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+
+  /* FOOTER ADD VEHICLE */
+
+  addVehicleBottomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16161A',
+    borderWidth: 1,
+    borderColor: '#24242A',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 24,
+    gap: 6,
+  },
+
+  addVehicleBottomText: {
+    fontFamily: 'Outfit-SemiBold',
     fontSize: 14,
+    color: '#FFFFFF',
   },
 
   /* EMPTY */
@@ -2447,14 +2034,12 @@ const styles = StyleSheet.create({
   },
 
   emptyTitle: {
-    fontFamily:
-      'Outfit-ExtraBold',
+    fontFamily: 'Outfit-ExtraBold',
     fontSize: 20,
   },
 
   emptyDescription: {
-    fontFamily:
-      'Inter-Regular',
+    fontFamily: 'Inter-Regular',
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
@@ -2473,8 +2058,7 @@ const styles = StyleSheet.create({
   },
 
   emptyButtonText: {
-    fontFamily:
-      'Outfit-SemiBold',
+    fontFamily: 'Outfit-SemiBold',
     color: '#FFFFFF',
     fontSize: 13,
     marginLeft: 6,

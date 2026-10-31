@@ -2,6 +2,15 @@ import config from '../config/env.js';
 import { getGeminiModelName } from '../config/gemini.js';
 import { buildDiagnosisPrompt, isGeneralQuestion } from '../prompts/diagnosis.prompt.js';
 import { applySafetyRules } from '../safety/diagnosis-safety.js';
+import {
+  RELEVANCE_VERDICT,
+  buildScopeNotice,
+  buildScopeResponse,
+  collectResponseText,
+  detectLanguageMismatch,
+  enforceResponseScope,
+  evaluateRelevance,
+} from '../safety/relevance.js';
 import logger from '../utils/logger.js';
 import { parseAndCleanJson } from '../utils/response-parser.js';
 import { isRepairGuideIntent } from '../utils/symptom-normalizer.js';
@@ -13,7 +22,9 @@ import { callGemini, resolveTotalBudgetMs } from './gemini.service.js';
 import { queueService } from './queue.service.js';
 import { classifyVehicleSound } from './vehicle-sound-validation.service.js';
 
-const PROMPT_POLICY_VERSION = 'diagnosis-v2';
+// Bumped when prompt policy changes so previously cached answers (for example
+// answers generated before strict language enforcement) are never reused.
+const PROMPT_POLICY_VERSION = 'diagnosis-v3';
 
 export const isSyntheticPlaceholder = (text) => {
   if (!text || typeof text !== 'string') return true;
@@ -31,7 +42,7 @@ export const isSyntheticPlaceholder = (text) => {
   );
 };
 
-export const processDiagnosisRequest = async (payload) => {
+const runDiagnosisPipeline = async (payload) => {
   const startTime = Date.now();
   const {
     request_id: requestId,
@@ -149,7 +160,7 @@ export const processDiagnosisRequest = async (payload) => {
   let cachedResult = null;
   try {
     const cached = cacheKey ? cacheService.get(cacheKey, requestId) : null;
-    if (cached?.type === 'conversation') {
+    if (cached?.type === 'conversation' || cached?.type === 'action_proposal') {
       const parsed = conversationOutputSchema.safeParse(cached);
       if (parsed.success) cachedResult = parsed.data;
     } else if (cached?.type === 'diagnostic') {
@@ -224,6 +235,7 @@ export const processDiagnosisRequest = async (payload) => {
           isAlternateVehicle,
           targetVehicleDesc,
           userLanguage: language,
+          languageRetry: Boolean(userContext?.language_retry),
           history,
           hasMedia: Boolean(mediaBase64),
           inputType,
@@ -287,6 +299,7 @@ export const processDiagnosisRequest = async (payload) => {
               isAlternateVehicle,
               targetVehicleDesc,
               userLanguage: language,
+              languageRetry: Boolean(userContext?.language_retry),
               history,
               hasMedia: false,
               inputType: 'text',
@@ -410,7 +423,13 @@ export const processDiagnosisRequest = async (payload) => {
         jsonObject.status === 'vehicle_switch_confirmation_required' ||
         jsonObject.vehicle_context_status === 'different_vehicle_mentioned';
 
-      const isConversationResponse = !isMismatchResponse && !isSwitchConfirmationResponse && (
+      const isActionProposal = !isMismatchResponse && !isSwitchConfirmationResponse && (
+        type === 'action_proposal' ||
+        jsonObject.status === 'action_proposal' ||
+        Boolean(jsonObject.action)
+      );
+
+      const isConversationResponse = !isMismatchResponse && !isSwitchConfirmationResponse && !isActionProposal && (
         type === 'conversation' ||
         jsonObject.status === 'conversation' ||
         jsonObject.type === 'out_of_scope' ||
@@ -421,7 +440,21 @@ export const processDiagnosisRequest = async (payload) => {
       // 9. Validate & Normalize Output
       let finalDiagnosisData = null;
 
-      if (isConversationResponse) {
+      if (isActionProposal) {
+        const textResponse = typeof jsonObject.response === 'string' && jsonObject.response.trim()
+          ? jsonObject.response.trim()
+          : (typeof jsonObject.confirmation_summary === 'string' ? jsonObject.confirmation_summary.trim() : 'Action proposal prepared.');
+
+        finalDiagnosisData = {
+          type: 'action_proposal',
+          status: 'action_proposal',
+          action: String(jsonObject.action || 'generic_action'),
+          parameters: typeof jsonObject.parameters === 'object' && jsonObject.parameters !== null ? jsonObject.parameters : {},
+          requires_confirmation: jsonObject.requires_confirmation !== false,
+          confirmation_summary: typeof jsonObject.confirmation_summary === 'string' ? jsonObject.confirmation_summary.slice(0, 1000) : null,
+          response: textResponse.slice(0, 3000),
+        };
+      } else if (isConversationResponse) {
         const textResponse = typeof jsonObject.response === 'string' && jsonObject.response.trim()
           ? jsonObject.response.trim()
           : (typeof jsonObject.message === 'string' && jsonObject.message.trim()
@@ -688,6 +721,24 @@ export const processDiagnosisRequest = async (payload) => {
       }
 
 
+      // 9b. Post-model scope validation. A model answer that contains an
+      // out-of-scope disclaimer (the "answer first, disclaim later" failure) or
+      // leaks its instructions is replaced entirely with a deterministic refusal.
+      const scopeCheck = enforceResponseScope(finalDiagnosisData, { language, vehicleContext });
+      const scopeReplaced = scopeCheck.replaced;
+      if (scopeReplaced) {
+        logger.warn('AI_RESPONSE_SCOPE_REPLACED', requestId, { reason: scopeCheck.reason });
+        finalDiagnosisData = scopeCheck.data;
+      }
+
+      // 9c. Saved language preference is authoritative. Flag a wrong-language
+      // answer so it is neither cached nor returned without one corrective retry.
+      const languageMismatch = !scopeReplaced
+        && detectLanguageMismatch(collectResponseText(finalDiagnosisData), language);
+      if (languageMismatch) {
+        logger.warn('AI_RESPONSE_LANGUAGE_MISMATCH', requestId, { expected: language });
+      }
+
       if (mediaFallbackUsed) {
         finalDiagnosisData.media_fallback = true;
         finalDiagnosisData.media_notice = mediaErrorNotice;
@@ -702,8 +753,9 @@ export const processDiagnosisRequest = async (payload) => {
         }
       }
 
-      // 10. Cache Successful Response (bypass cache if media fallback, mismatch, or switch confirmation was used)
-      if (!mediaFallbackUsed && !isMismatchResponse && !isSwitchConfirmationResponse) {
+      // 10. Cache Successful Response (bypass cache if media fallback, mismatch, switch confirmation,
+      // scope replacement, or a wrong-language answer was produced)
+      if (!mediaFallbackUsed && !isMismatchResponse && !isSwitchConfirmationResponse && !scopeReplaced && !languageMismatch) {
         try {
           cacheService.set(cacheKeyParams, finalDiagnosisData, requestId);
         } catch (cacheSetErr) {
@@ -727,6 +779,7 @@ export const processDiagnosisRequest = async (payload) => {
         ai_source: mediaFallbackUsed ? 'gemini_text_fallback' : 'gemini',
         media_fallback: mediaFallbackUsed,
         media_notice: mediaErrorNotice,
+        language_mismatch: languageMismatch,
         model: modelUsed,
         diagnosis: finalDiagnosisData,
       };
@@ -1005,4 +1058,132 @@ export const normalizeSmartRecommendations = (recommendations, vehicleContext = 
   }).filter(Boolean);
 
   return normalized.slice(0, 5);
+};
+
+// ---------------------------------------------------------------------------
+// Public entry point: relevance gate -> pipeline -> language enforcement
+// ---------------------------------------------------------------------------
+
+const MEDIA_PLACEHOLDERS = {
+  image: 'Visual component analysis',
+  video: 'Visual and audio vehicle video analysis',
+  audio: 'Audio recording of engine or vehicle noise',
+};
+
+const REFUSING_VERDICTS = new Set([
+  RELEVANCE_VERDICT.UNRELATED,
+  RELEVANCE_VERDICT.INJECTION,
+  RELEVANCE_VERDICT.UNCERTAIN,
+]);
+
+// Client-supplied history is untrusted: strip prior user turns that were
+// unrelated or tried to manipulate the assistant so they cannot steer the model.
+const sanitizeHistoryForScope = (history, vehicleContext) => {
+  if (!Array.isArray(history)) return [];
+  return history.map((turn) => {
+    if (String(turn?.role || '').toLowerCase() !== 'user') return turn;
+    const content = String(turn?.content || turn?.text || '');
+    const verdict = evaluateRelevance({ text: content, history: [], vehicleContext });
+    if (verdict.verdict === RELEVANCE_VERDICT.UNRELATED || verdict.verdict === RELEVANCE_VERDICT.INJECTION) {
+      return { ...turn, content: '[unrelated content removed]', text: '[unrelated content removed]' };
+    }
+    if (verdict.verdict === RELEVANCE_VERDICT.MIXED) {
+      return { ...turn, content: verdict.relevantText, text: verdict.relevantText };
+    }
+    return turn;
+  });
+};
+
+export const processDiagnosisRequest = async (payload) => {
+  const diagnosis = payload?.diagnosis || {};
+  const userContext = payload?.user_context || {};
+  const vehicleContext = payload?.vehicle_context || {};
+  const language = userContext.language || 'en';
+  const requestId = payload?.request_id;
+  const inputType = diagnosis.input_type === 'voice' ? 'audio' : diagnosis.input_type;
+  const hasMedia = Boolean(diagnosis.media_base64);
+
+  const evaluation = evaluateRelevance({
+    text: diagnosis.symptoms,
+    history: diagnosis.history,
+    hasMedia,
+    vehicleContext,
+    inputType,
+  });
+
+  logger.info('AI_RELEVANCE_EVALUATED', requestId, {
+    verdict: evaluation.verdict,
+    reasons: evaluation.reasons,
+    hasMedia,
+    inputType,
+  });
+
+  // Unrelated, manipulative, or unclear requests never reach the model, so an
+  // unrelated question cannot be answered before (or after) being refused.
+  if (REFUSING_VERDICTS.has(evaluation.verdict)) {
+    return {
+      success: true,
+      ai_source: 'relevance_gate',
+      model: 'deterministic',
+      diagnosis: buildScopeResponse(evaluation, { language, vehicleContext }),
+    };
+  }
+
+  let effectivePayload = payload;
+  if (evaluation.verdict === RELEVANCE_VERDICT.MIXED || (Array.isArray(diagnosis.history) && diagnosis.history.length > 0)) {
+    const sanitizedSymptoms = evaluation.verdict === RELEVANCE_VERDICT.MIXED
+      ? (evaluation.relevantText || MEDIA_PLACEHOLDERS[inputType] || MEDIA_PLACEHOLDERS.image)
+      : diagnosis.symptoms;
+
+    let sanitizedRoot = diagnosis.root_symptom;
+    if (sanitizedRoot) {
+      const rootEval = evaluateRelevance({ text: sanitizedRoot, history: [], hasMedia: false, vehicleContext });
+      if (rootEval.verdict === RELEVANCE_VERDICT.MIXED) sanitizedRoot = rootEval.relevantText;
+      else if (rootEval.verdict !== RELEVANCE_VERDICT.RELEVANT) sanitizedRoot = sanitizedSymptoms;
+    }
+
+    effectivePayload = {
+      ...payload,
+      diagnosis: {
+        ...diagnosis,
+        symptoms: sanitizedSymptoms,
+        root_symptom: sanitizedRoot,
+        history: sanitizeHistoryForScope(diagnosis.history, vehicleContext),
+      },
+    };
+  }
+
+  let result = await runDiagnosisPipeline(effectivePayload);
+
+  // One corrective retry when the saved language preference was not honoured.
+  if (result?.language_mismatch && !userContext.language_retry) {
+    logger.warn('AI_LANGUAGE_RETRY', requestId, { expected: language });
+    const retryPayload = {
+      ...effectivePayload,
+      request_id: `${requestId}_lang`,
+      user_context: { ...userContext, language_retry: true },
+    };
+    try {
+      const retried = await runDiagnosisPipeline(retryPayload);
+      if (retried && !retried.language_mismatch) result = retried;
+    } catch (retryError) {
+      logger.warn('AI_LANGUAGE_RETRY_FAILED', requestId, { error: retryError.message });
+    }
+  }
+
+  if (
+    evaluation.verdict === RELEVANCE_VERDICT.MIXED
+    && result?.diagnosis
+    && !result.diagnosis.out_of_scope
+  ) {
+    result = {
+      ...result,
+      diagnosis: {
+        ...result.diagnosis,
+        scope_notice: buildScopeNotice({ language, vehicleContext }),
+      },
+    };
+  }
+
+  return result;
 };

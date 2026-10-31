@@ -24,6 +24,15 @@ class Vehicle extends Model
         'archived_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'vin',
+    ];
+
+    public function getVinAttribute(): ?string
+    {
+        return $this->model_number;
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -196,10 +205,10 @@ class Vehicle extends Model
             }
         }
 
-        // 5. Resolve model number
-        if (array_key_exists('model_number', $requestedValues)) {
-            $val = $requestedValues['model_number'];
-            $this->model_number = !empty($val) ? trim((string) $val) : null;
+        // 5. Resolve Vehicle Identification Number (VIN / model_number)
+        if (array_key_exists('vin', $requestedValues) || array_key_exists('model_number', $requestedValues)) {
+            $val = array_key_exists('vin', $requestedValues) ? $requestedValues['vin'] : $requestedValues['model_number'];
+            $this->model_number = !empty($val) ? strtoupper(trim((string) $val)) : null;
         }
 
         return $this;

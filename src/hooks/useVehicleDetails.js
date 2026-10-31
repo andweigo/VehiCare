@@ -792,13 +792,22 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
         return null;
       }
 
+      const cleanedVin = modelNumber.trim().toUpperCase();
+      const isBicycle = String(vehicleType || '').toLowerCase().includes('bicycle');
+      if (cleanedVin && !isBicycle && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(cleanedVin)) {
+        setSaveError(
+          'Vehicle Identification Number (VIN) must be 17 alphanumeric characters (excluding I, O, and Q), or left blank.',
+        );
+        return null;
+      }
+
       try {
         setSavingVehicle(true);
         setSaveError(null);
 
         // Perform AI vehicle validation check before saving
         const vCheck = await validateCurrentVehicle();
-        if (vCheck && (vCheck.status === 'invalid' || vCheck.year_valid === false)) {
+        if (vCheck && (vCheck.status === 'invalid' || vCheck.status === 'invalid_vin' || vCheck.year_valid === false)) {
           setSaveError(
             vCheck.reason || 'The selected vehicle or model-year combination is invalid according to vehicle production records.'
           );
@@ -818,8 +827,8 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
           custom_brand: isCustomVehicle ? brand.trim() : null,
           custom_model: isCustomVehicle ? model.trim() : null,
           custom_year: isCustomVehicle ? year.trim() : null,
-          model_number:
-            modelNumber.trim() || null,
+          model_number: cleanedVin || null,
+          vin: cleanedVin || null,
         };
 
         console.log(
@@ -839,7 +848,8 @@ const useVehicleDetails = ({ initialMode = 'create', initialVehicle = null } = {
           custom_brand: isCustomVehicle ? brand.trim() : null,
           custom_model: isCustomVehicle ? model.trim() : null,
           custom_year: isCustomVehicle ? year.trim() : null,
-          model_number: modelNumber.trim() || null,
+          model_number: cleanedVin || null,
+          vin: cleanedVin || null,
           isActive: false,
         };
 

@@ -197,3 +197,61 @@ export const isRepairGuideIntent = (text) => {
   ];
   return repairPatterns.some((pattern) => lower.includes(pattern)) || isMaintenanceOrHowToIntent(text);
 };
+
+const ADD_VEHICLE_REQUEST_RE = /\b(?:add|register|save|create|include|enroll|idagdag|i-?add|ilagay)\b[^.?!\n]{0,50}\b(?:vehicle|car|motorcycle|motorbike|motor|bike|bicycle|scooter|truck|van|suv|sasakyan|kotse|garage)\b/i;
+const NEW_VEHICLE_RE = /\b(?:new|another|second|custom)\s+(?:vehicle|car|motorcycle|motorbike|motor|bike|bicycle|scooter|truck|van|suv|sasakyan|kotse)\b/i;
+const ADD_VEHICLE_PROMPT_RE = /\b(?:add|register|save)\b[^.?!\n]{0,40}\b(?:vehicle|garage)\b|\bwhich vehicle\b|\bvehicle type\b|\b(?:brand|make)\b[^.?!\n]{0,30}\bmodel\b|\bwhat year\b|\bwhat type of vehicle\b/i;
+const SYMPTOM_CUE_RE = /\b(?:noise|sound|smoke|leak|vibrat|shak|stall|won'?t start|overheat|grind|squeak|squeal|whine|hiss|clunk|thud|misfir|wobbl|knock|rattle|warning light|check engine|broken|not working|ayaw|sira|ingay|usok|tagas)\b/i;
+
+/**
+ * True when the previous assistant turn was collecting details for a new
+ * vehicle, so a short reply such as "motorcycle yamaha sniper 150 2017" is a
+ * vehicle-registration answer rather than a symptom or a different-vehicle
+ * mismatch.
+ */
+export const isAddVehicleFlowContinuation = (text, history = []) => {
+  if (!text || typeof text !== 'string' || !Array.isArray(history) || history.length === 0) return false;
+  if (SYMPTOM_CUE_RE.test(text)) return false;
+  const lastAssistant = [...history]
+    .reverse()
+    .find((turn) => String(turn?.role || '').toLowerCase() !== 'user');
+  const lastText = String(lastAssistant?.content || lastAssistant?.text || '');
+  if (!lastText || !ADD_VEHICLE_PROMPT_RE.test(lastText)) return false;
+  return normalizeText(text).split(' ').length <= 14;
+};
+
+/**
+ * Check if a query represents a conversational vehicle management, maintenance planning,
+ * logging, expense inquiry, priority ranking, or proactive briefing action.
+ */
+export const isVehicleOrMaintenanceActionIntent = (text, history = []) => {
+  if (!text || typeof text !== 'string') return false;
+  const norm = normalizeText(text);
+  if (!norm) return false;
+
+  if (ADD_VEHICLE_REQUEST_RE.test(text) || NEW_VEHICLE_RE.test(text) || isAddVehicleFlowContinuation(text, history)) {
+    return true;
+  }
+
+  const actionPhrases = [
+    'add vehicle', 'add my vehicle', 'add a vehicle', 'register vehicle', 'create vehicle',
+    'new vehicle', 'save vehicle', 'dagdag sasakyan', 'dagdag motor', 'dagdag bike',
+    'switch vehicle', 'switch active vehicle', 'change vehicle', 'change active vehicle',
+    'select vehicle', 'switch to my', 'lipat sasakyan', 'lipat sa',
+    'my vehicles', 'list vehicles', 'show my vehicles', 'all vehicles', 'all my vehicles',
+    'schedule maintenance', 'schedule service', 'set maintenance', 'set reminder', 'remind me to',
+    'schedule oil change', 'upcoming maintenance', 'pending maintenance', 'maintenance schedule',
+    'generate maintenance plan', 'maintenance plan', 'plan maintenance',
+    'complete maintenance', 'complete task', 'mark as done', 'mark as completed', 'tapos na ang',
+    'log maintenance', 'log service', 'record repair', 'record maintenance', 'nagpalit ako',
+    'nagpagawa ako', 'repair outcome',
+    'how much have i spent', 'total expenses', 'maintenance expenses', 'repair expenses',
+    'repair costs', 'summarize expenses', 'magkano nagastos',
+    'vehicle priority', 'which vehicle needs attention', 'rank vehicles', 'rank my vehicles',
+    'priority vehicle', 'ano dapat unahin',
+    'daily briefing', 'proactive briefing', 'vehicle briefing', 'what should i do today',
+    'status of my vehicle', 'care report', 'vehicle report', 'kumusta sasakyan ko',
+  ];
+
+  return actionPhrases.some((phrase) => norm.includes(phrase));
+};

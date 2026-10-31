@@ -106,32 +106,37 @@ const useVehicleHealth = () => {
   const healthStatus = {
     label: typeof rawHealthStatus === 'string'
       ? rawHealthStatus
-      : rawHealthStatus?.label || (
-          healthPercentage === null
-            ? 'Analyzing...'
-            : healthPercentage >= 80
-            ? 'Looking Good'
-            : healthPercentage >= 60
-            ? 'Needs Attention'
-            : 'Needs Immediate Attention'
-        ),
-    icon: (typeof rawHealthStatus === 'object' && rawHealthStatus?.icon)
+      : (rawHealthStatus?.code === 'NO_HISTORY' || rawHealthStatus?.label === 'No maintenance activity yet')
+        ? (healthPercentage >= 80 ? 'Optimal' : healthPercentage >= 60 ? 'Good' : 'Needs Attention')
+        : rawHealthStatus?.label || (
+            healthPercentage === null
+              ? 'Analyzing...'
+              : healthPercentage >= 80
+              ? 'Optimal'
+              : healthPercentage >= 60
+              ? 'Good'
+              : 'Needs Attention'
+          ),
+    code: (rawHealthStatus?.code && rawHealthStatus.code !== 'NO_HISTORY')
+      ? rawHealthStatus.code
+      : (healthPercentage >= 80 ? 'OPTIMAL' : healthPercentage >= 60 ? 'GOOD' : 'ATTENTION'),
+    icon: (typeof rawHealthStatus === 'object' && rawHealthStatus?.icon && rawHealthStatus?.code !== 'NO_HISTORY')
       ? rawHealthStatus.icon
       : healthPercentage === null
         ? 'sync'
         : healthPercentage >= 80
         ? 'check-circle'
         : healthPercentage >= 60
-        ? 'info'
+        ? 'schedule'
         : 'warning',
-    color: (typeof rawHealthStatus === 'object' && rawHealthStatus?.color)
+    color: (typeof rawHealthStatus === 'object' && rawHealthStatus?.color && rawHealthStatus?.code !== 'NO_HISTORY')
       ? rawHealthStatus.color
       : healthPercentage === null
         ? '#F63B05'
         : healthPercentage >= 80
-        ? '#35B86B'
+        ? '#32D583'
         : healthPercentage >= 60
-        ? '#F63B05'
+        ? '#F5B942'
         : '#FF5A5F',
     explanation: (typeof rawHealthStatus === 'object' && rawHealthStatus?.explanation)
       ? rawHealthStatus.explanation

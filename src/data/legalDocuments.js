@@ -267,7 +267,7 @@ export const PRIVACY_DOCUMENT = {
         ]),
         p('Vehicle information'),
         ul([
-          'Vehicle type, brand, model, year, model number and any custom details you enter; maintenance schedules, completed services and history.',
+          'Vehicle type, brand, model, year, Vehicle Identification Number (VIN) and any custom details you enter; maintenance schedules, completed services and history.',
         ]),
         p('Diagnostic information'),
         ul([

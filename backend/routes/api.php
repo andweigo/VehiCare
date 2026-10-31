@@ -207,6 +207,7 @@ Route::get(
 )->middleware('auth:sanctum');
 
 use App\Http\Controllers\Api\AIUsageController;
+use App\Http\Controllers\Api\AIAssistantActionController;
 use App\Http\Controllers\Api\DiagnosticController;
 use App\Http\Controllers\Api\RepairShopController;
 use App\Http\Controllers\Api\HistoryController;
@@ -215,6 +216,7 @@ use App\Http\Controllers\Api\MaintenanceController;
 use App\Http\Controllers\Api\RepairController;
 
 Route::get('/ai/usage', [AIUsageController::class, 'show']);
+Route::post('/ai/actions/execute', [AIAssistantActionController::class, 'execute'])->middleware('auth:sanctum');
 Route::post('/diagnostics', [DiagnosticController::class, 'store']);
 Route::get('/diagnostics', [DiagnosticController::class, 'index'])->middleware('auth:sanctum');
 Route::get('/diagnostics/{id}', [DiagnosticController::class, 'show'])->middleware('auth:sanctum');

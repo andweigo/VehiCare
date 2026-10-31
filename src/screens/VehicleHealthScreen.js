@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useVehicle } from '../context/VehicleContext';
 import useVehicleHealth from '../hooks/useVehicleHealth';
+import VehicleHealthSpeedometer from '../components/VehicleHealthSpeedometer';
 import { useTheme } from '../theme/ThemeContext';
 import {
     getVehicleDisplayDetails,
@@ -229,122 +230,12 @@ const VehicleHealthScreen = ({ navigation }) => {
           />
         }
       >
-        {/* HEALTH OVERVIEW HERO CARD */}
-        <View
-          style={[
-            styles.healthCard,
-            {
-              backgroundColor: isDark ? '#141416' : '#FFFFFF',
-              borderColor: isDark ? '#262629' : '#E8EDF2',
-            },
-          ]}
-        >
-          <View style={styles.scoreHeader}>
-            <View>
-              <Text
-                style={[
-                  styles.overline,
-                  {
-                    color: theme.textSecondary,
-                  },
-                ]}
-              >
-                OVERALL HEALTH SCORE
-              </Text>
-
-              {loading || healthPercentage === null ? (
-                <View style={styles.scoreLoadingRow}>
-                  <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
-                  <Text style={[styles.scoreLoadingText, { color: theme.textSecondary }]}>
-                    Calculating health score...
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.scoreRow}>
-                  <Text
-                    style={[
-                      styles.score,
-                      {
-                        color: healthColor,
-                      },
-                    ]}
-                  >
-                    {healthPercentage}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.percent,
-                      {
-                        color: healthColor,
-                      },
-                    ]}
-                  >
-                    %
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255, 255, 255, 0.06)'
-                    : '#F1F5F9',
-                },
-              ]}
-            >
-              <Icon
-                name={healthStatus.icon}
-                size={16}
-                color={healthColor}
-              />
-
-              <Text
-                style={[
-                  styles.statusText,
-                  {
-                    color: healthColor,
-                  },
-                ]}
-              >
-                {healthStatus.label.toUpperCase()}
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={[
-              styles.progressTrack,
-              {
-                backgroundColor: isDark ? '#222226' : '#F1F5F9',
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${healthPercentage === null ? 0 : Math.min(100, Math.max(0, healthPercentage))}%`,
-                  backgroundColor: healthColor,
-                },
-              ]}
-            />
-          </View>
-
-          <Text
-            style={[
-              styles.healthDescription,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
-            Calculated dynamically from vehicle specifications, logged maintenance tasks, diagnostic scan findings, and completed service recommendations.
-          </Text>
-        </View>
+        {/* DYNAMIC VEHICLE HEALTH SPEEDOMETER (UNIFIED DISPLAY) */}
+        <VehicleHealthSpeedometer
+          showDetailsLink={false}
+          isInteractive={false}
+          containerStyle={{ marginBottom: 16 }}
+        />
 
         {/* ACTIVE VEHICLE CARD */}
         <View

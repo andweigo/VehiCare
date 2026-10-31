@@ -1,96 +1,26 @@
+import React from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSidebar } from '../context/SidebarContext';
 import { useTheme } from '../theme/ThemeContext';
 
-const renderSettingItem = ({
-  icon,
-  title,
-  subtitle,
-  onPress,
-  theme,
-  danger = false,
-}) => (
-  <TouchableOpacity
-    activeOpacity={0.72}
-    onPress={onPress}
-    style={[
-      styles.settingItem,
-      {
-        backgroundColor: theme.surface,
-      },
-    ]}
-  >
-    <View
-      style={[
-        styles.settingIcon,
-        {
-          backgroundColor: danger
-            ? 'rgba(239, 68, 68, 0.10)'
-            : theme.accentSoft || theme.surfaceAlt,
-        },
-      ]}
-    >
-      <Icon
-        name={icon}
-        size={19}
-        color={danger ? '#EF4444' : theme.accent}
-      />
-    </View>
-
-    <View style={styles.settingContent}>
-      <Text
-        style={[
-          styles.settingTitle,
-          {
-            color: danger ? '#EF4444' : theme.text,
-          },
-        ]}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-
-      {subtitle ? (
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.settingSubtitle,
-            {
-              color: theme.textSecondary,
-            },
-          ]}
-        >
-          {subtitle}
-        </Text>
-      ) : null}
-    </View>
-
-    <View style={styles.chevronContainer}>
-      <Icon
-        name="chevron-right"
-        size={20}
-        color={theme.textSecondary}
-      />
-    </View>
-  </TouchableOpacity>
-);
+const ORANGE = '#F5501C';
 
 const SettingsScreen = ({ navigation }) => {
-  const { theme } = useTheme();
+  const { theme, themeName } = useTheme();
+  const isDark = themeName === 'dark';
   const { openSidebar } = useSidebar();
 
   const navigateToHelpSupport = () => {
     let root = navigation;
-
     while (
       root &&
       root.getParent &&
@@ -98,11 +28,7 @@ const SettingsScreen = ({ navigation }) => {
       root.getParent() !== root
     ) {
       const parent = root.getParent();
-
-      if (!parent) {
-        break;
-      }
-
+      if (!parent) break;
       root = parent;
     }
 
@@ -118,256 +44,270 @@ const SettingsScreen = ({ navigation }) => {
       edges={['top']}
       style={[
         styles.container,
-        {
-          backgroundColor: theme.background,
-        },
+        { backgroundColor: isDark ? '#0A0A0A' : theme.background },
       ]}
     >
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={isDark ? '#0A0A0A' : theme.background}
+      />
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
+        {/* ==================================================
+            1. TOP HEADER
+        ================================================== */}
         <View style={styles.header}>
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={() => navigation.goBack()}
-            style={[
-              styles.backButton,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Icon
-              name="arrow-back"
-              size={20}
-              color={theme.text}
-            />
-          </TouchableOpacity>
-
-          <View style={styles.headerText}>
-            <Text
+          <View style={styles.headerLeftGroup}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => navigation.goBack()}
               style={[
-                styles.headerTitle,
+                styles.backButton,
                 {
-                  color: theme.text,
+                  backgroundColor: isDark ? '#16161A' : theme.surface,
+                  borderColor: isDark ? '#24242A' : theme.border,
                 },
               ]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              Settings
-            </Text>
+              <Icon name="arrow-back" size={22} color={isDark ? '#FFFFFF' : theme.text} />
+            </TouchableOpacity>
 
-            <Text
-              style={[
-                styles.headerSubtitle,
-                {
-                  color: theme.textSecondary,
-                },
-              ]}
-            >
-              Help, support and app information
-            </Text>
+            <View style={styles.headerText}>
+              <Text style={styles.eyebrow}>SUPPORT & INFORMATION</Text>
+              <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                Settings
+              </Text>
+            </View>
           </View>
 
           <TouchableOpacity
             activeOpacity={0.75}
             onPress={openSidebar}
             style={[
-              styles.backButton,
+              styles.menuButton,
               {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
+                backgroundColor: isDark ? '#16161A' : theme.surface,
+                borderColor: isDark ? '#24242A' : theme.border,
               },
             ]}
             accessibilityLabel="Open Sidebar Menu"
           >
-            <Icon
-              name="menu"
-              size={20}
-              color={theme.text}
-            />
+            <Icon name="menu" size={22} color={isDark ? '#FFFFFF' : theme.text} />
           </TouchableOpacity>
         </View>
 
-        {/* SUPPORT */}
-        <View style={styles.sectionBlock}>
-          <View style={styles.sectionHeading}>
-
-            <Text
-              style={[
-                styles.sectionTitle,
-                {
-                  color: theme.textSecondary,
-                },
-              ]}
-            >
-              SUPPORT
-            </Text>
-          </View>
+        {/* ==================================================
+            2. SUPPORT SECTION
+        ================================================== */}
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionHeading}>SUPPORT</Text>
 
           <View
             style={[
-              styles.settingsCard,
+              styles.cardGroup,
               {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
+                backgroundColor: isDark ? '#16161A' : theme.surface,
+                borderColor: isDark ? '#232328' : theme.border,
               },
             ]}
           >
-            {renderSettingItem({
-              icon: 'help-outline',
-              title: 'Help & Support',
-              subtitle: 'Get help with VehiCare',
-              onPress: navigateToHelpSupport,
-              theme,
-            })}
+            {/* Help & Support */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={navigateToHelpSupport}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="help-outline" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
 
-            <View
-              style={[
-                styles.rowDivider,
-                {
-                  backgroundColor: theme.border,
-                },
-              ]}
-            />
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Help & Support
+                </Text>
+                <Text style={[styles.settingSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Find answers & get in touch
+                </Text>
+              </View>
 
-            {renderSettingItem({
-              icon: 'rate-review',
-              title: 'Send Feedback',
-              subtitle: 'Tell us how we can improve',
-              onPress: () => navigation.navigate('SendFeedback'),
-              theme,
-            })}
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
 
-            <View
-              style={[
-                styles.rowDivider,
-                {
-                  backgroundColor: theme.border,
-                },
-              ]}
-            />
+            <View style={[styles.cardDivider, { backgroundColor: isDark ? '#232328' : theme.border }]} />
 
-            {renderSettingItem({
-              icon: 'report-problem',
-              title: 'Report a Problem',
-              subtitle: 'Report an issue with the app',
-              onPress: () => navigation.navigate('ReportProblem'),
-              theme,
-            })}
+            {/* Send Feedback */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('SendFeedback')}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="chat-bubble-outline" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
+
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Send Feedback
+                </Text>
+                <Text style={[styles.settingSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Share an idea
+                </Text>
+              </View>
+
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={[styles.cardDivider, { backgroundColor: isDark ? '#232328' : theme.border }]} />
+
+            {/* Report a Problem */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('ReportProblem')}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="warning-amber" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
+
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Report a Problem
+                </Text>
+                <Text style={[styles.settingSubtitle, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
+                  Tell us what went wrong
+                </Text>
+              </View>
+
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* ABOUT */}
-        <View style={styles.sectionBlock}>
-          <View style={styles.sectionHeading}>
-        
-            <Text
-              style={[
-                styles.sectionTitle,
-                {
-                  color: theme.textSecondary,
-                },
-              ]}
-            >
-              ABOUT
-            </Text>
-          </View>
+        {/* ==================================================
+            3. ABOUT SECTION
+        ================================================== */}
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionHeading}>ABOUT</Text>
 
           <View
             style={[
-              styles.settingsCard,
+              styles.cardGroup,
               {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
+                backgroundColor: isDark ? '#16161A' : theme.surface,
+                borderColor: isDark ? '#232328' : theme.border,
               },
             ]}
           >
-            {renderSettingItem({
-              icon: 'info-outline',
-              title: 'About VehiCare',
-              subtitle: 'Learn more about VehiCare',
-              onPress: () =>
-                navigation.navigate('About'),
-              theme,
-            })}
+            {/* About VehiCare */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('About')}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="info-outline" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
 
-            <View
-              style={[
-                styles.rowDivider,
-                {
-                  backgroundColor: theme.border,
-                },
-              ]}
-            />
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  About VehiCare
+                </Text>
+              </View>
 
-            {renderSettingItem({
-              icon: 'description',
-              title: 'Terms & Conditions',
-              subtitle: 'Review our terms',
-              onPress: () =>
-                navigation.navigate('Terms'),
-              theme,
-            })}
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
 
-            <View
-              style={[
-                styles.rowDivider,
-                {
-                  backgroundColor: theme.border,
-                },
-              ]}
-            />
+            <View style={[styles.cardDivider, { backgroundColor: isDark ? '#232328' : theme.border }]} />
 
-            {renderSettingItem({
-              icon: 'privacy-tip',
-              title: 'Privacy Policy',
-              subtitle: 'Learn how your data is handled',
-              onPress: () =>
-                navigation.navigate('Privacy'),
-              theme,
-            })}
+            {/* Terms & Conditions */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('Terms')}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="description" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
+
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Terms & Conditions
+                </Text>
+              </View>
+
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={[styles.cardDivider, { backgroundColor: isDark ? '#232328' : theme.border }]} />
+
+            {/* Privacy Policy */}
+            <TouchableOpacity
+              style={styles.settingRow}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('Privacy')}
+            >
+              <View
+                style={[
+                  styles.settingIconBox,
+                  { backgroundColor: isDark ? '#202025' : '#F3F4F6' },
+                ]}
+              >
+                <Icon name="shield" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+              </View>
+
+              <View style={styles.settingTextCol}>
+                <Text style={[styles.settingTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
+                  Privacy Policy
+                </Text>
+              </View>
+
+              <Icon name="chevron-right" size={20} color={isDark ? '#8E8E93' : theme.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* APP INFO */}
-        <View style={styles.appInfo}>
-          <View
-            style={[
-              styles.appIcon,
-              {
-                backgroundColor: theme.accentSoft || theme.surfaceAlt,
-              },
-            ]}
-          >
-            <Icon
-              name="directions-car"
-              size={19}
-              color={theme.accent}
-            />
+        {/* ==================================================
+            4. BRANDING LOGO & FOOTER
+        ================================================== */}
+        <View style={styles.brandFooter}>
+          <View style={styles.brandIconBox}>
+            <Icon name="directions-car" size={22} color={ORANGE} />
           </View>
 
-          <Text
-            style={[
-              styles.appName,
-              {
-                color: theme.text,
-              },
-            ]}
-          >
+          <Text style={[styles.brandTitle, { color: isDark ? '#FFFFFF' : theme.text }]}>
             VehiCare
           </Text>
 
-          <Text
-            style={[
-              styles.appVersion,
-              {
-                color: theme.textSecondary,
-              },
-            ]}
-          >
+          <Text style={[styles.brandTagline, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
             Intelligent Vehicle Care
           </Text>
         </View>
@@ -380,156 +320,132 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 50,
+    paddingBottom: 110,
   },
 
   /* HEADER */
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    paddingBottom: 20,
   },
-
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   backButton: {
-    width: 43,
-    height: 43,
-    borderRadius: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-
+  menuButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerText: {
     flex: 1,
   },
-
+  eyebrow: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
   headerTitle: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 27,
-    letterSpacing: -0.7,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 26,
+    letterSpacing: -0.3,
   },
 
-  headerSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 10.5,
-    marginTop: 3,
+  /* SECTION WRAP */
+  sectionWrap: {
+    marginBottom: 22,
   },
-
-  /* SECTIONS */
-
-  sectionBlock: {
-    marginTop: 24,
-  },
-
   sectionHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 9,
-    paddingHorizontal: 2,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
-
-  sectionIndicator: {
-    width: 4,
-    height: 12,
-    borderRadius: 3,
-    marginRight: 7,
-  },
-
-  sectionTitle: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9,
-    letterSpacing: 1.6,
-  },
-
-  /* CARD */
-
-  settingsCard: {
+  cardGroup: {
     borderRadius: 18,
     borderWidth: 1,
     overflow: 'hidden',
-    paddingHorizontal: 5,
   },
-
-  /* SETTING */
-
-  settingItem: {
-    minHeight: 70,
+  settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-
-  settingIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+  settingIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-
-  settingContent: {
+  settingTextCol: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 8,
   },
-
   settingTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 12.5,
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 15,
   },
-
   settingSubtitle: {
     fontFamily: 'Inter-Regular',
-    fontSize: 9.5,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 2,
   },
-
-  chevronContainer: {
-    width: 26,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-
-  rowDivider: {
+  cardDivider: {
     height: 1,
-    marginHorizontal: 8,
-    opacity: 0.8,
+    marginLeft: 70,
   },
 
-  /* APP INFO */
-
-  appInfo: {
-    alignItems: 'center',
-    marginTop: 42,
-    marginBottom: 10,
-  },
-
-  appIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+  /* BRAND FOOTER */
+  brandFooter: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 9,
+    marginTop: 20,
+    marginBottom: 30,
   },
-
-  appName: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 13,
+  brandIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#2A1A14',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  appVersion: {
+  brandTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    marginTop: 10,
+  },
+  brandTagline: {
     fontFamily: 'Inter-Regular',
-    fontSize: 9,
-    marginTop: 3,
+    fontSize: 12,
+    marginTop: 2,
   },
 });
 

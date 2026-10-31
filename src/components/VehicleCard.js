@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import {
     Animated,
+    Image,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -195,6 +196,20 @@ const vehicleBrandModel = (
   return type;
 };
 
+const resolveVehiclePhoto = vehicle => {
+  if (!vehicle || typeof vehicle !== 'object') return null;
+  const candidates = [
+    vehicle.photo_url,
+    vehicle.image_url,
+    vehicle.photo,
+    vehicle.image,
+    vehicle.custom_photo,
+    vehicle.avatar,
+    vehicle.thumbnail,
+  ];
+  return candidates.find(c => typeof c === 'string' && c.trim().length > 0) || null;
+};
+
 const VehicleCard = ({
   vehicle,
   theme,
@@ -234,6 +249,9 @@ const VehicleCard = ({
 
   const vehicleIcon =
     getVehicleIconName(vehicle);
+
+  const photoUri =
+    resolveVehiclePhoto(vehicle);
 
   /*
    * ============================================
@@ -797,7 +815,7 @@ const VehicleCard = ({
                   {
                     backgroundColor:
                       theme?.surfaceAlt ??
-                      '#1C1C1C',
+                      '#222226',
                   },
 
                   isActive &&
@@ -808,14 +826,23 @@ const VehicleCard = ({
                     },
                 ]}
               >
-                <MaterialIcons
-                  name={vehicleIcon}
-                  size={28}
-                  color={
-                    theme?.accent ??
-                    ORANGE
-                  }
-                />
+                {photoUri ? (
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.vehicleCardPhoto}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <MaterialIcons
+                    name={vehicleIcon}
+                    size={26}
+                    color={
+                      isActive && !isArchived
+                        ? (theme?.accent ?? ORANGE)
+                        : (theme?.textSecondary ?? MUTED)
+                    }
+                  />
+                )}
               </View>
 
               <View
@@ -922,10 +949,7 @@ const VehicleCard = ({
                   ]}
                   numberOfLines={1}
                 >
-                  {vehicleBrandModel(
-                    vehicle,
-                    vehicleType,
-                  )}
+                  {[vehicleYear, vehicleType].filter(Boolean).join(' · ')}
                 </Text>
               </View>
 
@@ -948,52 +972,6 @@ const VehicleCard = ({
                   }
                 />
               </View>
-            </View>
-
-            {/* =====================================
-                VEHICLE DETAILS
-                NO ICONS
-               ===================================== */}
-
-            <View
-              style={styles.detailsRow}
-            >
-              <Text
-                style={[
-                  styles.detailLabel,
-                  {
-                    color:
-                      theme?.textSecondary ??
-                      MUTED,
-                  },
-                ]}
-              >
-                {vehicleYear}
-              </Text>
-
-              <View
-                style={[
-                  styles.detailDivider,
-                  {
-                    backgroundColor:
-                      theme?.border ??
-                      '#555555',
-                  },
-                ]}
-              />
-
-              <Text
-                style={[
-                  styles.detailLabel,
-                  {
-                    color:
-                      theme?.textSecondary ??
-                      MUTED,
-                  },
-                ]}
-              >
-                {vehicleType}
-              </Text>
             </View>
 
             {/* =====================================
@@ -1043,7 +1021,7 @@ const VehicleCard = ({
                     },
                   ]}
                 >
-                  Vehicle profile protected
+                  Protected profile
                 </Text>
               </View>
 
@@ -1117,8 +1095,7 @@ const VehicleCard = ({
               {/* SWIPE HINT */}
 
               {!isArchived &&
-                !isActive &&
-                isPremium && (
+                !isActive && (
                   <View
                     style={styles.swipeHint}
                   >
@@ -1330,15 +1307,18 @@ const styles = StyleSheet.create({
   },
 
   vehicleIconWrapper: {
-    width: 54,
-    height: 54,
-
-    borderRadius: 16,
-
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-
     marginRight: 13,
+    overflow: 'hidden',
+  },
+
+  vehicleCardPhoto: {
+    width: '100%',
+    height: '100%',
   },
 
   vehicleInfo: {

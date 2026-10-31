@@ -1,5 +1,6 @@
-export const BRAND = '#F63B05';
-export const BRAND_SOFT = 'rgba(246, 59, 5, 0.16)';
+export const BRAND = '#F5501C';
+export const BRAND_SECONDARY = '#FF8152';
+export const BRAND_SOFT = 'rgba(245, 80, 28, 0.16)';
 
 export const darkColors = {
   background: '#0A0A0A',
@@ -17,6 +18,14 @@ export const darkColors = {
   success: '#32D583',
   warning: '#F5B942',
   danger: '#EF4444',
+
+  // Frosted Glass design tokens
+  glassSurface: 'rgba(20, 21, 25, 0.90)',
+  glassSurfaceElevated: 'rgba(26, 27, 32, 0.92)',
+  glassBorder: 'rgba(255, 255, 255, 0.14)',
+  glassBorderHighlight: 'rgba(255, 255, 255, 0.22)',
+  glassWarmSurface: 'rgba(32, 22, 18, 0.90)',
+  glassWarmBorder: 'rgba(245, 80, 28, 0.35)',
 };
 
 export const lightColors = {
@@ -35,4 +44,12 @@ export const lightColors = {
   success: '#16A34A',
   warning: '#F59E0B',
   danger: '#DC2626',
+
+  // Non-glossy, solid matte dark cards for Light Mode (clean, matte, zero transparency)
+  glassSurface: '#18181B',
+  glassSurfaceElevated: '#202024',
+  glassBorder: '#2E2F35',
+  glassBorderHighlight: '#3E3F46',
+  glassWarmSurface: '#221814',
+  glassWarmBorder: '#3D271D',
 };

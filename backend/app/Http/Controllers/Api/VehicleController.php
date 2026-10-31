@@ -166,7 +166,37 @@ class VehicleController extends Controller
                 'string',
                 'max:255',
             ],
+
+            'vin' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
         ]);
+
+        if (array_key_exists('vin', $validated)) {
+            $vinCandidate = strtoupper(trim((string) ($validated['vin'] ?? '')));
+            unset($validated['vin']);
+
+            if ($vinCandidate !== '') {
+                $typeRecord = !empty($validated['vehicle_type_id'])
+                    ? VehicleType::find($validated['vehicle_type_id'])
+                    : null;
+                $typeName = strtolower((string) ($typeRecord?->name ?? 'car'));
+                $isBicycle = str_contains($typeName, 'bicycle') || $typeName === 'bike';
+
+                if (!$isBicycle && !preg_match('/^[A-HJ-NPR-Z0-9]{17}$/i', $vinCandidate)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Vehicle Identification Number (VIN) must be 17 alphanumeric characters (excluding I, O, and Q).',
+                    ], 422);
+                }
+
+                $validated['model_number'] = $vinCandidate;
+            } elseif (!array_key_exists('model_number', $validated)) {
+                $validated['model_number'] = null;
+            }
+        }
 
         $user = $request->user();
         $result = DB::transaction(function () use ($user, $validated) {
@@ -379,11 +409,42 @@ class VehicleController extends Controller
                 'string',
                 'max:255',
             ],
+
+            'vin' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
         ]);
 
         $vehicle = $request->user()
             ->vehicles()
+            ->with('vehicleType')
             ->findOrFail($id);
+
+        if (array_key_exists('vin', $validated)) {
+            $vinCandidate = strtoupper(trim((string) ($validated['vin'] ?? '')));
+            unset($validated['vin']);
+
+            if ($vinCandidate !== '') {
+                $typeRecord = !empty($validated['vehicle_type_id'])
+                    ? VehicleType::find($validated['vehicle_type_id'])
+                    : $vehicle->vehicleType;
+                $typeName = strtolower((string) ($typeRecord?->name ?? 'car'));
+                $isBicycle = str_contains($typeName, 'bicycle') || $typeName === 'bike';
+
+                if (!$isBicycle && !preg_match('/^[A-HJ-NPR-Z0-9]{17}$/i', $vinCandidate)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Vehicle Identification Number (VIN) must be 17 alphanumeric characters (excluding I, O, and Q).',
+                    ], 422);
+                }
+
+                $validated['model_number'] = $vinCandidate;
+            } elseif (!array_key_exists('model_number', $validated)) {
+                $validated['model_number'] = null;
+            }
+        }
 
         if ($vehicle->archived_at) {
             return response()->json([
@@ -425,6 +486,12 @@ class VehicleController extends Controller
         }
         if (in_array('custom_year', $allowedFields) && !in_array('vehicle_year_id', $expandedAllowedFields)) {
             $expandedAllowedFields[] = 'vehicle_year_id';
+        }
+        if (in_array('vin', $allowedFields) && !in_array('model_number', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'model_number';
+        }
+        if (in_array('model_number', $allowedFields) && !in_array('vin', $expandedAllowedFields)) {
+            $expandedAllowedFields[] = 'vin';
         }
 
         $changedFields = [];

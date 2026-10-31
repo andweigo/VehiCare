@@ -448,6 +448,75 @@ export const isRepairConfirmedForTask = (task, confirmedRepairs = []) => {
 };
 
 /**
+ * Determine if a task is strictly safety-critical (brakes, tires, steering, fluid leaks, stall hazards).
+ * Prevents non-safety items like air filters or cosmetic chains from being over-prioritized into 'Do This Now'.
+ */
+export const isTaskSafetyCritical = (task = {}) => {
+  const text = `${task.title || ''} ${task.problem || ''} ${task.relatedProblem || ''} ${task.description || ''} ${task.why_it_matters || ''}`.toLowerCase();
+  const cat = `${task.category?.id || task.category || ''}`.toLowerCase();
+
+  // Brakes (strictly safety-critical)
+  if (
+    cat.includes('brake') ||
+    text.includes('brake') ||
+    text.includes('stopping') ||
+    text.includes('rotor') ||
+    text.includes('pad') ||
+    text.includes('caliper')
+  ) {
+    return true;
+  }
+
+  // Tires & wheels (blowout risks, puncture, bald tread)
+  if (
+    cat.includes('tire') ||
+    cat.includes('wheel') ||
+    text.includes('tire') ||
+    text.includes('tread') ||
+    text.includes('blowout') ||
+    text.includes('puncture') ||
+    text.includes('sidewall')
+  ) {
+    return true;
+  }
+
+  // Steering & Suspension
+  if (
+    text.includes('steering') ||
+    text.includes('handlebar') ||
+    text.includes('suspension') ||
+    text.includes('fork') ||
+    text.includes('wobble') ||
+    text.includes('ball joint')
+  ) {
+    return true;
+  }
+
+  // Engine overheating / active leaks
+  if (
+    text.includes('coolant boil') ||
+    text.includes('overheat') ||
+    text.includes('fuel leak') ||
+    text.includes('gas leak') ||
+    text.includes('brake fluid leak') ||
+    text.includes('fire risk')
+  ) {
+    return true;
+  }
+
+  // Sudden stalling hazards
+  if (
+    text.includes('stalling while driving') ||
+    text.includes('engine cut off while') ||
+    text.includes('stalls while riding')
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Filter out vehicle-incompatible recommendations (e.g. no engine oil on bicycles).
  */
 export const isTaskCompatibleWithVehicle = (text, vehicleProfile) => {
@@ -562,6 +631,7 @@ export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehi
 
       const { category, icon } = getCategoryAndIconFromAction(cleanTitle, norm.problem);
       const { scoreImpact, sortOrder } = mapSeverityToPriority(item.urgency || norm.severity);
+      const isSafety = isTaskSafetyCritical({ title: cleanTitle, category, problem: norm.problem });
 
       const taskObj = {
         id: `maint-task-${norm.id}-${item.index}`,
@@ -571,17 +641,22 @@ export const extractMaintenanceTasks = (diagnostics, confirmedRepairs = [], vehi
         description: item.description,
         what_to_do: item.what_to_do || cleanTitle,
         why_it_matters: item.why_it_matters || item.description || 'Helps ensure optimal vehicle reliability and prevent severe component damage.',
-        when_due: item.when_due || 'Condition-based inspection / check',
+        why_suggested: norm.problem ? `Your previous diagnosis mentioned "${norm.problem}".` : 'Identified during recent vehicle diagnostics.',
+        when_due: item.when_due || (isSafety ? 'Check before next trip' : 'Condition-based inspection / check'),
+        timing: item.when_due || (isSafety ? 'Check before your next ride' : 'Confirm condition using owner manual and visual check'),
         skill_level: item.skill_level || 'Beginner-friendly',
         completion_check: item.completion_check || 'Inspect and confirm component functions normally.',
         category,
         icon,
-        priority: item.urgency || 'Routine',
-        urgency: item.urgency || 'Routine',
+        priority: item.urgency || (isSafety ? 'Urgent' : 'Routine'),
+        urgency: item.urgency || (isSafety ? 'Urgent' : 'Routine'),
         isInspection: true,
+        isSafetyCritical: isSafety,
         scoreImpact,
-        sortOrder,
+        sortOrder: isSafety ? 1 : sortOrder,
         source: 'diagnostic',
+        source_label: 'Diagnostic Follow-up',
+        sources: ['diagnostic'],
         diagnosisId: norm.id,
         relatedProblem: norm.problem,
         createdAt: norm.createdAt,
@@ -720,6 +795,8 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
       seenKeys.add(key);
 
       const { category, icon } = getCategoryAndIconFromAction(r.title, r.problem);
+      const isSafety = isTaskSafetyCritical({ title: r.title, category, problem: r.problem });
+
       recommendations.push({
         id: `smart-rec-${norm.id}-${r.index}`,
         type: 'smart_recommendation',
@@ -727,10 +804,12 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         problem: r.problem,
         description: r.preventive_action,
         preventive_action: r.preventive_action,
-        category_section: r.category_section || (norm.severity === 'high' || norm.severity === 'critical' ? 'do_this_now' : 'helpful_tips'),
+        category_section: r.category_section || (isSafety ? 'do_this_now' : (norm.severity === 'high' || norm.severity === 'critical' ? 'coming_up_soon' : 'helpful_tips')),
         what_to_do: r.what_to_do || r.preventive_action || r.title,
-        why_it_matters: r.why_it_matters || r.reason || 'Helps reduce risk of recurring issues.',
-        when_due: r.when_due || 'Ongoing preventive care / periodic check',
+        why_it_matters: r.why_it_matters || r.reason || 'Helps reduce risk of recurring issues and secondary wear.',
+        why_suggested: norm.problem ? `Your previous diagnosis mentioned "${norm.problem}".` : 'Suggested based on recent vehicle diagnostic findings.',
+        when_due: r.when_due || (isSafety ? 'Check before your next ride' : 'Ongoing preventive care / periodic check'),
+        timing: r.when_due || (isSafety ? 'Check before your next ride' : 'Confirm using owner manual and actual component condition'),
         skill_level: r.skill_level || 'Beginner-friendly',
         completion_check: r.completion_check || 'Perform visual check and confirm normal operation.',
         reason: r.reason,
@@ -738,10 +817,14 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
         safety_precaution: r.safety_precaution,
         category,
         icon,
-        priority: norm.severity === 'high' || norm.severity === 'critical' ? 'Urgent' : 'Important',
+        priority: isSafety ? 'Urgent' : (norm.severity === 'high' || norm.severity === 'critical' ? 'Important' : 'Recommended'),
+        urgency: isSafety ? 'urgent' : 'recommended',
+        isSafetyCritical: isSafety,
         scoreImpact: 5,
-        sortOrder: 2,
+        sortOrder: isSafety ? 1 : 2,
         source: 'diagnostic',
+        source_label: 'Diagnostic Follow-up',
+        sources: ['diagnostic'],
         diagnosisId: norm.id,
         relatedProblem: r.problem,
         diagnosticRecord: {
@@ -768,20 +851,27 @@ export const extractSmartRecommendations = (diagnostics, confirmedRepairs = [], 
     const key = normalizeKey(item.title);
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
+      const isSafety = isTaskSafetyCritical(item);
       recommendations.push({
         ...item,
         type: 'preventive',
-        category_section: item.priority === 'Important' ? 'coming_up_soon' : 'helpful_tips',
+        source: 'scheduled',
+        source_label: 'Scheduled Maintenance',
+        sources: ['scheduled'],
+        category_section: isSafety ? 'do_this_now' : (item.priority === 'Important' ? 'coming_up_soon' : 'helpful_tips'),
         preventive_action: item.description,
         what_to_do: item.title,
-        why_it_matters: item.description || 'Regular check ensures vehicle safety and prevents premature wear.',
-        when_due: 'Per owner manual schedule / regular check',
+        why_it_matters: item.description || 'Regular service ensures vehicle safety and prevents premature component failure.',
+        why_suggested: 'Based on standard manufacturer service schedule and recommended intervals.',
+        when_due: 'Check records / owner manual schedule',
+        timing: 'Last service date unknown — check your records or vehicle manual',
         skill_level: 'Beginner-friendly',
         completion_check: 'Confirm component is verified and in good condition.',
         reason: 'Regular routine check for optimal vehicle safety and longevity.',
         warning_signs: 'Inspect regularly before warning symptoms develop.',
         safety_precaution: 'Follow standard vehicle maintenance safety protocols.',
-        sortOrder: item.priority === 'Important' ? 4 : 5,
+        isSafetyCritical: isSafety,
+        sortOrder: isSafety ? 2 : (item.priority === 'Important' ? 4 : 5),
       });
     }
   });
@@ -833,31 +923,32 @@ export const groupRecommendationsByTriSections = (
     const priority = String(item.priority || item.urgency || '').toUpperCase();
     const source = item.source || item.type;
     const categorySec = item.category_section || item.categorySection;
+    const isSafety = isTaskSafetyCritical(item);
+    const isUrgent = priority === 'IMMEDIATE' || priority === 'URGENT' || priority === 'CRITICAL';
 
     // 1. Do This Now:
-    // Critical safety checks, overdue maintenance, active unresolved diagnostic issues
+    // SAFETY-CRITICAL items that are urgent/diagnostic, or confirmed overdue tasks
     if (
-      categorySec === 'do_this_now' ||
-      priority === 'IMMEDIATE' ||
-      priority === 'URGENT' ||
-      priority === 'CRITICAL' ||
-      (source === 'diagnostic' && (priority === 'HIGH' || item.isInspection || item.is_inspection)) ||
-      item.isOverdue
+      item.isOverdue ||
+      (isSafety && (isUrgent || source === 'diagnostic')) ||
+      (categorySec === 'do_this_now' && (isSafety || isUrgent))
     ) {
       doThisNow.push({
         ...item,
         section: 'do_this_now',
         sectionLabel: 'Do This Now',
-        sectionSubtitle: 'Critical safety checks & active diagnostic issues',
+        sectionSubtitle: 'Safety-critical checks & urgent issues',
       });
     }
     // 2. Coming Up Soon:
-    // Scheduled routine maintenance approaching due date or condition
+    // Non-safety diagnostic follow-ups, scheduled maintenance, or approaching interval checks
     else if (
       categorySec === 'coming_up_soon' ||
       priority === 'IMPORTANT' ||
-      item.isDueSoon ||
+      source === 'diagnostic' || // Non-safety diagnostic follow-ups (e.g. air filter, spark plug)
+      source === 'scheduled' ||
       source === 'maintenance_task' ||
+      item.isDueSoon ||
       item.serviceType ||
       (item.category && ['engine_oil', 'brakes', 'chain_drive', 'fluids', 'tires_wheels'].includes(item.category.id || item.category))
     ) {
@@ -865,7 +956,7 @@ export const groupRecommendationsByTriSections = (
         ...item,
         section: 'coming_up_soon',
         sectionLabel: 'Coming Up Soon',
-        sectionSubtitle: 'Approaching scheduled checks based on vehicle guidance',
+        sectionSubtitle: 'Scheduled maintenance & diagnostic follow-ups',
       });
     }
     // 3. Helpful Tips:
@@ -875,7 +966,7 @@ export const groupRecommendationsByTriSections = (
         ...item,
         section: 'helpful_tips',
         sectionLabel: 'Helpful Tips',
-        sectionSubtitle: 'Simple preventive habits for everyday vehicle care',
+        sectionSubtitle: 'Useful habits and everyday care',
       });
     }
   });
@@ -909,6 +1000,8 @@ export const normalizeKey = str => {
 
 /**
  * Merge diagnostic maintenance items with preventive maintenance routines.
+ * Preserves dual sources (e.g., both routine schedule & diagnostic follow-up)
+ * and distinguishes confirmed timing from unknown history.
  */
 export const mergeRecommendations = (diagnosticRecs, baselineRecs, vehicleProfile = {}) => {
   const mergedMap = new Map();
@@ -917,16 +1010,43 @@ export const mergeRecommendations = (diagnosticRecs, baselineRecs, vehicleProfil
     if (!isTaskCompatibleWithVehicle(item.title, vehicleProfile)) return;
     const key = normalizeKey(item.title);
     if (!mergedMap.has(key)) {
-      mergedMap.set(key, item);
+      mergedMap.set(key, {
+        ...item,
+        source: 'diagnostic',
+        source_label: 'Diagnostic Follow-up',
+        sources: ['diagnostic'],
+      });
     }
   });
 
   (baselineRecs || []).forEach(item => {
     if (!isTaskCompatibleWithVehicle(item.title, vehicleProfile)) return;
     const key = normalizeKey(item.title);
-    if (!mergedMap.has(key)) {
+    if (mergedMap.has(key)) {
+      // DUAL SOURCE MATCH: Preserve both diagnostic trigger and scheduled service
+      const existing = mergedMap.get(key);
+      mergedMap.set(key, {
+        ...item,
+        ...existing,
+        isDualSource: true,
+        sources: ['diagnostic', 'scheduled'],
+        source: 'diagnostic',
+        source_label: 'Diagnostic Follow-up',
+        why_suggested: `Your previous diagnosis mentioned "${existing.relatedProblem || existing.problem || 'recent issue'}". Also recommended by routine service schedule.`,
+        timing: existing.timing || existing.when_due || item.timing || 'Confirm using owner manual and current component condition',
+      });
+    } else {
       const sortOrder = item.priority === 'Important' ? 4 : 5;
-      mergedMap.set(key, { ...item, type: 'preventive', sortOrder });
+      mergedMap.set(key, {
+        ...item,
+        type: 'preventive',
+        source: 'scheduled',
+        source_label: 'Scheduled Maintenance',
+        sources: ['scheduled'],
+        why_suggested: item.why_suggested || 'Based on standard vehicle maintenance intervals.',
+        timing: item.timing || 'Last service date unknown — check your records',
+        sortOrder,
+      });
     }
   });
 
@@ -1048,8 +1168,8 @@ export const getCategoryFromDiagnosticItem = (item, vehicleProfile) => {
   const rawCategory = `${item.category || ''}`.toLowerCase().trim();
   const text = `${item.title || ''} ${item.category || ''} ${item.description || ''} ${item.relatedProblem || ''}`.toLowerCase();
 
-  const isBicycle = normalizedType.includes('bike') || normalizedType.includes('bicycle') || normalizedType.includes('cycle');
   const isMotorcycle = normalizedType.includes('moto') || normalizedType.includes('motor') || normalizedType.includes('scooter');
+  const isBicycle = !isMotorcycle && (normalizedType.includes('bike') || normalizedType.includes('bicycle') || normalizedType.includes('cycle'));
 
   // ELECTRICAL / BATTERY (Invalid for bicycles)
   if (!isBicycle && (rawCategory.includes('battery') || rawCategory.includes('electrical') || text.includes('battery') || text.includes('voltage') || text.includes('alternator') || text.includes('fuse') || text.includes('starter') || text.includes('starting') || text.includes('difficult to start') || text.includes('click'))) {
@@ -1137,8 +1257,11 @@ export const getVehicleMaintenanceCategories = (vehicleProfile, recommendations 
 
   let baseCategoryIds = [];
 
+  const isMotorcycle = normalizedType.includes('moto') || normalizedType.includes('motor') || normalizedType.includes('scooter');
+  const isBicycle = !isMotorcycle && (normalizedType.includes('bike') || normalizedType.includes('bicycle') || normalizedType.includes('cycle'));
+
   // BICYCLE / BIKE
-  if (normalizedType.includes('bike') || normalizedType.includes('bicycle') || normalizedType.includes('cycle')) {
+  if (isBicycle) {
     baseCategoryIds = [
       'brakes',
       'tires_wheels',
@@ -1147,7 +1270,7 @@ export const getVehicleMaintenanceCategories = (vehicleProfile, recommendations 
       'bearings',
       'general',
     ];
-  } else if (normalizedType.includes('moto') || normalizedType.includes('motor') || normalizedType.includes('scooter')) {
+  } else if (isMotorcycle) {
     // MOTORCYCLE / SCOOTER
     baseCategoryIds = [
       'engine_oil',

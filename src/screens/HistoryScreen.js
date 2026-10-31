@@ -353,7 +353,8 @@ const HistoryScreen = ({ navigation, route }) => {
   const [history, setHistory] = useState([]);
   const [vehicles, setVehicles] = useState([]);
 
-  const [filter, setFilter] = useState('all');
+  const initialFilterParam = route?.params?.initialFilter || route?.params?.filter || route?.params?.type || 'all';
+  const [filter, setFilter] = useState(initialFilterParam);
   const [sort, setSort] = useState('recent');
   const [search, setSearch] = useState('');
 
@@ -368,13 +369,13 @@ const HistoryScreen = ({ navigation, route }) => {
   const [selectedItem, setSelectedItem] = useState(null);
 
   const targetDiagnosticId = route?.params?.selectedDiagnosticId || route?.params?.diagnosticId;
-  const initialFilter = route?.params?.filter;
 
   useEffect(() => {
-    if (initialFilter) {
-      setFilter(initialFilter);
+    const nextFilter = route?.params?.initialFilter || route?.params?.filter;
+    if (nextFilter) {
+      setFilter(nextFilter);
     }
-  }, [initialFilter]);
+  }, [route?.params?.initialFilter, route?.params?.filter]);
 
   useEffect(() => {
     if (!targetDiagnosticId) return;
@@ -775,36 +776,19 @@ const HistoryScreen = ({ navigation, route }) => {
         key={item.id}
         activeOpacity={0.8}
         style={[
-          styles.filterButton,
-          {
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
-          },
-          active && {
-            backgroundColor: theme.accent,
-            borderColor: theme.accent,
-          },
+          styles.filterPill,
+          active
+            ? styles.filterPillActive
+            : styles.filterPillInactive,
         ]}
         onPress={() => setFilter(item.id)}
       >
-        <Icon
-          name={item.icon}
-          size={15}
-          color={
-            active
-              ? '#FFFFFF'
-              : theme.textSecondary
-          }
-        />
-
         <Text
           style={[
-            styles.filterText,
-            {
-              color: active
-                ? '#FFFFFF'
-                : theme.textSecondary,
-            },
+            styles.filterPillText,
+            active
+              ? styles.filterPillTextActive
+              : styles.filterPillTextInactive,
           ]}
         >
           {item.label}
@@ -817,232 +801,84 @@ const HistoryScreen = ({ navigation, route }) => {
     item,
     index,
   ) => {
-    const config = getTypeConfig(
-      item.type,
-    );
-
-    const urgency =
-      getUrgencyConfig(item.urgency);
-
+    const config = getTypeConfig(item.type);
+    const urgency = getUrgencyConfig(item.urgency);
     const vehicleName =
       item.vehicleName ||
       (activeVehicle
-        ? getVehicleDisplayName(
-            activeVehicle,
-            'Your Vehicle',
-          )
+        ? getVehicleDisplayName(activeVehicle, 'Your Vehicle')
         : 'Your Vehicle');
 
     return (
       <TouchableOpacity
-        key={
-          item.id ||
-          `hist-item-${index}`
-        }
+        key={item.id || `hist-item-${index}`}
         activeOpacity={0.88}
-        style={[
-          styles.historyCard,
-          {
-            backgroundColor:
-              theme.surface,
-            borderColor:
-              theme.border,
-          },
-        ]}
-        onPress={() =>
-          setSelectedItem(item)
-        }
+        style={styles.historyCard}
+        onPress={() => setSelectedItem(item)}
       >
-        <View style={styles.historyTop}>
+        {/* Top Row: Icon + Title + Category Tag */}
+        <View style={styles.cardTopRow}>
           <View
             style={[
-              styles.historyIcon,
-              {
-                backgroundColor:
-                  config.background,
-              },
+              styles.historyIconBox,
+              { backgroundColor: config.background || 'rgba(245, 80, 28, 0.12)' },
             ]}
           >
             <Icon
               name={config.icon}
-              size={22}
-              color={config.color}
+              size={20}
+              color={config.color || '#F5501C'}
             />
           </View>
 
-          <View
-            style={styles.historyContent}
-          >
-            <View
-              style={
-                styles.historyTitleRow
-              }
-            >
-              <Text
-                style={[
-                  styles.historyTitle,
-                  {
-                    color:
-                      theme.text,
-                  },
-                ]}
-                numberOfLines={1}
-              >
+          <View style={styles.cardHeaderContent}>
+            <View style={styles.cardTitleTagRow}>
+              <Text style={styles.cardTitleText} numberOfLines={1}>
                 {item.title}
               </Text>
-
-              <Icon
-                name="chevron-right"
-                size={20}
-                color={
-                  theme.textSecondary
-                }
-              />
-            </View>
-
-            <Text
-              style={[
-                styles.historyType,
-                {
-                  color:
-                    config.color,
-                },
-              ]}
-            >
-              {config.label}
-            </Text>
-
-            <Text
-              style={[
-                styles.historySummary,
-                {
-                  color:
-                    theme.textSecondary,
-                },
-              ]}
-              numberOfLines={2}
-            >
-              {item.summary}
-            </Text>
-
-            <View
-              style={
-                styles.historyMeta
-              }
-            >
-              <Text
-                style={[
-                  styles.historyVehicle,
-                  {
-                    color:
-                      theme.textSecondary,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {item.vehicleName ||
-                  vehicleName}
-              </Text>
-
               <View
                 style={[
-                  styles.metaDot,
-                  {
-                    backgroundColor:
-                      theme.border,
-                  },
-                ]}
-              />
-
-              <Text
-                style={[
-                  styles.historyDate,
-                  {
-                    color:
-                      theme.textSecondary,
-                  },
+                  styles.categoryTag,
+                  { backgroundColor: config.background || 'rgba(245, 80, 28, 0.12)' },
                 ]}
               >
-                {formatDate(
-                  item.createdAt,
-                )}
-              </Text>
+                <Text
+                  style={[
+                    styles.categoryTagText,
+                    { color: config.color || '#F5501C' },
+                  ]}
+                >
+                  {config.label}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
 
-        <View
-          style={[
-            styles.cardFooter,
-            {
-              borderTopColor:
-                theme.border,
-            },
-          ]}
-        >
-          {urgency ? (
-            <View
-              style={[
-                styles.urgencyBadge,
-                {
-                  backgroundColor:
-                    urgency.background,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.urgencyDot,
-                  {
-                    backgroundColor:
-                      urgency.color,
-                  },
-                ]}
-              />
+        {/* Summary Description */}
+        <Text style={styles.cardSummaryText} numberOfLines={2}>
+          {item.summary}
+        </Text>
 
-              <Text
-                style={[
-                  styles.urgencyText,
-                  {
-                    color:
-                      urgency.color,
-                  },
-                ]}
-              >
-                {urgency.label}
-              </Text>
-            </View>
-          ) : (
-            <View
-              style={
-                styles.summaryBadge
-              }
-            >
-              <Icon
-                name="auto-awesome"
-                size={12}
-                color={config.color}
-              />
+        {/* Vehicle & Date */}
+        <Text style={styles.cardMetaText}>
+          {item.vehicleName || vehicleName} · {formatDate(item.createdAt)}
+        </Text>
 
-              <Text
-                style={[
-                  styles.summaryBadgeText,
-                  {
-                    color:
-                      config.color,
-                  },
-                ]}
-              >
-                Summary available
-              </Text>
-            </View>
-          )}
+        {/* Divider */}
+        <View style={styles.cardDivider} />
 
-          <Text
-            style={styles.viewText}
-          >
-            View details
-          </Text>
+        {/* Bottom Row */}
+        <View style={styles.cardBottomRow}>
+          <View style={styles.summaryBadgeRow}>
+            <Icon name="auto-awesome" size={13} color="#F5501C" />
+            <Text style={styles.summaryBadgeText}>Summary available</Text>
+          </View>
+
+          <View style={styles.viewDetailsRow}>
+            <Text style={styles.viewDetailsText}>View details</Text>
+            <Icon name="north-east" size={13} color="#8E8E93" />
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -1196,79 +1032,34 @@ const HistoryScreen = ({ navigation, route }) => {
       style={[
         styles.safeArea,
         {
-          backgroundColor:
-            theme.background,
+          backgroundColor: theme.background,
         },
       ]}
       edges={['top']}
     >
       {/* HEADER */}
-
-      <View
-        style={styles.header}
-      >
-        <View
-          style={
-            styles.headerLeft
-          }
-        >
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
           <TouchableOpacity
             style={[
               styles.backButton,
               {
-                backgroundColor:
-                  theme.surface,
-                borderColor:
-                  theme.border,
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
               },
             ]}
             activeOpacity={0.75}
-            onPress={() =>
-              navigation.goBack()
-            }
+            onPress={() => navigation.goBack()}
           >
-            <Icon
-              name="arrow-back"
-              size={22}
-              color={theme.text}
-            />
+            <Icon name="arrow-back" size={20} color={theme.text} />
           </TouchableOpacity>
 
           <View>
-            <Text
-              style={[
-                styles.eyebrow,
-                {
-                  color:
-                    theme.accent,
-                },
-              ]}
-            >
-              VEHICARE
+            <Text style={[styles.eyebrow, { color: theme.textSecondary }]}>
+              YOUR ACTIVITY
             </Text>
-
-            <Text
-              style={[
-                styles.title,
-                {
-                  color:
-                    theme.text,
-                },
-              ]}
-            >
+            <Text style={[styles.title, { color: theme.text }]}>
               History
-            </Text>
-
-            <Text
-              style={[
-                styles.subtitle,
-                {
-                  color:
-                    theme.textSecondary,
-                },
-              ]}
-            >
-              Your recent vehicle activity
             </Text>
           </View>
         </View>
@@ -1282,225 +1073,94 @@ const HistoryScreen = ({ navigation, route }) => {
             },
           ]}
           activeOpacity={0.75}
-          onPress={openSidebar}
+          onPress={() => navigation.openDrawer?.() || navigation.getParent()?.openDrawer?.() || openSidebar?.()}
           accessibilityLabel="Open Sidebar Menu"
         >
-          <Icon name="menu" size={22} color={theme.text} />
+          <Icon name="menu" size={20} color={theme.text} />
         </TouchableOpacity>
       </View>
 
       {/* SEARCH */}
-
       <View
         style={[
           styles.searchContainer,
           {
-            backgroundColor:
-              theme.surface,
-            borderColor:
-              theme.border,
+            backgroundColor: '#16161A',
+            borderColor: '#232328',
           },
         ]}
       >
-        <Icon
-          name="search"
-          size={21}
-          color={
-            theme.textSecondary
-          }
-        />
-
+        <Icon name="search" size={20} color="#8E8E93" />
         <TextInput
-          style={[
-            styles.searchInput,
-            {
-              color:
-                theme.text,
-            },
-          ]}
+          style={[styles.searchInput, { color: theme.text }]}
           placeholder="Search your history..."
-          placeholderTextColor={
-            theme.placeholder
-          }
+          placeholderTextColor="#8E8E93"
           value={search}
-          onChangeText={
-            setSearch
-          }
+          onChangeText={setSearch}
           returnKeyType="search"
         />
-
         {search.length > 0 && (
-          <TouchableOpacity
-            onPress={() =>
-              setSearch('')
-            }
-          >
-            <Icon
-              name="close"
-              size={19}
-              color={
-                theme.textSecondary
-              }
-            />
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Icon name="close" size={18} color="#8E8E93" />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* SORT */}
-
-      <View
-        style={styles.sortRow}
-      >
+      {/* SORT & COUNT ROW */}
+      <View style={styles.sortRow}>
         <TouchableOpacity
           style={[
             styles.sortButton,
             {
-              backgroundColor:
-                theme.surface,
-              borderColor:
-                theme.border,
+              backgroundColor: '#16161A',
+              borderColor: '#232328',
             },
           ]}
           activeOpacity={0.8}
-          onPress={() =>
-            setSortVisible(true)
-          }
+          onPress={() => setSortVisible(true)}
         >
-          <Icon
-            name="sort"
-            size={18}
-            color={
-              theme.accent
-            }
-          />
-
-          <Text
-            style={[
-              styles.sortLabel,
-              {
-                color:
-                  theme.textSecondary,
-              },
-            ]}
-          >
-            Sort:
+          <Text style={[styles.sortValue, { color: theme.text }]}>
+            {SORT_OPTIONS.find(option => option.id === sort)?.label || 'Most Recent'}
           </Text>
-
-          <Text
-            style={[
-              styles.sortValue,
-              {
-                color:
-                  theme.text,
-              },
-            ]}
-          >
-            {
-              SORT_OPTIONS.find(
-                option =>
-                  option.id ===
-                  sort,
-              )?.label
-            }
-          </Text>
-
-          <Icon
-            name="keyboard-arrow-down"
-            size={18}
-            color={
-              theme.textSecondary
-            }
-          />
+          <Icon name="keyboard-arrow-down" size={16} color="#8E8E93" />
         </TouchableOpacity>
 
-        <Text
-          style={[
-            styles.resultCount,
-            {
-              color:
-                theme.textSecondary,
-            },
-          ]}
-        >
-          {filteredHistory.length}{' '}
-          {filteredHistory.length ===
-          1
-            ? 'activity'
-            : 'activities'}
+        <Text style={[styles.resultCount, { color: '#8E8E93' }]}>
+          {filteredHistory.length} {filteredHistory.length === 1 ? 'activity' : 'activities'}
         </Text>
       </View>
 
       {/* FILTER PILLS */}
-
-      <View
-        style={styles.filterContainer}
-      >
+      <View style={styles.filterContainer}>
         <FlatList
           horizontal
           data={FILTERS}
-          keyExtractor={item =>
-            item.id
-          }
-          renderItem={({
-            item,
-          }) =>
-            renderFilter(item)
-          }
-          showsHorizontalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.filterList
-          }
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => renderFilter(item)}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterList}
         />
       </View>
 
-      {/* HISTORY */}
-
+      {/* HISTORY LIST */}
       <FlatList
         data={groupedHistory}
-        keyExtractor={(
-          item,
-          index,
-        ) =>
-          `${item.title}-${index}`
-        }
+        keyExtractor={(item, index) => `${item.title}-${index}`}
         renderItem={renderGroup}
-        ListEmptyComponent={
-          renderEmpty
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
+        ListEmptyComponent={renderEmpty}
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.historyList,
-          groupedHistory.length ===
-            0 &&
-            styles.historyListEmpty,
+          groupedHistory.length === 0 && styles.historyListEmpty,
         ]}
         refreshing={refreshing}
-        onRefresh={
-          handleRefresh
-        }
-        onEndReached={
-          handleLoadMore
-        }
-        onEndReachedThreshold={
-          0.5
-        }
+        onRefresh={handleRefresh}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadingMore ? (
-            <View
-              style={
-                styles.loadingMore
-              }
-            >
-              <ActivityIndicator
-                size="small"
-                color={
-                  theme.accent
-                }
-              />
+            <View style={styles.loadingMore}>
+              <ActivityIndicator size="small" color={theme.accent} />
             </View>
           ) : null
         }
@@ -2026,36 +1686,33 @@ const styles = StyleSheet.create({
   },
 
   /* HEADER */
-
   header: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 18,
+    paddingBottom: 16,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
 
   headerLeft: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-    marginRight: 12,
+    alignItems: 'center',
+    gap: 12,
   },
 
   backButton: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 13,
     borderWidth: 1,
   },
 
   menuButton: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2063,119 +1720,113 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    letterSpacing: 1.8,
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
 
   title: {
-    fontFamily: 'Outfit-ExtraBold',
-    fontSize: 28,
-    letterSpacing: -0.5,
-  },
-
-  subtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-    marginTop: 3,
+    fontFamily: 'Outfit-Bold',
+    fontSize: 22,
+    letterSpacing: -0.4,
   },
 
   /* SEARCH */
-
   searchContainer: {
     marginHorizontal: 20,
     height: 48,
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
+    marginBottom: 14,
   },
 
   searchInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    marginLeft: 9,
+    fontSize: 13,
+    marginLeft: 10,
     paddingVertical: 0,
   },
 
   /* SORT */
-
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginHorizontal: 20,
-    marginTop: 13,
+    marginBottom: 12,
   },
 
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 11,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-
-  sortLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9,
-    marginLeft: 6,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    gap: 4,
   },
 
   sortValue: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    marginLeft: 4,
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 13,
   },
 
   resultCount: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9,
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
   },
 
   /* FILTERS */
-
-  /*
-   * IMPORTANT:
-   * The filter list is wrapped in a fixed-height container.
-   * This prevents the history FlatList from rendering
-   * underneath the filter pills.
-   */
-
   filterContainer: {
-    height: 54,
-    marginTop: 10,
+    height: 44,
+    marginBottom: 12,
     width: '100%',
   },
 
   filterList: {
     paddingHorizontal: 20,
     alignItems: 'center',
-    gap: 7,
-    paddingVertical: 5,
+    gap: 8,
   },
 
-  filterButton: {
-    height: 38,
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 13,
   },
 
-  filterText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
-    marginLeft: 5,
+  filterPillActive: {
+    backgroundColor: '#F5501C',
+    borderColor: '#F5501C',
+  },
+
+  filterPillInactive: {
+    backgroundColor: '#16161A',
+    borderColor: '#232328',
+  },
+
+  filterPillText: {
+    fontSize: 12,
+  },
+
+  filterPillTextActive: {
+    fontFamily: 'Outfit-Bold',
+    color: '#FFFFFF',
+  },
+
+  filterPillTextInactive: {
+    fontFamily: 'Inter-Medium',
+    color: '#8E8E93',
   },
 
   /* HISTORY */
-
   historyList: {
     paddingHorizontal: 20,
     paddingTop: 4,
@@ -2187,134 +1838,120 @@ const styles = StyleSheet.create({
   },
 
   group: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
 
   groupTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 9,
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginBottom: 9,
-  },
-
-  historyCard: {
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
+    color: '#8E8E93',
     marginBottom: 10,
   },
 
-  historyTop: {
-    flexDirection: 'row',
+  historyCard: {
+    backgroundColor: '#16161A',
+    borderColor: '#232328',
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
   },
 
-  historyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  historyIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
 
-  historyContent: {
+  cardHeaderContent: {
     flex: 1,
-    minWidth: 0,
   },
 
-  historyTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  historyTitle: {
-    flex: 1,
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 15,
-  },
-
-  historyType: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    marginTop: 2,
-  },
-
-  historySummary: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 10,
-    lineHeight: 16,
-    marginTop: 7,
-  },
-
-  historyMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-
-  historyVehicle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 8,
-    maxWidth: 130,
-  },
-
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 3,
-    marginHorizontal: 6,
-  },
-
-  historyDate: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 8,
-  },
-
-  cardFooter: {
+  cardTitleTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderTopWidth: 1,
-    marginTop: 13,
-    paddingTop: 11,
   },
 
-  urgencyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+  cardTitleText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 15,
+    color: '#FFFFFF',
+    flex: 1,
+    marginRight: 8,
   },
 
-  urgencyDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 5,
-    marginRight: 5,
+  categoryTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
 
-  urgencyText: {
+  categoryTagText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
+    fontSize: 10,
   },
 
-  summaryBadge: {
+  cardSummaryText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#A0A0A5',
+    marginTop: 8,
+  },
+
+  cardMetaText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    color: '#8E8E93',
+    marginTop: 8,
+  },
+
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#232328',
+    marginTop: 12,
+    marginBottom: 10,
+  },
+
+  cardBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  summaryBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
 
   summaryBadgeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 8,
-    marginLeft: 4,
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    color: '#F5501C',
   },
 
-  viewText: {
-    color: MUTED,
-    fontFamily: 'Inter-Regular',
-    fontSize: 8,
+  viewDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+
+  viewDetailsText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    color: '#8E8E93',
   },
 
   /* EMPTY */

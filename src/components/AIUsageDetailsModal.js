@@ -107,8 +107,8 @@ const AIUsageDetailsModal = ({
             style={[
               styles.modalCard,
               {
-                backgroundColor: isDark ? '#141416' : '#FFFFFF',
-                borderColor: isDark ? '#262629' : '#E2E8F0',
+                backgroundColor: theme?.glassSurfaceElevated || (isDark ? 'rgba(20, 21, 25, 0.94)' : '#18181B'),
+                borderColor: theme?.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.14)' : '#2E2F35'),
               },
             ]}
           >
@@ -116,8 +116,8 @@ const AIUsageDetailsModal = ({
             <View style={styles.headerRow}>
               <View style={styles.badgeGroup}>
                 <View style={[styles.badgePill, { backgroundColor: badgeBg }]}>
-                  <Icon name="bolt" size={14} color={theme.accent || '#F63B05'} />
-                  <Text style={[styles.badgeText, { color: theme.accent || '#F63B05' }]}>
+                  <Icon name="bolt" size={14} color="#F5501C" />
+                  <Text style={[styles.badgeText, { color: '#F5501C' }]}>
                     CONSULTATION QUOTA
                   </Text>
                 </View>
@@ -142,21 +142,21 @@ const AIUsageDetailsModal = ({
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={[
                   styles.closeCircleBtn,
-                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                  { backgroundColor: '#222226' },
                 ]}
                 testID="modal-close-button"
                 accessibilityLabel="Close dialog"
               >
-                <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
+                <Icon name="close" size={16} color="#A1A1AA" />
               </Pressable>
             </View>
 
             {/* TITLE & RESET PERIOD */}
             <View style={styles.titleContainer}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
+              <Text style={[styles.modalTitle, { color: '#FFFFFF' }]}>
                 AI Consultation Quota
               </Text>
-              <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              <Text style={[styles.modalSubtitle, { color: '#8E8E93' }]}>
                 {resetText}
               </Text>
             </View>
@@ -165,7 +165,7 @@ const AIUsageDetailsModal = ({
             <View
               style={[
                 styles.divider,
-                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
               ]}
             />
 
@@ -177,9 +177,9 @@ const AIUsageDetailsModal = ({
                 size={104}
                 strokeWidth={9}
                 isExhausted={exhausted}
-                activeColor={theme.accent || '#F63B05'}
-                trackColor={isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'}
-                textColor={theme.text}
+                activeColor="#F5501C"
+                trackColor="rgba(255, 255, 255, 0.12)"
+                textColor="#FFFFFF"
                 testID="modal-donut-chart"
               />
             </View>
@@ -190,25 +190,25 @@ const AIUsageDetailsModal = ({
                 style={[
                   styles.metricCard,
                   {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                    backgroundColor: '#1C1C1F',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
                   },
                 ]}
               >
-                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Used</Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>{used}</Text>
+                <Text style={[styles.metricLabel, { color: '#8E8E93' }]}>Used</Text>
+                <Text style={[styles.metricValue, { color: '#FFFFFF' }]}>{used}</Text>
               </View>
 
               <View
                 style={[
                   styles.metricCard,
                   {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                    backgroundColor: '#1C1C1F',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
                   },
                 ]}
               >
-                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Remaining</Text>
+                <Text style={[styles.metricLabel, { color: '#8E8E93' }]}>Remaining</Text>
                 <Text
                   style={[
                     styles.metricValue,
@@ -223,13 +223,13 @@ const AIUsageDetailsModal = ({
                 style={[
                   styles.metricCard,
                   {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#28282D' : '#E2E8F0',
+                    backgroundColor: '#1C1C1F',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
                   },
                 ]}
               >
-                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Allowance</Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>{limit}</Text>
+                <Text style={[styles.metricLabel, { color: '#8E8E93' }]}>Allowance</Text>
+                <Text style={[styles.metricValue, { color: '#FFFFFF' }]}>{limit}</Text>
               </View>
             </View>
 
@@ -251,22 +251,18 @@ const AIUsageDetailsModal = ({
               style={[
                 styles.tipCard,
                 {
-                  backgroundColor: isDark
-                    ? (exhausted ? 'rgba(239, 68, 68, 0.1)' : 'rgba(246, 59, 5, 0.08)')
-                    : (exhausted ? '#FEE2E2' : '#FFF4F0'),
-                  borderColor: isDark
-                    ? (exhausted ? 'rgba(239, 68, 68, 0.3)' : 'rgba(246, 59, 5, 0.25)')
-                    : (exhausted ? '#FECACA' : '#FDD8D0'),
+                  backgroundColor: exhausted ? 'rgba(239, 68, 68, 0.12)' : 'rgba(246, 59, 5, 0.10)',
+                  borderColor: exhausted ? 'rgba(239, 68, 68, 0.3)' : 'rgba(246, 59, 5, 0.25)',
                 },
               ]}
             >
               <Feather
                 name={exhausted ? 'alert-triangle' : 'info'}
                 size={16}
-                color={exhausted ? '#EF4444' : (theme.accent || '#F63B05')}
+                color={exhausted ? '#EF4444' : '#F5501C'}
                 style={styles.tipIcon}
               />
-              <Text style={[styles.tipText, { color: theme.text }]}>
+              <Text style={[styles.tipText, { color: '#FFFFFF' }]}>
                 {contextualTip}
               </Text>
             </View>
@@ -276,7 +272,7 @@ const AIUsageDetailsModal = ({
               {isGuest ? (
                 <>
                   <TouchableOpacity
-                    style={[styles.primaryButton, { backgroundColor: theme.accent || '#F63B05' }]}
+                    style={[styles.primaryButton, { backgroundColor: '#F5501C' }]}
                     activeOpacity={0.85}
                     onPress={() => {
                       onClose?.();
@@ -294,8 +290,8 @@ const AIUsageDetailsModal = ({
                     style={[
                       styles.secondaryButton,
                       {
-                        backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                        backgroundColor: '#1C1C1F',
+                        borderColor: '#2B2B30',
                       },
                     ]}
                     activeOpacity={0.85}
@@ -304,7 +300,7 @@ const AIUsageDetailsModal = ({
                       onSignIn?.();
                     }}
                   >
-                    <Text style={[styles.secondaryButtonText, { color: theme.text }]}>
+                    <Text style={[styles.secondaryButtonText, { color: '#FFFFFF' }]}>
                       {t('signIn', 'Sign In to Existing Account')}
                     </Text>
                   </TouchableOpacity>
@@ -312,7 +308,7 @@ const AIUsageDetailsModal = ({
               ) : isFree ? (
                 <>
                   <TouchableOpacity
-                    style={[styles.primaryButton, { backgroundColor: theme.accent || '#F63B05' }]}
+                    style={[styles.primaryButton, { backgroundColor: '#F5501C' }]}
                     activeOpacity={0.85}
                     onPress={() => {
                       onClose?.();
@@ -330,21 +326,21 @@ const AIUsageDetailsModal = ({
                     style={[
                       styles.secondaryButton,
                       {
-                        backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                        borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                        backgroundColor: '#1C1C1F',
+                        borderColor: '#2B2B30',
                       },
                     ]}
                     activeOpacity={0.85}
                     onPress={onClose}
                   >
-                    <Text style={[styles.secondaryButtonText, { color: theme.textSecondary }]}>
+                    <Text style={[styles.secondaryButtonText, { color: '#8E8E93' }]}>
                       {t('close', 'Done')}
                     </Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: theme.accent || '#F63B05' }]}
+                  style={[styles.primaryButton, { backgroundColor: '#F5501C' }]}
                   activeOpacity={0.85}
                   onPress={onClose}
                 >

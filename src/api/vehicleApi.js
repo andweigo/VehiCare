@@ -459,6 +459,19 @@ const vehicleApi = {
           );
         }
 
+        const token = await getStoredToken();
+        const hasBackendToken = Boolean(
+          token && !String(token).startsWith('firebase-'),
+        );
+
+        // If guest or no valid backend API token, avoid unauthorized network rejection
+        if (!hasBackendToken) {
+          console.warn(
+            '[vehicleApi] updateVehicle skipped: guest session or no backend token, persisted locally.',
+          );
+          return vehicleData;
+        }
+
         const config =
           await buildAuthConfig();
 
@@ -474,10 +487,20 @@ const vehicleApi = {
           response?.data
         );
       } catch (error) {
-        console.error(
-          'API Error in updateVehicle:',
-          error,
-        );
+        if (
+          error?.response?.status === 403 ||
+          error?.response?.status === 401
+        ) {
+          console.warn(
+            '[vehicleApi] updateVehicle permission notice (403/401):',
+            error?.response?.data?.message || error?.message,
+          );
+        } else {
+          console.error(
+            'API Error in updateVehicle:',
+            error,
+          );
+        }
 
         throw error;
       }
@@ -876,6 +899,22 @@ const vehicleApi = {
       return response?.data;
     } catch (error) {
       console.warn('API Error in deleteRepairRecord:', error?.message);
+      throw error;
+    }
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | AI ASSISTANT ACTIONS EXECUTION
+  |--------------------------------------------------------------------------
+  */
+  executeAIAction: async (action, parameters = {}) => {
+    try {
+      const config = await buildAuthConfig();
+      const response = await apiClient.post('/ai/actions/execute', { action, parameters }, config);
+      return response?.data;
+    } catch (error) {
+      console.warn('API Error in executeAIAction:', error?.message);
       throw error;
     }
   },

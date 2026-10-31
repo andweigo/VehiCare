@@ -46,7 +46,7 @@ const FIELDS = [
   },
   {
     key: 'model_number',
-    label: 'Model Number',
+    label: 'Vehicle Identification Number (VIN)',
     icon: 'tag',
   },
 ];
@@ -233,8 +233,16 @@ const VehicleCorrectionRequestScreen = ({
           ? 'model'
           : field === 'vehicle_year_id'
           ? 'year'
-          : 'model number'
+          : 'Vehicle Identification Number (VIN)'
         }.`;
+      }
+
+      if (field === 'model_number') {
+        const typeStr = String(vehicle?.vehicle_type?.name || vehicle?.vehicleType?.name || vehicle?.vehicle_type || '').toLowerCase();
+        const isBicycle = typeStr.includes('bicycle') || typeStr === 'bike';
+        if (!isBicycle && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(requestedValue)) {
+          return 'Vehicle Identification Number (VIN) must be 17 alphanumeric characters (excluding I, O, and Q).';
+        }
       }
 
       const currentValue = String(
@@ -252,7 +260,7 @@ const VehicleCorrectionRequestScreen = ({
           ? 'model'
           : field === 'vehicle_year_id'
           ? 'year'
-          : 'model number'
+          : 'Vehicle Identification Number (VIN)'
         } must be different from the current value.`;
       }
     }

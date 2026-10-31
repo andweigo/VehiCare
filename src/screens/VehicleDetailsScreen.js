@@ -81,9 +81,20 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
     initialVehicle: route?.params?.vehicle ?? null,
   });
 
-  const { activeVehicle } = useVehicle();
-  const { isAuthenticated, isGuest, exitGuestMode } = useAuth();
+  const { activeVehicle, vehicles } = useVehicle();
+  const { user, isAuthenticated, isGuest, exitGuestMode } = useAuth();
   const { theme } = useTheme();
+
+  const isPremium = user?.subscription_plan === 'premium';
+  const activeVehiclesCount = Array.isArray(vehicles)
+    ? vehicles.filter(v => !v?.isArchived && !v?.archived_at).length
+    : 0;
+  const isFreePlanAtLimit =
+    isAuthenticated &&
+    !isGuest &&
+    !isPremium &&
+    (route?.params?.mode ?? 'create') !== 'correct' &&
+    activeVehiclesCount >= 1;
 
   const isNavigatingForwardRef = useRef(false);
 
@@ -161,9 +172,9 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
   }, [step, previousStep, isGuest, exitGuestMode, navigation]);
 
   const customVehicleModal = useCustomVehicleModal({
-    brand,
-    model,
-    year,
+    brand: brand || brandSearch,
+    model: model || modelSearch,
+    year: year || yearSearch,
     onSave: setCustomVehicleProfile,
   });
 
@@ -288,6 +299,8 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
     isCustomVehicle,
     validationResult,
     loadingValidation,
+    isPremium,
+    isFreePlanAtLimit,
   };
 
   const handlers = {
@@ -302,6 +315,7 @@ const VehicleDetailsScreen = ({ navigation, route }) => {
     toggleDropdown,
     setModelNumber,
     openCustomVehicleModal: customVehicleModal.openCustomVehicleModal,
+    onUpgradePress: () => navigation.navigate('ManagePlan'),
   };
 
   return (

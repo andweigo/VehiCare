@@ -750,55 +750,97 @@ export const useMaintenanceRecommendationsInternal = () => {
   }, [vehicleProfile, diagnosticRecommendations, allRecommendations, isRecommendationCompleted]);
 
   // Calculate Maintenance Health & Status for Active Vehicle
+  // Decoupled from arbitrary checkbox clicks; reflects verified vehicle condition,
+  // unresolved AI diagnoses, and confirmed repairs.
   const healthStatus = useMemo(() => {
-    if (urgentDiagnosticItems.length > 0) {
+    const activeUnresolvedDiags = (diagnostics || []).filter(d => {
+      const rep = (repairRecords || []).find(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
+      return !rep;
+    });
+
+    const urgentDiags = activeUnresolvedDiags.filter(d => {
+      const sev = String(d.severity || '').toLowerCase();
+      return sev === 'high' || sev === 'critical' || sev === 'urgent';
+    });
+
+    if (urgentDiags.length > 0) {
       return {
         label: 'Needs Immediate Attention',
         code: 'CRITICAL',
         color: '#FF5A5F',
         icon: 'warning',
-        explanation: `${urgentDiagnosticItems.length} critical issue found from recent diagnostic results`,
+        explanation: `${urgentDiags.length} critical issue identified from recent diagnostic results`,
       };
     }
-    if (diagnosticItems.length > 0) {
+    if (activeUnresolvedDiags.length > 0) {
       return {
         label: 'Needs Attention',
         code: 'ATTENTION',
         color: '#F63B05',
         icon: 'report-problem',
-        explanation: `${diagnosticItems.length} item${
-          diagnosticItems.length > 1 ? 's' : ''
-        } need your attention based on recent diagnostics`,
+        explanation: `${activeUnresolvedDiags.length} item${
+          activeUnresolvedDiags.length > 1 ? 's' : ''
+        } need attention based on diagnostic history`,
       };
     }
     if (preventiveItems.length > 0) {
       return {
         label: 'Maintenance Due Soon',
-        code: 'DUE_SOON',
-        color: '#D6A23A',
+        code: 'GOOD',
+        color: '#F5B942',
         icon: 'schedule',
         explanation: `${preventiveItems.length} routine maintenance item${
           preventiveItems.length > 1 ? 's' : ''
-        } due soon`,
+        } approaching service interval`,
       };
     }
-    return DEFAULT_HEALTH_STATUS;
-  }, [urgentDiagnosticItems, diagnosticItems, preventiveItems]);
+    return {
+      label: 'Optimal',
+      code: 'OPTIMAL',
+      color: '#32D583',
+      icon: 'check-circle',
+      explanation: 'All vehicle systems are checked and running normally.',
+    };
+  }, [diagnostics, repairRecords, preventiveItems]);
 
   const calculatedScore = useMemo(() => {
-    if (diagnosticItems.length === 0) {
+    // If backend profile provides an authoritative vehicle health score, use it
+    if (typeof vehicleInitialScore === 'number' && !isNaN(vehicleInitialScore)) {
+      const activeUrgentDiags = (diagnostics || []).filter(d => {
+        const sev = String(d.severity || '').toLowerCase();
+        const isUrgent = sev === 'high' || sev === 'critical' || sev === 'urgent';
+        const isRepaired = (repairRecords || []).some(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
+        return isUrgent && !isRepaired;
+      });
+      if (activeUrgentDiags.length > 0) {
+        return Math.min(vehicleInitialScore, 60);
+      }
+      return vehicleInitialScore;
+    }
+
+    // Calculated health based on diagnostic condition & confirmed repairs (not task checkbox clicks)
+    const activeDiags = (diagnostics || []).filter(d => {
+      const isRepaired = (repairRecords || []).some(r => String(r.diagnostic_id) === String(d.id) && r.status === 'completed');
+      return !isRepaired;
+    });
+
+    if (activeDiags.length === 0) {
       const now = Date.now();
       const overdueTasks = (maintenanceRecords || []).filter(
         r => r.status === 'pending' && r.due_date && new Date(r.due_date).getTime() < now,
       );
-      if (overdueTasks.length === 0) return 100;
-      return Math.max(70, 100 - overdueTasks.length * 10);
+      if (overdueTasks.length === 0) return 94;
+      return Math.max(70, 94 - overdueTasks.length * 6);
     }
-    const penalty =
-      urgentDiagnosticItems.length * 20 +
-      (diagnosticItems.length - urgentDiagnosticItems.length) * 10;
-    return Math.max(25, Math.min(100, 100 - penalty));
-  }, [diagnosticItems, urgentDiagnosticItems, maintenanceRecords]);
+
+    const urgentCount = activeDiags.filter(d => {
+      const sev = String(d.severity || '').toLowerCase();
+      return sev === 'high' || sev === 'critical' || sev === 'urgent';
+    }).length;
+
+    const penalty = urgentCount * 25 + (activeDiags.length - urgentCount) * 12;
+    return Math.max(30, Math.min(95, 100 - penalty));
+  }, [vehicleInitialScore, diagnostics, repairRecords, maintenanceRecords]);
 
   const maintenanceHealth = useMemo(() => {
     // While initial diagnostics are loading for active vehicle, prevent flashing unverified or stale 80%

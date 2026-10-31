@@ -1,17 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  KeyboardAvoidingView,
+  ActivityIndicator,
+  Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchImageLibrary } from 'react-native-image-picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import vehicleApi from '../api/vehicleApi';
+import { useVehicle } from '../context/VehicleContext';
+import { saveGuestVehicle, saveVehiclePhoto } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
-import { getDisplayValue, getVehicleDisplayName } from '../utils/vehicleDisplay';
+import { toPersistablePhoto } from '../utils/profilePhoto';
+import {
+  getDisplayValue,
+  getVehicleDisplayName,
+  normalizeVehicleProfile,
+} from '../utils/vehicleDisplay';
 
 const getVehicleIconName = (vehicleTypeValue, vehicleObj = null) => {
   let typeValue = vehicleTypeValue;
@@ -35,7 +48,6 @@ const getVehicleIconName = (vehicleTypeValue, vehicleObj = null) => {
 
   let text = `${typeValue || ''}`.toLowerCase().trim();
 
-  // If type string is still generic, empty, or unknown, deduce from vehicle brand/model/name
   if (!text || text === 'unknown' || text === 'other') {
     const v = vehicleObj || (typeof vehicleTypeValue === 'object' ? vehicleTypeValue : null);
     if (v) {
@@ -129,18 +141,21 @@ const getVehicleIconName = (vehicleTypeValue, vehicleObj = null) => {
     return 'local-shipping';
   }
 
-  if (
-    text.includes('car') ||
-    text.includes('sedan') ||
-    text.includes('suv') ||
-    text.includes('hatch') ||
-    text.includes('coupe') ||
-    text.includes('mpv')
-  ) {
-    return 'directions-car';
-  }
-
   return 'directions-car';
+};
+
+const resolveVehiclePhoto = vehicle => {
+  if (!vehicle || typeof vehicle !== 'object') return null;
+  const candidates = [
+    vehicle.photo_url,
+    vehicle.image_url,
+    vehicle.photo,
+    vehicle.image,
+    vehicle.custom_photo,
+    vehicle.avatar,
+    vehicle.thumbnail,
+  ];
+  return candidates.find(c => typeof c === 'string' && c.trim().length > 0) || null;
 };
 
 const VehicleProfileModal = ({
@@ -153,22 +168,47 @@ const VehicleProfileModal = ({
   onCorrectVehicle,
   onArchiveVehicle,
   onSetActive,
+  onRestoreVehicle,
 }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
 
-  const vehicleName = getVehicleDisplayName(vehicleProfile, 'Your Vehicle');
+  let vehicleContext = null;
+  try {
+    vehicleContext = useVehicle();
+  } catch (_) {
+    // Graceful fallback outside provider
+  }
+
+  const activeVehicle = vehicleContext?.activeVehicle;
+  const setActiveVehicle = vehicleContext?.setActiveVehicle;
+  const setVehicles = vehicleContext?.setVehicles;
+
+  const [isUploading, setIsUploading] = useState(false);
+
+  const normalized = normalizeVehicleProfile(vehicleProfile);
+  const vehicleName = getVehicleDisplayName(normalized, 'Your Vehicle');
   const vehicleYear = getDisplayValue(
-    vehicleProfile?.vehicle_year ?? vehicleProfile?.vehicleYear ?? vehicleProfile?.custom_year,
-    'Unknown',
+    normalized?.vehicle_year ?? normalized?.vehicleYear ?? normalized?.custom_year,
+    '—',
   );
+  const vehicleBrand = getDisplayValue(
+    normalized?.custom_brand || normalized?.vehicle_brand || normalized?.vehicleBrand,
+    '—',
+  );
+  const vehicleModel = getDisplayValue(
+    normalized?.custom_model || normalized?.vehicle_model || normalized?.vehicleModel,
+    '—',
+  );
+
   const rawVehicleType =
-    vehicleProfile?.vehicle_type ??
-    vehicleProfile?.vehicleType ??
-    vehicleProfile?.vehicle_type_name ??
-    vehicleProfile?.type ??
-    vehicleProfile?.category;
-  const vehicleIcon = getVehicleIconName(rawVehicleType, vehicleProfile);
+    normalized?.vehicle_type ??
+    normalized?.vehicleType ??
+    normalized?.vehicle_type_name ??
+    normalized?.type ??
+    normalized?.category;
+
+  const vehicleIcon = getVehicleIconName(rawVehicleType, normalized);
   const deducedType =
     vehicleIcon === 'motorcycle'
       ? 'Motorcycle'
@@ -178,283 +218,475 @@ const VehicleProfileModal = ({
       ? 'Truck / Van'
       : vehicleIcon === 'directions-bus'
       ? 'Bus'
-      : 'Car / Sedan';
+      : 'Sedan';
+
   const vehicleTypeLabel = getDisplayValue(rawVehicleType, '') || deducedType;
-  const vehicleBrand = getDisplayValue(
-    vehicleProfile?.custom_brand || vehicleProfile?.vehicle_brand || vehicleProfile?.vehicleBrand,
-    'Unknown',
-  );
-  const vehicleModel = getDisplayValue(
-    vehicleProfile?.custom_model || vehicleProfile?.vehicle_model || vehicleProfile?.vehicleModel,
-    'Unknown',
+
+  const isCurrentlyActive = Boolean(
+    (activeVehicle?.id && vehicleProfile?.id && String(activeVehicle.id) === String(vehicleProfile.id)) ||
+    vehicleProfile?.isActive ||
+    vehicleProfile?.is_active,
   );
 
-  const isActive = Boolean(vehicleProfile?.isActive);
-  const isArchived = Boolean(vehicleProfile?.isArchived);
+  const isArchived = Boolean(vehicleProfile?.isArchived || vehicleProfile?.status === 'archived');
+  const photoUri = resolveVehiclePhoto(vehicleProfile);
+
+  const handlePickVehiclePhoto = async () => {
+    if (!vehicleProfile) return;
+
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.7,
+        maxWidth: 800,
+        maxHeight: 600,
+        selectionLimit: 1,
+        includeBase64: true,
+      });
+
+      if (result.didCancel || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const newPhotoUri = toPersistablePhoto(asset);
+      if (!newPhotoUri) {
+        Alert.alert(
+          'Invalid Photo',
+          'Unable to use that photo. Please choose a different image.',
+        );
+        return;
+      }
+
+      setIsUploading(true);
+
+      const updatedVehicle = {
+        ...vehicleProfile,
+        photo_url: newPhotoUri,
+        image_url: newPhotoUri,
+        photo: newPhotoUri,
+        image: newPhotoUri,
+      };
+
+      // 1. Optimistic update in context
+      if (typeof setVehicles === 'function' && vehicleProfile.id) {
+        setVehicles(currentList =>
+          currentList.map(v =>
+            String(v.id) === String(vehicleProfile.id)
+              ? {
+                  ...v,
+                  photo_url: newPhotoUri,
+                  image_url: newPhotoUri,
+                  photo: newPhotoUri,
+                  image: newPhotoUri,
+                }
+              : v,
+          ),
+        );
+      }
+
+      if (typeof setActiveVehicle === 'function') {
+        setActiveVehicle(prev => {
+          if (!vehicleProfile.id || String(prev?.id) === String(vehicleProfile.id)) {
+            return {
+              ...prev,
+              photo_url: newPhotoUri,
+              image_url: newPhotoUri,
+              photo: newPhotoUri,
+              image: newPhotoUri,
+            };
+          }
+          return prev;
+        });
+      }
+
+      // 2. Persist locally in AsyncStorage & dedicated vehicle photo repository
+      try {
+        await saveVehiclePhoto(vehicleProfile.id, newPhotoUri);
+
+        const storedVehicles = await AsyncStorage.getItem('@vehicare_vehicles');
+        if (storedVehicles && vehicleProfile.id) {
+          const list = JSON.parse(storedVehicles);
+          const updated = list.map(v =>
+            String(v.id) === String(vehicleProfile.id)
+              ? {
+                  ...v,
+                  photo_url: newPhotoUri,
+                  image_url: newPhotoUri,
+                  photo: newPhotoUri,
+                  image: newPhotoUri,
+                }
+              : v,
+          );
+          await AsyncStorage.setItem('@vehicare_vehicles', JSON.stringify(updated));
+        }
+
+        if (typeof saveGuestVehicle === 'function' && !vehicleProfile.id) {
+          await saveGuestVehicle(updatedVehicle);
+        }
+      } catch (storageErr) {
+        console.warn('Vehicle photo local cache save note:', storageErr);
+      }
+
+      // 3. Save to backend if vehicle has a valid ID and user is authenticated
+      const isRealBackendId = Boolean(
+        vehicleProfile.id && !isNaN(Number(vehicleProfile.id)),
+      );
+
+      if (isRealBackendId && typeof vehicleApi?.updateVehicle === 'function') {
+        try {
+          const cleanUpdatePayload = {
+            vehicle_type_id:
+              vehicleProfile.vehicle_type_id ||
+              vehicleProfile.vehicle_type?.id ||
+              null,
+            vehicle_brand_id:
+              vehicleProfile.vehicle_brand_id ||
+              vehicleProfile.vehicle_brand?.id ||
+              null,
+            vehicle_model_id:
+              vehicleProfile.vehicle_model_id ||
+              vehicleProfile.vehicle_model?.id ||
+              null,
+            vehicle_year_id:
+              vehicleProfile.vehicle_year_id ||
+              vehicleProfile.vehicle_year?.id ||
+              null,
+            custom_brand: vehicleProfile.custom_brand || null,
+            custom_model: vehicleProfile.custom_model || null,
+            custom_year: vehicleProfile.custom_year || null,
+            model_number: vehicleProfile.model_number || null,
+            photo_url: newPhotoUri,
+            image_url: newPhotoUri,
+            photo: newPhotoUri,
+            image: newPhotoUri,
+          };
+
+          await vehicleApi.updateVehicle(vehicleProfile.id, cleanUpdatePayload);
+        } catch (apiErr) {
+          console.warn(
+            'Vehicle photo backend sync note (saved locally):',
+            apiErr?.message || apiErr,
+          );
+        }
+      }
+    } catch (pickerErr) {
+      console.error('Vehicle photo picker error:', pickerErr);
+      Alert.alert(
+        'Upload Error',
+        'Unable to update vehicle photo right now. Please try again.',
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <Modal
       visible={visible}
-      animationType="fade"
-      statusBarTranslucent
       transparent
+      animationType="slide"
+      statusBarTranslucent
       onRequestClose={onClose}
+      testID="vehicle-profile-modal"
     >
       <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardWrap}
+        <Pressable
+          style={styles.backdropTouchable}
+          onPress={onClose}
+          testID="modal-backdrop-touchable"
+        />
+
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor:
+                theme?.glassSurfaceElevated || (isDark ? '#141417' : '#18181B'),
+              borderColor:
+                theme?.glassBorder ||
+                (isDark ? 'rgba(255, 255, 255, 0.12)' : '#2E2F35'),
+            },
+          ]}
         >
-          <View
-            style={[
-              styles.modalCard,
-              {
-                backgroundColor: isDark ? '#141416' : '#FFFFFF',
-                borderColor: isDark ? '#262629' : '#E2E8F0',
-              },
-            ]}
+          {/* Top Sheet Drag Indicator Pill */}
+          <View style={styles.grabberPill} />
+
+          {/* Sheet Header: Title & Close Button */}
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>Vehicle Profile</Text>
+              <Text style={styles.sheetSubtitle}>
+                Active garage profile & specifications
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={onClose}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.closeBtn}
+              accessibilityLabel="Close sheet"
+              testID="modal-close-button"
+            >
+              <Icon name="close" size={17} color="#A1A1AA" />
+            </Pressable>
+          </View>
+
+          {/* Scrollable Vehicle Profile Content */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollList}
           >
-            {/* Header Row: Badge Pill + Circular X Close Button */}
-            <View style={styles.headerRow}>
+            {/* 1. Full Image Overview (Separate top card) */}
+            {photoUri ? (
               <View
                 style={[
-                  styles.badgePill,
+                  styles.imageOverviewCard,
                   {
-                    backgroundColor: isDark
-                      ? 'rgba(246, 59, 5, 0.15)'
-                      : '#FFF2EE',
+                    borderColor: isCurrentlyActive
+                      ? 'rgba(245, 80, 28, 0.45)'
+                      : 'rgba(255, 255, 255, 0.08)',
                   },
                 ]}
               >
-                <Icon name={vehicleIcon} size={14} color={theme.accent} />
-                <Text style={[styles.badgeText, { color: theme.accent }]}>
-                  {isArchived ? 'ARCHIVED' : isActive ? 'ACTIVE VEHICLE' : 'SAVED PROFILE'}
-                </Text>
+                <Image
+                  source={{ uri: photoUri }}
+                  style={styles.imageOverviewPhoto}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.changePhotoPill}
+                  activeOpacity={0.8}
+                  onPress={handlePickVehiclePhoto}
+                  disabled={isUploading}
+                  accessibilityLabel="Change vehicle photo"
+                >
+                  {isUploading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="camera-alt" size={13} color="#FFFFFF" />
+                      <Text style={styles.changePhotoPillText}>Change Photo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
-
-              <Pressable
-                onPress={onClose}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            ) : (
+              <TouchableOpacity
                 style={[
-                  styles.closeCircleBtn,
-                  { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
+                  styles.overviewUploadCard,
+                  {
+                    borderColor: isCurrentlyActive
+                      ? 'rgba(245, 80, 28, 0.40)'
+                      : 'rgba(255, 255, 255, 0.16)',
+                  },
                 ]}
-                accessibilityLabel="Close dialog"
+                activeOpacity={0.82}
+                onPress={handlePickVehiclePhoto}
+                disabled={isUploading}
               >
-                <Icon name="close" size={16} color={isDark ? '#A1A1AA' : '#64748B'} />
-              </Pressable>
-            </View>
+                {isUploading ? (
+                  <View style={styles.uploadingBox}>
+                    <ActivityIndicator size="small" color="#F5501C" />
+                    <Text style={styles.uploadingText}>
+                      Saving vehicle photo...
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.cameraIconWrap}>
+                      <Icon name="add-a-photo" size={22} color="#F5501C" />
+                    </View>
+                    <Text style={styles.uploadTitle}>
+                      Upload Vehicle Photo
+                    </Text>
+                    <Text style={styles.uploadSubtitle}>
+                      Tap to select an image from your device gallery
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-            {/* Title & Subtitle */}
-            <Text style={[styles.title, { color: theme.text }]}>Your Vehicle Setup</Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-              Review the vehicle specifications used for diagnostics and maintenance.
-            </Text>
-
+            {/* 2. Vehicle Info Card (Directly below image overview) */}
             <View
               style={[
-                styles.divider,
-                { backgroundColor: isDark ? '#222226' : '#F1F5F9' },
-              ]}
-            />
-
-            {/* Vehicle Hero Display */}
-            <View
-              style={[
-                styles.vehicleHeroBox,
+                styles.vehicleInfoCard,
                 {
-                  backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                  borderColor: isDark ? '#2B2B30' : '#E2E8F0',
+                  borderColor: isCurrentlyActive
+                    ? 'rgba(245, 80, 28, 0.40)'
+                    : 'rgba(255, 255, 255, 0.08)',
                 },
               ]}
             >
-              <View
-                style={[
-                  styles.iconWrapper,
-                  {
-                    backgroundColor: isDark
-                      ? 'rgba(246, 59, 5, 0.16)'
-                      : '#FFF2EE',
-                  },
-                ]}
-              >
-                <Icon name={vehicleIcon} size={24} color={theme.accent} />
+              {/* Header: Name/Year on Left, Status Badge on Right */}
+              <View style={styles.cardHeader}>
+                <View style={styles.titleColumn}>
+                  <Text style={styles.vehicleName} numberOfLines={1}>
+                    {vehicleName}
+                  </Text>
+                  <Text style={styles.vehicleYear}>{vehicleYear}</Text>
+                </View>
+
+                {isArchived ? (
+                  <View style={styles.archivedBadge}>
+                    <View style={styles.archivedDot} />
+                    <Text style={styles.archivedBadgeText}>ARCHIVED</Text>
+                  </View>
+                ) : isCurrentlyActive ? (
+                  <View style={styles.activeBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                  </View>
+                ) : (
+                  <View style={styles.savedBadge}>
+                    <Text style={styles.savedBadgeText}>SAVED</Text>
+                  </View>
+                )}
               </View>
-              <View style={styles.vehicleHeroInfo}>
-                <View style={styles.activeTagRow}>
-                  <View
-                    style={[
-                      styles.activeDot,
-                      { backgroundColor: isArchived ? '#F59E0B' : isActive ? '#10B981' : theme.textSecondary },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.activeTagText,
-                      { color: isArchived ? '#F59E0B' : isActive ? '#10B981' : theme.textSecondary },
-                    ]}
-                  >
-                    {isArchived ? 'ARCHIVED VEHICLE' : isActive ? 'CURRENTLY ACTIVE' : 'INACTIVE VEHICLE'}
+
+              {/* 4-Column Spec Strip (TYPE | YEAR | BRAND | MODEL) */}
+              <View style={styles.specStrip}>
+                <View style={styles.specColumn}>
+                  <Text style={styles.specLabel}>TYPE</Text>
+                  <Text style={styles.specValue} numberOfLines={1}>
+                    {vehicleTypeLabel}
                   </Text>
                 </View>
-                <Text style={[styles.vehicleHeroName, { color: theme.text }]} numberOfLines={1}>
-                  {vehicleName}
-                </Text>
+
+                <View style={styles.specDivider} />
+
+                <View style={styles.specColumn}>
+                  <Text style={styles.specLabel}>YEAR</Text>
+                  <Text style={styles.specValue} numberOfLines={1}>
+                    {vehicleYear}
+                  </Text>
+                </View>
+
+                <View style={styles.specDivider} />
+
+                <View style={styles.specColumn}>
+                  <Text style={styles.specLabel}>BRAND</Text>
+                  <Text style={styles.specValue} numberOfLines={1}>
+                    {vehicleBrand}
+                  </Text>
+                </View>
+
+                <View style={styles.specDivider} />
+
+                <View style={styles.specColumn}>
+                  <Text style={styles.specLabel}>MODEL</Text>
+                  <Text style={styles.specValue} numberOfLines={1}>
+                    {vehicleModel}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            {/* Specs 2x2 Grid */}
-            <View style={styles.specsGrid}>
-              <View
-                style={[
-                  styles.specTile,
-                  {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#262629' : '#E2E8F0',
-                  },
-                ]}
-              >
-                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>TYPE</Text>
-                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
-                  {vehicleTypeLabel}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.specTile,
-                  {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#262629' : '#E2E8F0',
-                  },
-                ]}
-              >
-                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>YEAR</Text>
-                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
-                  {vehicleYear}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.specTile,
-                  {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#262629' : '#E2E8F0',
-                  },
-                ]}
-              >
-                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>BRAND</Text>
-                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
-                  {vehicleBrand}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.specTile,
-                  {
-                    backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                    borderColor: isDark ? '#262629' : '#E2E8F0',
-                  },
-                ]}
-              >
-                <Text style={[styles.specLabel, { color: theme.textSecondary }]}>MODEL</Text>
-                <Text style={[styles.specValue, { color: theme.text }]} numberOfLines={1}>
-                  {vehicleModel}
-                </Text>
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            {mode === 'dashboard' ? (
-              <TouchableOpacity
-                style={[styles.primaryActionBtn, { backgroundColor: theme.accent }]}
-                activeOpacity={0.85}
-                onPress={() => {
-                  onClose?.();
-                  if (typeof onManageVehicles === 'function') {
-                    onManageVehicles();
-                  } else if (typeof onCorrectVehicle === 'function') {
-                    onCorrectVehicle();
-                  }
-                }}
-              >
-                <Icon name="directions-car" size={17} color="#FFFFFF" />
-                <Text style={styles.primaryActionBtnText}>Manage My Vehicles</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.actionsContainer}>
-                {isPremium && !isArchived && !isActive && (
-                  <TouchableOpacity
-                    style={[styles.primaryActionBtn, { backgroundColor: theme.accent, marginBottom: 8 }]}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      onClose?.();
-                      onSetActive?.();
-                    }}
-                  >
-                    <Icon name="check-circle" size={17} color="#FFFFFF" />
-                    <Text style={styles.primaryActionBtnText}>Set as Active Vehicle</Text>
-                  </TouchableOpacity>
-                )}
-
-                {!isArchived && (
-                  <View style={styles.multiActionRow}>
+            {/* 3. Garage Action Buttons (Preserving all original actions & content) */}
+            <View style={styles.actionsContainer}>
+              {mode === 'dashboard' ? (
+                <TouchableOpacity
+                  style={styles.primaryActionBtn}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    onClose?.();
+                    if (typeof onManageVehicles === 'function') {
+                      onManageVehicles();
+                    } else if (typeof onCorrectVehicle === 'function') {
+                      onCorrectVehicle();
+                    }
+                  }}
+                >
+                  <Icon name="directions-car" size={17} color="#FFFFFF" />
+                  <Text style={styles.primaryActionBtnText}>
+                    Manage My Vehicles
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  {!isArchived && !isCurrentlyActive && (
                     <TouchableOpacity
-                      style={[
-                        styles.secondaryActionBtn,
-                        {
-                          backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                          borderColor: isDark ? '#2B2B30' : '#E2E8F0',
-                        },
-                      ]}
-                      activeOpacity={0.8}
+                      style={styles.primaryActionBtn}
+                      activeOpacity={0.85}
                       onPress={() => {
                         onClose?.();
-                        onCorrectVehicle?.();
+                        onSetActive?.();
                       }}
                     >
-                      <Icon name="edit" size={16} color={theme.accent} />
-                      <Text style={[styles.secondaryActionBtnText, { color: theme.text }]}>
-                        Correct Info
+                      <Icon name="check-circle" size={17} color="#FFFFFF" />
+                      <Text style={styles.primaryActionBtnText}>
+                        Set as Active Vehicle
                       </Text>
                     </TouchableOpacity>
+                  )}
 
-                    {isPremium && (
+                  {!isArchived && (
+                    <View style={styles.multiActionRow}>
                       <TouchableOpacity
-                        style={[
-                          styles.secondaryActionBtn,
-                          {
-                            backgroundColor: isDark ? '#1C1C1F' : '#F8FAFC',
-                            borderColor: isDark ? '#2B2B30' : '#E2E8F0',
-                          },
-                        ]}
+                        style={styles.secondaryActionBtn}
                         activeOpacity={0.8}
                         onPress={() => {
                           onClose?.();
-                          onArchiveVehicle?.();
+                          onCorrectVehicle?.();
                         }}
                       >
-                        <Icon name="archive" size={16} color={theme.textSecondary} />
-                        <Text style={[styles.secondaryActionBtnText, { color: theme.textSecondary }]}>
-                          Archive
+                        <Icon name="edit" size={16} color="#F5501C" />
+                        <Text style={styles.secondaryActionBtnText}>
+                          Correct Info
                         </Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
-                )}
 
-                {isArchived && (
-                  <Text style={[styles.archivedActionText, { color: theme.textSecondary }]}>
-                    Restore this vehicle to submit a correction request or set active.
-                  </Text>
-                )}
-              </View>
-            )}
-          </View>
-        </KeyboardAvoidingView>
+                      {isPremium && (
+                        <TouchableOpacity
+                          style={styles.secondaryActionBtn}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            onClose?.();
+                            onArchiveVehicle?.();
+                          }}
+                        >
+                          <Icon name="archive" size={16} color="#8E8E93" />
+                          <Text
+                            style={[
+                              styles.secondaryActionBtnText,
+                              { color: '#8E8E93' },
+                            ]}
+                          >
+                            Archive
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+
+                  {isArchived && (
+                    <View style={styles.archivedBox}>
+                      {typeof onRestoreVehicle === 'function' && (
+                        <TouchableOpacity
+                          style={styles.restoreBtn}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            onClose?.();
+                            onRestoreVehicle();
+                          }}
+                        >
+                          <Icon name="unarchive" size={16} color="#FFFFFF" />
+                          <Text style={styles.restoreBtnText}>
+                            Restore Vehicle
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <Text style={styles.archivedActionText}>
+                        Restore this vehicle to submit a correction request or set active.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -463,178 +695,383 @@ const VehicleProfileModal = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  backdropTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sheetContainer: {
+    width: '100%',
+    maxHeight: '88%',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
     paddingHorizontal: 20,
-  },
-  keyboardWrap: {
-    width: '100%',
-    maxWidth: 390,
-    alignItems: 'center',
-  },
-  modalCard: {
-    width: '100%',
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 22,
     shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 12,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 20,
+    elevation: 20,
   },
-  headerRow: {
+  grabberPill: {
+    width: 38,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 16,
   },
-  badgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4.5,
-    borderRadius: 999,
-    gap: 6,
+  sheetTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
-  badgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 10,
-    letterSpacing: 0.8,
+  sheetSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 2,
   },
-  closeCircleBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#232328',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  title: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 18,
-    lineHeight: 23,
-    marginBottom: 3,
-  },
-  subtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11.5,
-    lineHeight: 16,
-    marginBottom: 12,
-  },
-  divider: {
-    height: 1,
-    marginBottom: 14,
+  scrollList: {
+    paddingBottom: 8,
   },
 
-  vehicleHeroBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 13,
-    borderRadius: 16,
+  // 1. Full Image Overview
+  imageOverviewCard: {
+    height: 180,
+    width: '100%',
+    borderRadius: 22,
+    backgroundColor: '#16161A',
     borderWidth: 1,
-    gap: 12,
-    marginBottom: 12,
-  },
-  iconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  vehicleHeroInfo: {
-    flex: 1,
+  imageOverviewPhoto: {
+    width: '100%',
+    height: '100%',
   },
-  activeTagRow: {
+  changePhotoPill: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    backgroundColor: 'rgba(18, 18, 22, 0.88)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  changePhotoPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+
+  // Overview Upload Placeholder
+  overviewUploadCard: {
+    height: 160,
+    width: '100%',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    backgroundColor: '#16161A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cameraIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(245, 80, 28, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  uploadTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: 3,
+  },
+  uploadSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    textAlign: 'center',
+    maxWidth: 240,
+  },
+  uploadingBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  uploadingText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+
+  // 2. Separate Vehicle Info Card
+  vehicleInfoCard: {
+    backgroundColor: '#1C1C20',
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  titleColumn: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  vehicleName: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  vehicleYear: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+
+  // Badges
+  activeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(245, 80, 28, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 80, 28, 0.35)',
+    gap: 5,
   },
   activeDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
+    backgroundColor: '#F5501C',
   },
-  activeTagText: {
+  activeBadgeText: {
     fontFamily: 'Inter-Bold',
-    fontSize: 9,
+    fontSize: 10,
+    color: '#F5501C',
     letterSpacing: 0.6,
   },
-  vehicleHeroName: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 15,
-    lineHeight: 19,
+  archivedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    gap: 5,
+  },
+  archivedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  archivedBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    color: '#F59E0B',
+    letterSpacing: 0.6,
+  },
+  savedBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  savedBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10,
+    color: '#8E8E93',
+    letterSpacing: 0.6,
   },
 
-  specsGrid: {
+  // 4-Column Spec Strip
+  specStrip: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  specTile: {
-    flexBasis: '48.5%',
-    flexGrow: 1,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    borderRadius: 12,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 13,
-    borderWidth: 1,
+    paddingHorizontal: 4,
+    marginTop: 8,
+  },
+  specColumn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  specDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   specLabel: {
     fontFamily: 'Inter-Bold',
-    fontSize: 8.5,
-    letterSpacing: 0.7,
+    fontSize: 9,
+    color: '#8E8E93',
+    letterSpacing: 0.6,
     marginBottom: 2,
+    textTransform: 'uppercase',
   },
   specValue: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 
+  // Actions Container
   actionsContainer: {
-    width: '100%',
+    marginTop: 14,
+    gap: 10,
   },
   primaryActionBtn: {
-    width: '100%',
-    minHeight: 44,
-    borderRadius: 13,
+    backgroundColor: '#F5501C',
+    height: 48,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    shadowColor: '#F5501C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
   primaryActionBtnText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 13.5,
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   multiActionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   secondaryActionBtn: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 13,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 7,
   },
   secondaryActionBtnText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12.5,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  archivedBox: {
+    gap: 10,
+    alignItems: 'center',
+  },
+  restoreBtn: {
+    width: '100%',
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#F59E0B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  restoreBtnText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   archivedActionText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11.5,
+    fontSize: 12,
+    color: '#8E8E93',
     textAlign: 'center',
-    lineHeight: 16,
-    paddingVertical: 6,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
 });
 

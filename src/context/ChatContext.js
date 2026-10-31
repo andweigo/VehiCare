@@ -643,7 +643,7 @@ export const ChatProvider = ({ children }) => {
         sender: 'assistant',
         text,
         message: text,
-        diagnosisData: (data?.type === 'diagnostic' || data?.status === 'needs_clarification'
+        diagnosisData: (data?.type === 'diagnostic' || data?.type === 'action_proposal' || data?.status === 'needs_clarification'
           || (data?.clarification_questions && data.clarification_questions.length > 0)) ? data : null,
         clarificationQuestions: data?.clarification_questions || data?.clarificationQuestions || [],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

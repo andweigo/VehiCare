@@ -25,6 +25,7 @@ class DiagnosticController extends Controller
     protected AIMediaValidationService $mediaValidationService;
     protected AIDiagnosticCacheService $cacheService;
     protected \App\Services\EntitlementService $entitlementService;
+    protected \App\Services\AI\AIAssistantActionService $actionService;
 
     public function __construct(
         AIServiceClient $aiServiceClient,
@@ -32,7 +33,8 @@ class DiagnosticController extends Controller
         AIUsageService $usageService,
         AIMediaValidationService $mediaValidationService,
         AIDiagnosticCacheService $cacheService,
-        \App\Services\EntitlementService $entitlementService
+        \App\Services\EntitlementService $entitlementService,
+        \App\Services\AI\AIAssistantActionService $actionService
     ) {
         $this->aiServiceClient = $aiServiceClient;
         $this->geminiService = $geminiService;
@@ -40,6 +42,7 @@ class DiagnosticController extends Controller
         $this->mediaValidationService = $mediaValidationService;
         $this->cacheService = $cacheService;
         $this->entitlementService = $entitlementService;
+        $this->actionService = $actionService;
     }
 
     protected function toSafeString($value, string $default = ''): string
@@ -692,13 +695,18 @@ class DiagnosticController extends Controller
             || ($reqVehicleName !== '' && strtolower($reqVehicleName) !== 'active vehicle')
         );
 
+        $preferredLanguage = strtolower(trim((string) ($request->input('language') ?: $request->header('X-User-Language', 'en'))));
+        if (!in_array($preferredLanguage, ['en', 'fil', 'taglish'], true)) {
+            $preferredLanguage = str_starts_with($preferredLanguage, 'fil') || $preferredLanguage === 'tl' ? 'fil' : 'en';
+        }
+
         $vehicleInfo = [
             'type' => $this->toSafeString($vehicle?->vehicleType?->name ?? $request->input('vehicle_type'), 'Vehicle'),
             'brand' => $resolvedBrand,
             'model' => $resolvedModel,
             'year' => $resolvedYear,
             'model_number' => $resolvedModelNumber,
-            'preferred_language' => $request->header('X-User-Language', 'en'),
+            'preferred_language' => $preferredLanguage,
             'is_saved_vehicle' => $hasSelectedVehicleContext,
             'target_vehicle_desc' => !$hasSelectedVehicleContext ? ($reqVehicleName ?: $request->input('vehicle_type')) : null,
             'root_symptom' => $rootSymptom,
@@ -838,19 +846,54 @@ class DiagnosticController extends Controller
 
             $intentType = strtolower($analysis['type'] ?? 'conversation');
 
-            // Conversation Intent
+            // Action Proposal Intent (Conversational vehicle management, maintenance, priorities, briefings)
+            if ($intentType === 'action_proposal') {
+                $action = $analysis['action'] ?? null;
+                $params = (array) ($analysis['parameters'] ?? []);
+                $requiresConfirmation = (bool) ($analysis['requires_confirmation'] ?? true);
+
+                $actionResult = null;
+                if (!$requiresConfirmation && $user && $action) {
+                    $actionResult = $this->actionService->execute($user, $action, $params);
+                }
+
+                $responseData = [
+                    'type' => 'action_proposal',
+                    'status' => 'action_proposal',
+                    'action' => $action,
+                    'parameters' => $params,
+                    'requires_confirmation' => $requiresConfirmation,
+                    'confirmation_summary' => $analysis['confirmation_summary'] ?? null,
+                    'response' => $analysis['response'] ?? 'I have prepared this vehicle care action for you.',
+                    'action_result' => $actionResult,
+                    'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
+                    'scope_notice' => $analysis['scope_notice'] ?? null,
+                    'plan_tier' => $entitlements['plan'],
+                    'entitlements' => $entitlements,
+                    'ai_source' => $aiSource,
+                    'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
+                    'media_notice' => $analysis['media_notice'] ?? null,
+                    'remaining_consultations' => $reservation['remaining'],
+                ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
+            }
+
+            // General Conversation Intent
             if ($intentType !== 'diagnostic') {
                 $responseData = [
-                        'type' => 'conversation',
-                        'status' => 'conversation',
-                        'response' => $analysis['response'] ?? 'I am here to assist with your vehicle.',
-                        'plan_tier' => $entitlements['plan'],
-                        'entitlements' => $entitlements,
-                        'ai_source' => $aiSource,
-                        'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
-                        'media_notice' => $analysis['media_notice'] ?? null,
-                        'remaining_consultations' => $reservation['remaining'],
-                    ];
+                    'type' => 'conversation',
+                    'status' => 'conversation',
+                    'response' => $analysis['response'] ?? 'I am here to assist with your vehicle.',
+                    'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
+                    'scope_notice' => $analysis['scope_notice'] ?? null,
+                    'plan_tier' => $entitlements['plan'],
+                    'entitlements' => $entitlements,
+                    'ai_source' => $aiSource,
+                    'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
+                    'media_notice' => $analysis['media_notice'] ?? null,
+                    'remaining_consultations' => $reservation['remaining'],
+                ];
                 $this->usageService->markAsSuccessful($logId, $responseData);
                 return response()->json(['status' => 'success', 'data' => $responseData], 200);
             }
@@ -1011,6 +1054,8 @@ class DiagnosticController extends Controller
                         'severity' => $diagnostic->professional_help_priority,
                     ],
                     'ai_source' => $aiSource,
+                    'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
+                    'scope_notice' => $analysis['scope_notice'] ?? null,
                     'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
                     'media_notice' => $analysis['media_notice'] ?? null,
                     'remaining_consultations' => $reservation['remaining'],

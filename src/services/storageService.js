@@ -547,6 +547,55 @@ export const clearSessionData = async () => {
 
 /*
 |--------------------------------------------------------------------------
+| VEHICLE PHOTOS PERSISTENCE
+|--------------------------------------------------------------------------
+| Saves and retrieves vehicle photos by vehicleId or 'guest'
+| Ensures photos are 100% persistent across app restarts & backend fetches.
+*/
+
+const VEHICLE_PHOTOS_MAP_KEY = '@vehicare_vehicle_photos_map';
+
+export const getVehiclePhotoMap = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(VEHICLE_PHOTOS_MAP_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) || {};
+  } catch (error) {
+    console.warn('Failed to get vehicle photo map:', error);
+    return {};
+  }
+};
+
+export const saveVehiclePhoto = async (vehicleId, photoUri) => {
+  try {
+    if (!vehicleId && !photoUri) return {};
+    const current = await getVehiclePhotoMap();
+    const idKey = vehicleId ? String(vehicleId) : 'guest';
+    if (photoUri) {
+      current[idKey] = photoUri;
+    } else {
+      delete current[idKey];
+    }
+    await AsyncStorage.setItem(VEHICLE_PHOTOS_MAP_KEY, JSON.stringify(current));
+    return current;
+  } catch (error) {
+    console.warn('Failed to save vehicle photo to map:', error);
+    return {};
+  }
+};
+
+export const getVehiclePhoto = async (vehicleId) => {
+  try {
+    const map = await getVehiclePhotoMap();
+    const idKey = vehicleId ? String(vehicleId) : 'guest';
+    return map[idKey] || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
 | DEFAULT EXPORT
 |--------------------------------------------------------------------------
 */
@@ -578,6 +627,10 @@ export default {
   saveGuestMode,
   getGuestMode,
   clearGuestMode,
+
+  getVehiclePhotoMap,
+  saveVehiclePhoto,
+  getVehiclePhoto,
 
   getHistoryStorageKey,
   getRecentActivitiesStorageKey,

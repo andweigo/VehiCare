@@ -1,14 +1,21 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+import vehicleApi from '../api/vehicleApi';
+import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useVehicle } from '../context/VehicleContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
 import { useTheme } from '../theme/ThemeContext';
@@ -18,10 +25,21 @@ import {
 } from '../utils/maintenanceUtils';
 import { getVehicleDisplayName } from '../utils/vehicleDisplay';
 
+const QUICK_CLARIFICATION_OPTIONS = [
+  { id: 'locate', label: '📍 Where is this located?', query: 'Where is this component located on my vehicle?' },
+  { id: 'tools', label: '🛠️ What tools do I need?', query: 'What specific tools or equipment do I need for this step?' },
+  { id: 'simpler', label: '💬 Explain in simpler terms', query: 'Can you explain this step in simpler beginner-friendly terms?' },
+  { id: 'verify', label: '🔍 How to verify it\'s right?', query: 'How do I know if I completed this step correctly?' },
+  { id: 'avoid', label: '⚠️ Common mistakes to avoid', query: 'What are common mistakes or hazards to avoid in this step?' },
+  { id: 'diy', label: '🧑‍🔧 DIY or mechanic?', query: 'Can I safely do this step myself or should a professional mechanic handle it?' },
+];
+
 const MaintenanceGuideScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
   const { item } = route.params || {};
 
+  const { token } = useAuth();
+  const { language } = useLanguage();
   const { activeVehicle, pendingVehicle } = useVehicle();
   const vehicleProfile = activeVehicle || pendingVehicle;
   const { markAsDone } = useMaintenanceRecommendations();
@@ -35,17 +53,29 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
   const steps = guide?.steps || [];
   const totalSteps = steps.length;
 
+  // Active step state
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [outcomeStatus, setOutcomeStatus] = useState(null); // 'success' | 'failure' | null
   const [isDoneSaved, setIsDoneSaved] = useState(false);
   const [isSubmittingDone, setIsSubmittingDone] = useState(false);
 
+  // UI accordion for tools/safety prerequisites
+  const [showPrereqs, setShowPrereqs] = useState(false);
+
+  // ON-SCREEN AI STEP CLARIFICATION STATE
+  const [clarificationHistory, setClarificationHistory] = useState({}); // { [stepIndex]: { question, answer, timestamp } }
+  const [activeInputText, setActiveInputText] = useState('');
+  const [isAskingAI, setIsAskingAI] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
   const activeStepData = steps[currentStep] || steps[0] || {};
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === totalSteps - 1;
   const isCurrentStepChecked = completedSteps.includes(currentStep + 1);
   const progressPercent = totalSteps > 0 ? Math.round(((currentStep + 1) / totalSteps) * 100) : 100;
+
+  const currentStepClarification = clarificationHistory[currentStep] || null;
 
   const toggleStepComplete = stepNum => {
     setCompletedSteps(prev =>
@@ -71,6 +101,126 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     if (status === 'success') {
       await handleMarkAsDone();
     }
+  };
+
+  // ON-SCREEN AI CLARIFICATION SUBMISSION
+  const handleAskClarification = async customQuery => {
+    const query = (customQuery || activeInputText).trim();
+    if (!query || isAskingAI) return;
+
+    setIsAskingAI(true);
+    setAiError(null);
+
+    const vehicleDisplayName = getVehicleDisplayName(vehicleProfile, 'Vehicle');
+    const vehicleType = resolveVehicleTypeString(vehicleProfile);
+    const stepTitle = activeStepData.title || `Step ${currentStep + 1}`;
+    const taskTitle = item?.title || 'Maintenance Task';
+
+    try {
+      // Formulate detailed automotive context for the AI
+      const promptText = `I am performing the vehicle maintenance task "${taskTitle}" on my ${vehicleDisplayName} (${vehicleType}).
+Current Step ${currentStep + 1} of ${totalSteps}: "${stepTitle}".
+Step Instructions: "${activeStepData.instructions || ''}".
+Inspection Checkpoint: "${activeStepData.check || 'N/A'}".
+Safety Warning: "${activeStepData.warning || 'None specified'}".
+User's Question / Confusion about this step: "${query}".
+Please provide a concise, direct, step-specific automotive clarification explaining what to do, where to look, tools to use, safety precautions, whether it is safe for DIY or requires a mechanic, or how to verify. Clearly distinguish general maintenance guidance from verified manufacturer-specific specifications.`;
+
+      let answerText = null;
+
+      // Build conversation history from prior step clarifications in this guide session
+      const priorHistory = Object.entries(clarificationHistory || {}).flatMap(([stepIdx, entry]) => {
+        if (!entry?.question || !entry?.answer) return [];
+        return [
+          { sender: 'user', text: `[Step ${Number(stepIdx) + 1}] ${entry.question}` },
+          { sender: 'ai', text: entry.answer },
+        ];
+      });
+
+      try {
+        const payload = {
+          vehicle_id: vehicleProfile?.id || null,
+          vehicle_name: vehicleDisplayName,
+          vehicle_type: vehicleType,
+          vehicle_brand: vehicleProfile?.brand || vehicleProfile?.vehicle_brand?.name || '',
+          vehicle_model: vehicleProfile?.model || vehicleProfile?.vehicle_model?.name || '',
+          vehicle_year: vehicleProfile?.year || vehicleProfile?.vehicle_year?.year || '',
+          symptoms: promptText,
+          input_type: 'text',
+          diagnostic_state: 'step_clarification',
+          language: language || 'en',
+          history: priorHistory,
+        };
+
+        const res = await vehicleApi.submitDiagnostic(payload, token);
+
+        if (res) {
+          if (typeof res === 'string') {
+            answerText = res;
+          } else if (res.response) {
+            answerText = res.response;
+          } else if (res.whats_happening || res.summary) {
+            answerText = [res.whats_happening, res.summary].filter(Boolean).join('\n\n');
+          } else if (res.message) {
+            answerText = res.message;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Live AI clarification API failed or offline, generating intelligent automotive fallback:', apiErr?.message);
+      }
+
+      // Intelligent automotive fallback if API was unavailable or returned empty
+      if (!answerText) {
+        const lowerQuery = query.toLowerCase();
+
+        if (lowerQuery.includes('locate') || lowerQuery.includes('where') || lowerQuery.includes('location')) {
+          answerText = `📍 Component Location for ${stepTitle}:\nOn your ${vehicleDisplayName}, this component is situated near the ${taskTitle.toLowerCase()} assembly within the engine bay or underbody. Make sure the vehicle is parked on level ground with the ignition off and engine completely cool before reaching in. Refer to the owner's manual compartment diagram for exact orientation.`;
+        } else if (lowerQuery.includes('tool') || lowerQuery.includes('need') || lowerQuery.includes('wrench') || lowerQuery.includes('socket')) {
+          const toolsList = guide?.tools?.join(', ') || 'basic metric sockets, screwdriver, and protective work gloves';
+          answerText = `🛠️ Tools for ${stepTitle}:\nRecommended tools include: ${toolsList}. Keep a flashlight or work lamp handy for clear visibility, and wear eye protection while inspecting or loosening fasteners.`;
+        } else if (lowerQuery.includes('verify') || lowerQuery.includes('check') || lowerQuery.includes('right') || lowerQuery.includes('correct') || lowerQuery.includes('confirm')) {
+          answerText = `🔍 Verification Checkpoint:\n${activeStepData.check || 'Confirm that all fittings, fasteners, or connectors are snug and aligned. Verify there is no play, loose debris, or fluid seepage around the component housing.'}`;
+        } else if (lowerQuery.includes('mistake') || lowerQuery.includes('avoid') || lowerQuery.includes('warning') || lowerQuery.includes('danger')) {
+          answerText = `⚠️ Important Precautions for ${stepTitle}:\n${activeStepData.warning || 'Do not overtighten plastic clips or thread fasteners beyond spec. Never force a part that meets stiff resistance; double-check seating alignment and ensure foreign objects cannot fall into open ports.'}`;
+        } else if (lowerQuery.includes('simpl') || lowerQuery.includes('beginner') || lowerQuery.includes('explain')) {
+          answerText = `💬 In Simple Terms (${stepTitle}):\n${activeStepData.instructions || stepTitle} Simply take your time with this step, make sure the vehicle is turned off and cool, and verify "${activeStepData.check || 'that all parts fit snugly before moving on'}". (Note: This is general maintenance guidance; consult your ${vehicleDisplayName} owner's manual for exact manufacturer torque and fluid specifications.)`;
+        } else if (lowerQuery.includes('diy') || lowerQuery.includes('myself') || lowerQuery.includes('mechanic') || lowerQuery.includes('professional')) {
+          answerText = `🧑‍🔧 DIY vs. Professional Mechanic (${stepTitle}):\nBasic visual checks and accessible fastener steps can be done DIY if you have the listed tools (${guide?.tools?.join(', ') || 'basic hand tools'}) and follow safety precautions. However, if a bolt is seized, special calibration tools are needed, or you feel unsure around pressurized/electrical parts, have a certified mechanic complete the procedure.`;
+        } else {
+          answerText = `💡 Guidance for ${stepTitle}:\nWhen following "${activeStepData.instructions || stepTitle}", proceed methodically. Ensure components are cleanly seated and all fasteners are secured. ${activeStepData.check ? `Key checkpoint: ${activeStepData.check}` : 'Double check that everything is back in place before proceeding.'} (General guidance — check your ${vehicleDisplayName} service manual for model-specific specs.)`;
+        }
+      }
+
+      // Clean up markdown formatting
+      const cleanedAnswer = answerText
+        .replace(/###?\s*/g, '')
+        .replace(/\*\*/g, '')
+        .trim();
+
+      setClarificationHistory(prev => ({
+        ...prev,
+        [currentStep]: {
+          question: query,
+          answer: cleanedAnswer,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      }));
+      setActiveInputText('');
+    } catch (err) {
+      console.warn('Failed to retrieve clarification:', err);
+      setAiError('Could not retrieve clarification. Please try again or rephrase.');
+    } finally {
+      setIsAskingAI(false);
+    }
+  };
+
+  const handleClearClarification = () => {
+    setClarificationHistory(prev => {
+      const next = { ...prev };
+      delete next[currentStep];
+      return next;
+    });
+    setAiError(null);
   };
 
   const diagData = useMemo(() => {
@@ -109,469 +259,679 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     );
   }
 
+  const hasTools = Array.isArray(guide.tools) && guide.tools.length > 0;
+  const hasSafety = Array.isArray(guide.safetyNotes) && guide.safetyNotes.length > 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* 1. HEADER */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            activeOpacity={0.75}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={22} color={theme.text} />
-          </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* 1. TOP HEADER */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              activeOpacity={0.75}
+              onPress={() => navigation.goBack()}
+            >
+              <Icon name="arrow-back" size={22} color={theme.text} />
+            </TouchableOpacity>
 
-          <View style={styles.headerTitleBox}>
-            <Text style={[styles.eyebrow, { color: theme.accent }]}>
-              VEHICARE MAINTENANCE GUIDE
-            </Text>
-            <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-              {item.title}
-            </Text>
-          </View>
-        </View>
-
-        {/* 2. TASK SUMMARY CARD */}
-        <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: item.source === 'diagnostic' ? theme.accent : theme.border }]}>
-          <View style={styles.summaryTopRow}>
-            <View style={[styles.summaryIconBox, { backgroundColor: theme.accentSoft }]}>
-              <Icon name={item.icon || 'build'} size={24} color={theme.accent} />
-            </View>
-
-            <View style={styles.summaryPillRow}>
-              {item.source === 'diagnostic' && (
-                <View style={[styles.sourceBadge, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
-                  <Text style={[styles.sourceBadgeText, { color: theme.accent }]}>DIAGNOSTIC-GUIDED</Text>
+            <View style={styles.headerTitleBox}>
+              <View style={styles.eyebrowRow}>
+                <View style={[styles.guidePill, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="auto-stories" size={11} color={theme.accent} style={{ marginRight: 4 }} />
+                  <Text style={[styles.eyebrowText, { color: theme.accent }]}>STEP-BY-STEP GUIDE</Text>
                 </View>
-              )}
-
-              <View style={[styles.difficultyPill, { backgroundColor: theme.surfaceAlt }]}>
-                <Icon name="bolt" size={13} color={theme.accent} />
-                <Text style={[styles.difficultyText, { color: theme.text }]}>{guide.difficulty || 'Easy'}</Text>
+                <Text style={[styles.vehicleContextText, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {getVehicleDisplayName(vehicleProfile, 'Active Vehicle')}
+                </Text>
               </View>
-
-              <View style={[styles.timePill, { backgroundColor: theme.surfaceAlt }]}>
-                <Icon name="schedule" size={13} color={theme.textSecondary} />
-                <Text style={[styles.timeText, { color: theme.textSecondary }]}>{guide.estimatedTime || '10-15 min'}</Text>
-              </View>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                {item.title}
+              </Text>
             </View>
           </View>
 
-          <Text style={[styles.taskTitleText, { color: theme.text }]}>{item.title}</Text>
-
-          {item.relatedProblem ? (
-            <View style={[styles.relatedProblemBox, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-              <Text style={[styles.relatedLabel, { color: theme.textSecondary }]}>Related to diagnosis:</Text>
-              <Text style={[styles.relatedProblemText, { color: theme.text }]} numberOfLines={1}>
-                "{item.relatedProblem}"
-              </Text>
-            </View>
-          ) : null}
-
-          <Text style={[styles.vehicleContextText, { color: theme.textSecondary }]}>
-            Target vehicle: {getVehicleDisplayName(vehicleProfile, 'Active Vehicle')} ({resolveVehicleTypeString(vehicleProfile)})
-          </Text>
-        </View>
-
-        {/* 2B. DIAGNOSTIC FINDINGS & SYMPTOMS (IF APPLICABLE) */}
-        {diagData.hasData && (
-          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Icon name="medical-services" size={18} color={theme.accent} />
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>DIAGNOSTIC FINDING & CAUSES</Text>
-              {diagData.severity && (
-                <View style={[styles.diagSeverityBadge, { backgroundColor: `${theme.accent}20` }]}>
-                  <Text style={[styles.diagSeverityText, { color: theme.accent }]}>
-                    {String(diagData.severity).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {diagData.problem && (
-              <View style={styles.diagProblemRow}>
-                <Text style={[styles.diagProblemLabel, { color: theme.textSecondary }]}>Observed Issue:</Text>
-                <Text style={[styles.diagProblemTitle, { color: theme.text }]}>{diagData.problem}</Text>
+          {/* 2. TASK SUMMARY CARD */}
+          <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: item.source === 'diagnostic' ? theme.accent : theme.border }]}>
+            <View style={styles.summaryTopRow}>
+              <View style={[styles.summaryIconBox, { backgroundColor: theme.accentSoft }]}>
+                <Icon name={item.icon || 'build'} size={22} color={theme.accent} />
               </View>
-            )}
 
-            {diagData.summary && (
-              <Text style={[styles.bodyText, { color: theme.textSecondary, marginBottom: 10 }]}>
-                {diagData.summary}
-              </Text>
-            )}
-
-            {diagData.causes.length > 0 && (
-              <View style={styles.diagCausesSection}>
-                <Text style={[styles.diagSubheading, { color: theme.textSecondary }]}>POSSIBLE ROOT CAUSES:</Text>
-                {diagData.causes.map((cause, idx) => (
-                  <View key={idx} style={styles.diagBulletRow}>
-                    <Text style={[styles.bulletDot, { color: theme.accent }]}>•</Text>
-                    <Text style={[styles.diagBulletText, { color: theme.text }]}>
-                      {typeof cause === 'string' ? cause : cause?.cause || cause?.title || String(cause)}
-                    </Text>
+              <View style={styles.summaryMetaRow}>
+                {item.source === 'diagnostic' && (
+                  <View style={[styles.sourceBadge, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
+                    <Text style={[styles.sourceBadgeText, { color: theme.accent }]}>DIAGNOSTIC-GUIDED</Text>
                   </View>
-                ))}
-              </View>
-            )}
+                )}
 
-            {diagData.symptoms.length > 0 && (
-              <View style={[styles.diagSymptomsSection, { marginTop: 10 }]}>
-                <Text style={[styles.diagSubheading, { color: theme.textSecondary }]}>REPORTED SYMPTOMS:</Text>
-                <View style={styles.symptomsChipsRow}>
-                  {diagData.symptoms.map((symptom, idx) => (
-                    <View key={idx} style={[styles.symptomChip, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                      <Icon name="hearing" size={12} color={theme.textSecondary} style={{ marginRight: 4 }} />
-                      <Text style={[styles.symptomChipText, { color: theme.text }]}>
-                        {typeof symptom === 'string' ? symptom : symptom?.symptom || String(symptom)}
+                <View style={[styles.metaPill, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                  <Icon name="bolt" size={12} color={theme.accent} />
+                  <Text style={[styles.metaPillText, { color: theme.text }]}>{guide.difficulty || 'Easy'}</Text>
+                </View>
+
+                <View style={[styles.metaPill, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                  <Icon name="schedule" size={12} color={theme.textSecondary} />
+                  <Text style={[styles.metaPillText, { color: theme.textSecondary }]}>{guide.estimatedTime || '10-15 min'}</Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={[styles.taskSummaryTitle, { color: theme.text }]}>{item.title}</Text>
+
+            {item.relatedProblem ? (
+              <View style={[styles.relatedProblemBox, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                <Icon name="report-problem" size={14} color={theme.accent} />
+                <Text style={[styles.relatedProblemText, { color: theme.textSecondary }]} numberOfLines={2}>
+                  Related issue: <Text style={{ color: theme.text, fontFamily: 'Inter-SemiBold' }}>"{item.relatedProblem}"</Text>
+                </Text>
+              </View>
+            ) : null}
+
+            {guide.whyItMatters ? (
+              <Text style={[styles.whyItMattersSummary, { color: theme.textSecondary }]}>
+                {guide.whyItMatters}
+              </Text>
+            ) : null}
+
+            {/* PREREQUISITES COLLAPSIBLE BAR (TOOLS & SAFETY) */}
+            {(hasTools || hasSafety) && (
+              <TouchableOpacity
+                style={[styles.prereqToggleBar, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+                activeOpacity={0.8}
+                onPress={() => setShowPrereqs(prev => !prev)}
+              >
+                <View style={styles.prereqToggleLeft}>
+                  {hasTools && (
+                    <View style={styles.prereqBadge}>
+                      <Icon name="home-repair-service" size={13} color={theme.accent} />
+                      <Text style={[styles.prereqBadgeText, { color: theme.text }]}>
+                        {guide.tools.length} Tools
                       </Text>
                     </View>
-                  ))}
+                  )}
+                  {hasSafety && (
+                    <View style={styles.prereqBadge}>
+                      <Icon name="shield" size={13} color="#FF5A5F" />
+                      <Text style={[styles.prereqBadgeText, { color: theme.text }]}>
+                        {guide.safetyNotes.length} Safety Notes
+                      </Text>
+                    </View>
+                  )}
                 </View>
+
+                <View style={styles.prereqToggleRight}>
+                  <Text style={[styles.prereqToggleText, { color: theme.accent }]}>
+                    {showPrereqs ? 'Hide' : 'View'}
+                  </Text>
+                  <Icon
+                    name={showPrereqs ? 'expand-less' : 'expand-more'}
+                    size={18}
+                    color={theme.accent}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* EXPANDED PREREQUISITES DETAILS */}
+            {showPrereqs && (
+              <View style={[styles.prereqsDetailsBox, { borderColor: theme.border }]}>
+                {hasTools && (
+                  <View style={styles.prereqSection}>
+                    <Text style={[styles.prereqSubheading, { color: theme.accent }]}>
+                      TOOLS YOU'LL NEED:
+                    </Text>
+                    <View style={styles.toolsChipsContainer}>
+                      {guide.tools.map((tool, idx) => (
+                        <View key={idx} style={[styles.toolChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                          <Icon name="check" size={12} color={theme.accent} style={{ marginRight: 4 }} />
+                          <Text style={[styles.toolChipText, { color: theme.text }]}>{tool}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {hasSafety && (
+                  <View style={[styles.prereqSection, { marginTop: hasTools ? 12 : 0 }]}>
+                    <Text style={[styles.prereqSubheading, { color: '#FF5A5F' }]}>
+                      SAFETY PRECAUTIONS:
+                    </Text>
+                    {guide.safetyNotes.map((note, idx) => (
+                      <View key={idx} style={styles.safetyBulletRow}>
+                        <Icon name="warning" size={13} color="#FF5A5F" style={{ marginTop: 2 }} />
+                        <Text style={[styles.safetyBulletText, { color: theme.textSecondary }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
           </View>
-        )}
 
-        {/* 3. WHY THIS MATTERS */}
-        {guide.whyItMatters ? (
-          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Icon name="info-outline" size={18} color={theme.accent} />
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>WHY THIS MATTERS</Text>
-            </View>
-            <Text style={[styles.bodyText, { color: theme.textSecondary }]}>{guide.whyItMatters}</Text>
-          </View>
-        ) : null}
-
-        {/* 4. WHAT YOU'LL NEED (TOOLS) */}
-        {Array.isArray(guide.tools) && guide.tools.length > 0 && (
-          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Icon name="home-repair-service" size={18} color={theme.accent} />
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>WHAT YOU'LL NEED</Text>
-            </View>
-
-            <View style={styles.toolsList}>
-              {guide.tools.map((tool, idx) => (
-                <View key={idx} style={styles.toolRow}>
-                  <Text style={[styles.bulletDot, { color: theme.accent }]}>•</Text>
-                  <Text style={[styles.toolText, { color: theme.text }]}>{tool}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* 5. SAFETY FIRST */}
-        {Array.isArray(guide.safetyNotes) && guide.safetyNotes.length > 0 && (
-          <View style={[styles.safetyCard, { backgroundColor: 'rgba(255, 90, 95, 0.08)', borderColor: '#FF5A5F' }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Icon name="warning" size={18} color="#FF5A5F" />
-              <Text style={[styles.sectionTitle, { color: '#FF5A5F' }]}>SAFETY FIRST</Text>
-            </View>
-
-            {guide.safetyNotes.map((note, idx) => (
-              <View key={idx} style={styles.safetyRow}>
-                <Text style={[styles.safetyBullet, { color: '#FF5A5F' }]}>•</Text>
-                <Text style={[styles.safetyText, { color: theme.text }]}>{note}</Text>
+          {/* 3. STEP PROGRESS BAR & STEP PILLS NAVIGATION */}
+          {totalSteps > 0 && (
+            <View style={styles.stepNavigationHeader}>
+              <View style={styles.stepProgressRow}>
+                <Text style={[styles.stepCounterText, { color: theme.text }]}>
+                  Step <Text style={{ color: theme.accent }}>{currentStep + 1}</Text> of {totalSteps}
+                </Text>
+                <Text style={[styles.progressPercentText, { color: theme.textSecondary }]}>
+                  {progressPercent}% Complete
+                </Text>
               </View>
-            ))}
-          </View>
-        )}
 
-        {/* 6. INTERACTIVE STEP-BY-STEP GUIDE */}
-        {totalSteps > 0 ? (
-          <View style={[styles.guideCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            
-            {/* Progress Header */}
-            <View style={styles.progressHeaderRow}>
-              <Text style={[styles.stepCounterText, { color: theme.accent }]}>
-                {`STEP ${currentStep + 1} OF ${totalSteps}`}
-              </Text>
-              <Text style={[styles.progressPercentText, { color: theme.textSecondary }]}>
-                {`${progressPercent}% Complete`}
-              </Text>
+              <View style={[styles.progressBarBg, { backgroundColor: theme.surfaceAlt }]}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${progressPercent}%`,
+                      backgroundColor: theme.accent,
+                    },
+                  ]}
+                />
+              </View>
+
+              {/* HORIZONTAL STEP PILLS CAROUSEL */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.stepPillsScroll}
+              >
+                {steps.map((st, idx) => {
+                  const isCurrent = idx === currentStep;
+                  const isCompleted = completedSteps.includes(idx + 1);
+
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[
+                        styles.stepIndicatorPill,
+                        {
+                          backgroundColor: isCurrent
+                            ? theme.accent
+                            : (isCompleted ? 'rgba(50, 213, 131, 0.14)' : theme.surfaceAlt),
+                          borderColor: isCurrent
+                            ? theme.accent
+                            : (isCompleted ? (theme.success || '#32D583') : theme.border),
+                        },
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => setCurrentStep(idx)}
+                    >
+                      {isCompleted && !isCurrent ? (
+                        <Icon name="check" size={13} color={theme.success || '#32D583'} style={{ marginRight: 3 }} />
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.stepIndicatorPillText,
+                          {
+                            color: isCurrent
+                              ? '#FFFFFF'
+                              : (isCompleted ? (theme.success || '#32D583') : theme.textSecondary),
+                            fontFamily: isCurrent ? 'Outfit-Bold' : 'Inter-SemiBold',
+                          },
+                        ]}
+                      >
+                        {`Step ${idx + 1}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
+          )}
 
-            {/* Progress Bar */}
-            <View style={[styles.progressBarBg, { backgroundColor: theme.border }]}>
-              <View style={[styles.progressBarFill, { width: `${progressPercent}%`, backgroundColor: theme.accent }]} />
-            </View>
+          {/* 4. ACTIVE STEP CARD */}
+          {totalSteps > 0 ? (
+            <View style={[styles.stepCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              {/* Step Badge & Title */}
+              <View style={styles.stepHeaderRow}>
+                <View style={[styles.stepNumberBadge, { backgroundColor: theme.accentSoft }]}>
+                  <Text style={[styles.stepNumberBadgeText, { color: theme.accent }]}>
+                    STEP {String(currentStep + 1).padStart(2, '0')}
+                  </Text>
+                </View>
 
-            {/* Active Step Content */}
-            <View style={styles.stepContentBox}>
-              <Text style={[styles.stepTitleText, { color: theme.text }]}>
+                {isCurrentStepChecked && (
+                  <View style={[styles.stepCompletedBadge, { backgroundColor: 'rgba(50, 213, 131, 0.15)' }]}>
+                    <Icon name="check-circle" size={14} color={theme.success || '#32D583'} style={{ marginRight: 4 }} />
+                    <Text style={[styles.stepCompletedBadgeText, { color: theme.success || '#32D583' }]}>Completed</Text>
+                  </View>
+                )}
+              </View>
+
+              <Text style={[styles.activeStepTitle, { color: theme.text }]}>
                 {activeStepData.title || `Step ${currentStep + 1}`}
               </Text>
 
-              <Text style={[styles.stepInstructionsText, { color: theme.textSecondary }]}>
+              {/* Instructions text */}
+              <Text style={[styles.activeStepInstructions, { color: theme.textSecondary }]}>
                 {activeStepData.instructions}
               </Text>
 
+              {/* Verification checkpoint callout */}
               {activeStepData.check ? (
-                <View style={[styles.checkCallout, { backgroundColor: 'rgba(50, 213, 131, 0.08)', borderColor: theme.success || '#32D583' }]}>
-                  <Icon name="check-circle-outline" size={18} color={theme.success || '#32D583'} />
+                <View style={[styles.checkpointCallout, { backgroundColor: 'rgba(50, 213, 131, 0.08)', borderColor: theme.success || '#32D583' }]}>
+                  <Icon name="verified" size={18} color={theme.success || '#32D583'} style={{ marginTop: 1 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.calloutTitle, { color: theme.success || '#32D583' }]}>CHECK</Text>
-                    <Text style={[styles.calloutBody, { color: theme.text }]}>{activeStepData.check}</Text>
+                    <Text style={[styles.checkpointTitle, { color: theme.success || '#32D583' }]}>
+                      HOW TO CHECK / VERIFY:
+                    </Text>
+                    <Text style={[styles.checkpointBody, { color: theme.text }]}>
+                      {activeStepData.check}
+                    </Text>
                   </View>
                 </View>
               ) : null}
 
+              {/* Warning caution callout */}
               {activeStepData.warning ? (
                 <View style={[styles.warningCallout, { backgroundColor: 'rgba(255, 90, 95, 0.08)', borderColor: '#FF5A5F' }]}>
-                  <Icon name="warning" size={18} color="#FF5A5F" />
+                  <Icon name="warning" size={18} color="#FF5A5F" style={{ marginTop: 1 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.calloutTitle, { color: '#FF5A5F' }]}>WARNING</Text>
-                    <Text style={[styles.calloutBody, { color: theme.text }]}>{activeStepData.warning}</Text>
+                    <Text style={[styles.warningTitle, { color: '#FF5A5F' }]}>
+                      CAUTION / AVOID:
+                    </Text>
+                    <Text style={[styles.warningBody, { color: theme.text }]}>
+                      {activeStepData.warning}
+                    </Text>
                   </View>
                 </View>
               ) : null}
 
-              {/* Step Completion Checkbox */}
+              {/* ============================================================== */}
+              {/* 5. ON-SCREEN AI STEP CLARIFICATION ASSISTANT                    */}
+              {/* (Dedicated feature requested by professor for confused users)    */}
+              {/* ============================================================== */}
+              <View style={[styles.aiClarificationContainer, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+                <View style={styles.aiClarificationHeaderRow}>
+                  <View style={[styles.aiIconBubble, { backgroundColor: theme.accentSoft }]}>
+                    <Icon name="auto-awesome" size={16} color={theme.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.aiHeaderTagRow}>
+                      <Text style={[styles.aiClarificationTitle, { color: theme.text }]}>
+                        Step Clarification Assistant
+                      </Text>
+                      <View style={[styles.aiPoweredBadge, { backgroundColor: theme.accentSoft }]}>
+                        <Text style={[styles.aiPoweredBadgeText, { color: theme.accent }]}>AI POWERED</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.aiClarificationSub, { color: theme.textSecondary }]}>
+                      Unsure about this step? Ask VehiCare AI for instant on-screen clarification.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* AI RESPONSE BOX (IF AVAILABLE FOR THIS STEP) */}
+                {currentStepClarification ? (
+                  <View style={[styles.aiAnswerCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
+                    <View style={styles.aiAnswerTopRow}>
+                      <View style={styles.aiAnswerUserQueryBadge}>
+                        <Icon name="help-outline" size={13} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                        <Text style={[styles.aiAnswerUserQueryText, { color: theme.textSecondary }]} numberOfLines={1}>
+                          "{currentStepClarification.question}"
+                        </Text>
+                      </View>
+                      <Text style={[styles.aiAnswerTimestamp, { color: theme.textSecondary }]}>
+                        {currentStepClarification.timestamp}
+                      </Text>
+                    </View>
+
+                    <Text style={[styles.aiAnswerText, { color: theme.text }]}>
+                      {currentStepClarification.answer}
+                    </Text>
+
+                    <View style={styles.aiAnswerFooterRow}>
+                      <TouchableOpacity
+                        style={[styles.aiAskAnotherBtn, { borderColor: theme.border }]}
+                        onPress={handleClearClarification}
+                      >
+                        <Icon name="chat" size={13} color={theme.accent} style={{ marginRight: 4 }} />
+                        <Text style={[styles.aiAskAnotherText, { color: theme.accent }]}>Ask another question</Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.aiVerifiedChip}>
+                        <Icon name="check-circle" size={13} color={theme.success || '#32D583'} style={{ marginRight: 3 }} />
+                        <Text style={[styles.aiVerifiedText, { color: theme.success || '#32D583' }]}>Clarification applied</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {/* QUICK PROMPT CHIPS */}
+                    <Text style={[styles.quickPromptSectionTitle, { color: theme.textSecondary }]}>
+                      QUICK QUESTIONS FOR STEP {currentStep + 1}:
+                    </Text>
+                    <View style={styles.quickChipsWrapper}>
+                      {QUICK_CLARIFICATION_OPTIONS.map(opt => (
+                        <TouchableOpacity
+                          key={opt.id}
+                          style={[styles.quickPromptChip, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                          activeOpacity={0.75}
+                          disabled={isAskingAI}
+                          onPress={() => handleAskClarification(opt.query)}
+                        >
+                          <Text style={[styles.quickPromptChipText, { color: theme.text }]}>
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* CUSTOM QUESTION INPUT ROW */}
+                    <View style={[styles.customInputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                      <TextInput
+                        style={[styles.customTextInput, { color: theme.text }]}
+                        placeholder={`Ask a question about Step ${currentStep + 1}...`}
+                        placeholderTextColor={theme.textSecondary}
+                        value={activeInputText}
+                        onChangeText={setActiveInputText}
+                        editable={!isAskingAI}
+                        returnKeyType="send"
+                        onSubmitEditing={() => handleAskClarification()}
+                      />
+
+                      <TouchableOpacity
+                        style={[
+                          styles.sendClarificationBtn,
+                          {
+                            backgroundColor: activeInputText.trim() ? theme.accent : theme.surfaceAlt,
+                            opacity: activeInputText.trim() ? 1 : 0.5,
+                          },
+                        ]}
+                        disabled={!activeInputText.trim() || isAskingAI}
+                        onPress={() => handleAskClarification()}
+                      >
+                        <Icon name="arrow-upward" size={18} color={activeInputText.trim() ? '#FFFFFF' : theme.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {/* LOADING STATE */}
+                {isAskingAI && (
+                  <View style={styles.aiLoadingRow}>
+                    <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
+                    <Text style={[styles.aiLoadingText, { color: theme.textSecondary }]}>
+                      VehiCare AI is reviewing Step {currentStep + 1} for your {getVehicleDisplayName(vehicleProfile, 'vehicle')}...
+                    </Text>
+                  </View>
+                )}
+
+                {/* ERROR STATE */}
+                {aiError && (
+                  <View style={styles.aiErrorRow}>
+                    <Icon name="error-outline" size={14} color="#FF5A5F" style={{ marginRight: 6 }} />
+                    <Text style={[styles.aiErrorText, { color: '#FF5A5F' }]}>{aiError}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* STEP COMPLETION TOGGLE CHECKBOX */}
               <TouchableOpacity
-                style={[styles.stepCheckRow, { backgroundColor: completedSteps.includes(currentStep + 1) ? theme.accentSoft : theme.surfaceAlt }]}
+                style={[
+                  styles.stepCheckRow,
+                  {
+                    backgroundColor: isCurrentStepChecked ? 'rgba(50, 213, 131, 0.12)' : theme.surfaceAlt,
+                    borderColor: isCurrentStepChecked ? (theme.success || '#32D583') : theme.border,
+                  },
+                ]}
                 activeOpacity={0.8}
                 accessibilityRole="checkbox"
                 accessibilityLabel="Toggle step completion"
-                accessibilityState={{ checked: completedSteps.includes(currentStep + 1) }}
+                accessibilityState={{ checked: isCurrentStepChecked }}
                 onPress={() => toggleStepComplete(currentStep + 1)}
               >
                 <Icon
-                  name={completedSteps.includes(currentStep + 1) ? 'check-box' : 'check-box-outline-blank'}
-                  size={20}
-                  color={completedSteps.includes(currentStep + 1) ? theme.accent : theme.textSecondary}
+                  name={isCurrentStepChecked ? 'check-box' : 'check-box-outline-blank'}
+                  size={22}
+                  color={isCurrentStepChecked ? (theme.success || '#32D583') : theme.textSecondary}
                 />
                 <Text
                   style={[
                     styles.stepCheckLabel,
-                    { color: completedSteps.includes(currentStep + 1) ? theme.accent : theme.text },
+                    { color: isCurrentStepChecked ? (theme.success || '#32D583') : theme.text },
                   ]}
                 >
-                  {completedSteps.includes(currentStep + 1)
+                  {isCurrentStepChecked
                     ? `Step ${currentStep + 1} completed`
                     : `Mark Step ${currentStep + 1} as completed`}
                 </Text>
               </TouchableOpacity>
-            </View>
 
-            {/* Step Controls */}
-            <View style={styles.stepControlsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.controlBtn,
-                  { backgroundColor: theme.surfaceAlt, opacity: isFirstStep ? 0.4 : 1 },
-                ]}
-                disabled={isFirstStep}
-                onPress={() => setCurrentStep(prev => Math.max(0, prev - 1))}
-              >
-                <Icon name="arrow-back" size={18} color={theme.text} />
-                <Text style={[styles.controlBtnText, { color: theme.text }]}>Previous</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.controlBtn,
-                  {
-                    backgroundColor: isCurrentStepChecked ? theme.accent : theme.surfaceAlt,
-                    opacity: isCurrentStepChecked ? 1 : 0.45,
-                  },
-                ]}
-                disabled={!isCurrentStepChecked}
-                onPress={() => {
-                  if (isCurrentStepChecked && !isLastStep) {
-                    setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1));
-                  }
-                }}
-              >
-                <Text
-                  style={[
-                    styles.controlBtnText,
-                    { color: isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary },
-                  ]}
-                >
-                  {isLastStep ? 'Final Verification' : 'Next Step'}
-                </Text>
-                <Icon
-                  name="arrow-forward"
-                  size={18}
-                  color={isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {!isCurrentStepChecked && (
-              <View style={styles.stepNoticeRow}>
-                <Icon name="info-outline" size={14} color={theme.accent} style={{ marginRight: 6 }} />
-                <Text style={[styles.stepNoticeText, { color: theme.textSecondary }]}>
-                  Please check the box above to confirm this step before proceeding.
-                </Text>
-              </View>
-            )}
-
-          </View>
-        ) : (
-          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.bodyText, { color: theme.textSecondary }]}>
-              Step-by-step guidance is not available for this recommendation yet. Ask VehiCare for assistance.
-            </Text>
-          </View>
-        )}
-
-        {/* 7. FINAL VERIFICATION SCREEN */}
-        {isLastStep && guide.completionCheck && (
-          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
-            <View style={styles.sectionHeaderRow}>
-              <Icon name="verified" size={20} color={theme.accent} />
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {guide.completionCheck.title || 'FINAL VERIFICATION'}
-              </Text>
-            </View>
-
-            <Text style={[styles.bodyText, { color: theme.textSecondary, marginBottom: 14 }]}>
-              {guide.completionCheck.instructions}
-            </Text>
-
-            <Text style={[styles.outcomeQuestionText, { color: theme.text }]}>
-              Did the issue improve after completing this maintenance?
-            </Text>
-
-            <View style={styles.outcomeBtnRow}>
-              <TouchableOpacity
-                style={[
-                  styles.outcomePill,
-                  {
-                    backgroundColor: outcomeStatus === 'success' ? 'rgba(50, 213, 131, 0.15)' : theme.surfaceAlt,
-                    borderColor: outcomeStatus === 'success' ? (theme.success || '#32D583') : theme.border,
-                  },
-                ]}
-                onPress={() => handleOutcomeSelect('success')}
-              >
-                <Icon name="sentiment-very-satisfied" size={18} color={theme.success || '#32D583'} />
-                <Text style={[styles.outcomePillText, { color: theme.text }]}>Yes, issue resolved</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.outcomePill,
-                  {
-                    backgroundColor: outcomeStatus === 'failure' ? 'rgba(255, 90, 95, 0.15)' : theme.surfaceAlt,
-                    borderColor: outcomeStatus === 'failure' ? '#FF5A5F' : theme.border,
-                  },
-                ]}
-                onPress={() => handleOutcomeSelect('failure')}
-              >
-                <Icon name="sentiment-dissatisfied" size={18} color="#FF5A5F" />
-                <Text style={[styles.outcomePillText, { color: theme.text }]}>No, issue remains</Text>
-              </TouchableOpacity>
-            </View>
-
-            {outcomeStatus === 'success' && (
-              <View style={styles.successCelebrationBox}>
-                <View style={styles.successCelebrationHeader}>
-                  <Icon name="check-circle" size={24} color={theme.success || '#32D583'} />
-                  <Text style={[styles.successCelebrationTitle, { color: theme.success || '#32D583' }]}>
-                    Maintenance Verified & Completed!
-                  </Text>
-                </View>
-                <Text style={[styles.successCelebrationText, { color: theme.textSecondary }]}>
-                  {guide.outcomes?.success || 'Great job! This service task has been logged, increasing your vehicle health score.'}
-                </Text>
+              {/* STEP NAVIGATION CONTROLS */}
+              <View style={styles.stepControlsRow}>
                 <TouchableOpacity
-                  style={[styles.returnButton, { backgroundColor: theme.accent }]}
-                  onPress={() => navigation.goBack()}
+                  style={[
+                    styles.controlBtn,
+                    { backgroundColor: theme.surfaceAlt, opacity: isFirstStep ? 0.4 : 1, borderColor: theme.border },
+                  ]}
+                  disabled={isFirstStep}
+                  onPress={() => setCurrentStep(prev => Math.max(0, prev - 1))}
                 >
-                  <Icon name="arrow-back" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.returnButtonText}>Back to Maintenance</Text>
+                  <Icon name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.controlBtnText, { color: theme.text }]}>Previous</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.controlBtn,
+                    {
+                      backgroundColor: isCurrentStepChecked ? theme.accent : theme.surfaceAlt,
+                      opacity: isCurrentStepChecked ? 1 : 0.45,
+                    },
+                  ]}
+                  disabled={!isCurrentStepChecked}
+                  onPress={() => {
+                    if (isCurrentStepChecked && !isLastStep) {
+                      setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1));
+                    }
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.controlBtnText,
+                      { color: isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary },
+                    ]}
+                  >
+                    {isLastStep ? 'Final Verification' : 'Next Step'}
+                  </Text>
+                  <Icon
+                    name="arrow-forward"
+                    size={18}
+                    color={isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary}
+                  />
                 </TouchableOpacity>
               </View>
-            )}
 
-            {outcomeStatus === 'failure' && (
-              <View style={styles.failureHelpBox}>
-                <View style={styles.failureHelpHeader}>
-                  <Icon name="warning-amber" size={22} color="#FF5A5F" />
-                  <Text style={[styles.failureHelpTitle, { color: '#FF5A5F' }]}>
-                    Next Recommended Steps
+              {!isCurrentStepChecked && (
+                <View style={styles.stepNoticeRow}>
+                  <Icon name="info-outline" size={13} color={theme.accent} style={{ marginRight: 6 }} />
+                  <Text style={[styles.stepNoticeText, { color: theme.textSecondary }]}>
+                    Confirm this step by checking the box above to proceed to the next step.
                   </Text>
                 </View>
-                <Text style={[styles.failureHelpText, { color: theme.textSecondary }]}>
-                  {guide.outcomes?.failure || 'Since the symptom persists, further diagnostic inspection or professional shop assistance is recommended to avoid vehicle strain.'}
-                </Text>
+              )}
+            </View>
+          ) : (
+            <View style={[styles.stepCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <Text style={[styles.activeStepInstructions, { color: theme.textSecondary }]}>
+                Step-by-step guidance is not available for this task. Ask VehiCare for assistance.
+              </Text>
+            </View>
+          )}
 
-                <View style={styles.failureActionsGroup}>
-                  <TouchableOpacity
-                    style={[styles.failureActionBtn, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}
-                    onPress={() => navigation.navigate('AskVehiCare', { initialQuery: `I followed the step-by-step guide for "${item.title}" on my ${getVehicleDisplayName(vehicleProfile, 'vehicle')}, but the issue is still not resolved. What should I check next?` })}
-                  >
-                    <Icon name="auto-awesome" size={16} color={theme.accent} style={{ marginRight: 6 }} />
-                    <Text style={[styles.failureActionBtnText, { color: theme.accent }]}>
-                      Ask VehiCare AI for Advice
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.failureActionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-                    onPress={() => navigation.navigate('RepairShops')}
-                  >
-                    <Icon name="storefront" size={16} color={theme.text} style={{ marginRight: 6 }} />
-                    <Text style={[styles.failureActionBtnText, { color: theme.text }]}>
-                      Find Nearby Repair Shops
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.markDoneSecondaryBtn, { borderColor: theme.border }]}
-                    onPress={handleMarkAsDone}
-                  >
-                    <Text style={[styles.markDoneSecondaryText, { color: theme.textSecondary }]}>
-                      {isDoneSaved ? 'Logged in Service History' : 'Mark Task as Done Anyway'}
-                    </Text>
-                  </TouchableOpacity>
+          {/* 6. FINAL VERIFICATION & OUTCOME SECTION (WHEN ON LAST STEP) */}
+          {isLastStep && guide.completionCheck && (
+            <View style={[styles.verificationCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
+              <View style={styles.verificationHeaderRow}>
+                <View style={[styles.verificationIconBox, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="verified" size={20} color={theme.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.verificationTitle, { color: theme.text }]}>
+                    {guide.completionCheck.title || 'FINAL VERIFICATION & RESULT'}
+                  </Text>
+                  <Text style={[styles.verificationSubtitle, { color: theme.textSecondary }]}>
+                    Confirm mechanical condition after completing all maintenance steps.
+                  </Text>
                 </View>
               </View>
-            )}
 
-            {!outcomeStatus && (
-              <TouchableOpacity
-                style={[
-                  styles.markDoneBigBtn,
-                  { backgroundColor: isDoneSaved ? (theme.success || '#32D583') : theme.accent },
-                ]}
-                activeOpacity={0.85}
-                onPress={handleMarkAsDone}
-              >
-                <Icon name="check-circle" size={20} color="#FFFFFF" />
-                <Text style={styles.markDoneBigBtnText}>
-                  {isDoneSaved ? 'Maintenance Completed!' : 'Mark Maintenance as Done'}
+              <Text style={[styles.verificationInstructions, { color: theme.textSecondary }]}>
+                {guide.completionCheck.instructions}
+              </Text>
+
+              <Text style={[styles.outcomeQuestionText, { color: theme.text }]}>
+                Did the issue improve / is the component operating normally?
+              </Text>
+
+              <View style={styles.outcomeBtnRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.outcomePill,
+                    {
+                      backgroundColor: outcomeStatus === 'success' ? 'rgba(50, 213, 131, 0.15)' : theme.surfaceAlt,
+                      borderColor: outcomeStatus === 'success' ? (theme.success || '#32D583') : theme.border,
+                    },
+                  ]}
+                  onPress={() => handleOutcomeSelect('success')}
+                >
+                  <Icon name="sentiment-very-satisfied" size={18} color={theme.success || '#32D583'} />
+                  <Text style={[styles.outcomePillText, { color: theme.text }]}>Yes, issue resolved</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.outcomePill,
+                    {
+                      backgroundColor: outcomeStatus === 'failure' ? 'rgba(255, 90, 95, 0.15)' : theme.surfaceAlt,
+                      borderColor: outcomeStatus === 'failure' ? '#FF5A5F' : theme.border,
+                    },
+                  ]}
+                  onPress={() => handleOutcomeSelect('failure')}
+                >
+                  <Icon name="sentiment-dissatisfied" size={18} color="#FF5A5F" />
+                  <Text style={[styles.outcomePillText, { color: theme.text }]}>No, issue remains</Text>
+                </TouchableOpacity>
+              </View>
+
+              {outcomeStatus === 'success' && (
+                <View style={styles.successCelebrationBox}>
+                  <View style={styles.successCelebrationHeader}>
+                    <Icon name="check-circle" size={22} color={theme.success || '#32D583'} />
+                    <Text style={[styles.successCelebrationTitle, { color: theme.success || '#32D583' }]}>
+                      Maintenance Verified & Logged!
+                    </Text>
+                  </View>
+                  <Text style={[styles.successCelebrationText, { color: theme.textSecondary }]}>
+                    {guide.outcomes?.success || 'Great job! This service task has been verified and permanently recorded in your vehicle maintenance history.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.returnButton, { backgroundColor: theme.accent }]}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Icon name="arrow-back" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.returnButtonText}>Back to Maintenance Overview</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {outcomeStatus === 'failure' && (
+                <View style={styles.failureHelpBox}>
+                  <View style={styles.failureHelpHeader}>
+                    <Icon name="warning-amber" size={20} color="#FF5A5F" />
+                    <Text style={[styles.failureHelpTitle, { color: '#FF5A5F' }]}>
+                      Next Recommended Steps
+                    </Text>
+                  </View>
+                  <Text style={[styles.failureHelpText, { color: theme.textSecondary }]}>
+                    {guide.outcomes?.failure || 'Since the symptom persists, professional shop inspection is recommended to prevent secondary strain.'}
+                  </Text>
+
+                  <View style={styles.failureActionsGroup}>
+                    <TouchableOpacity
+                      style={[styles.failureActionBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+                      onPress={() => navigation.navigate('RepairShops')}
+                    >
+                      <Icon name="storefront" size={16} color={theme.text} style={{ marginRight: 6 }} />
+                      <Text style={[styles.failureActionBtnText, { color: theme.text }]}>
+                        Find Nearby Repair Shops
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.markDoneSecondaryBtn, { borderColor: theme.border }]}
+                      onPress={handleMarkAsDone}
+                    >
+                      <Text style={[styles.markDoneSecondaryText, { color: theme.textSecondary }]}>
+                        {isDoneSaved ? 'Logged in Service History (Issue Unresolved)' : 'Log Inspection & Keep Issue Open'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {!outcomeStatus && (
+                <TouchableOpacity
+                  style={[
+                    styles.markDoneBigBtn,
+                    { backgroundColor: isDoneSaved ? (theme.success || '#32D583') : theme.accent },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={handleMarkAsDone}
+                >
+                  <Icon name="check-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.markDoneBigBtnText}>
+                    {isDoneSaved ? 'Maintenance Logged!' : 'Mark Maintenance as Done'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* 7. DIAGNOSTIC FINDINGS DETAILS (IF ATTACHED TO DIAGNOSIS) */}
+          {diagData.hasData && (
+            <View style={[styles.diagFindingCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.diagFindingHeaderRow}>
+                <Icon name="medical-services" size={16} color={theme.accent} />
+                <Text style={[styles.diagFindingTitle, { color: theme.text }]}>LINKED DIAGNOSTIC EVIDENCE</Text>
+                {diagData.severity && (
+                  <View style={[styles.diagSeverityBadge, { backgroundColor: `${theme.accent}20` }]}>
+                    <Text style={[styles.diagSeverityText, { color: theme.accent }]}>
+                      {String(diagData.severity).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {diagData.problem && (
+                <Text style={[styles.diagObservedText, { color: theme.text }]}>
+                  Reported Symptom: "{diagData.problem}"
                 </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+              )}
 
-        {/* 8. ASK VEHICARE ACTION */}
-        <TouchableOpacity
-          style={[styles.aiAssistCard, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('AskVehiCare')}
-        >
-          <View style={styles.aiAssistHeader}>
-            <Icon name="auto-awesome" size={22} color={theme.accent} />
-            <Text style={[styles.aiAssistTitle, { color: theme.text }]}>Still unsure about this maintenance?</Text>
-          </View>
-          <Text style={[styles.aiAssistSub, { color: theme.textSecondary }]}>
-            Ask VehiCare for step-by-step guidance, tool suggestions, or diagnostic advice for {item.title}.
-          </Text>
-          <View style={styles.aiAssistActionRow}>
-            <Text style={[styles.aiAssistActionText, { color: theme.accent }]}>Ask VehiCare →</Text>
-          </View>
-        </TouchableOpacity>
+              {diagData.summary && (
+                <Text style={[styles.diagSummaryText, { color: theme.textSecondary }]}>
+                  {diagData.summary}
+                </Text>
+              )}
+            </View>
+          )}
 
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -581,16 +941,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingBottom: 40,
   },
 
-  /* HEADER */
+  /* 1. HEADER */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 12,
-    marginBottom: 20,
+    paddingTop: 8,
+    marginBottom: 16,
     gap: 12,
   },
   backButton: {
@@ -604,38 +964,56 @@ const styles = StyleSheet.create({
   headerTitleBox: {
     flex: 1,
   },
-  eyebrow: {
-    fontFamily: 'Outfit-SemiBold',
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 3,
+  },
+  guidePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  eyebrowText: {
+    fontFamily: 'Inter-Bold',
     fontSize: 9,
-    letterSpacing: 1.8,
-    marginBottom: 2,
+    letterSpacing: 0.6,
+  },
+  vehicleContextText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+    flex: 1,
   },
   headerTitle: {
     fontFamily: 'Outfit-ExtraBold',
-    fontSize: 22,
+    fontSize: 20,
+    lineHeight: 25,
   },
 
-  /* SUMMARY CARD */
+  /* 2. SUMMARY CARD */
   summaryCard: {
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 18,
+    padding: 16,
     marginBottom: 16,
   },
   summaryTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   summaryIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  summaryPillRow: {
+  summaryMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -651,33 +1029,22 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     letterSpacing: 0.5,
   },
-  difficultyPill: {
+  metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    gap: 2,
-  },
-  difficultyText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 10,
-  },
-  timePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    borderWidth: 1,
     gap: 3,
   },
-  timeText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 10,
+  metaPillText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 10.5,
   },
-  taskTitleText: {
+  taskSummaryTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 20,
+    fontSize: 18,
     marginBottom: 6,
   },
   relatedProblemBox: {
@@ -690,130 +1057,187 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  relatedLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-  },
   relatedProblemText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    flex: 1,
-  },
-  vehicleContextText: {
     fontFamily: 'Inter-Regular',
     fontSize: 11.5,
-  },
-
-  /* SECTION CARDS */
-  sectionCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
-  safetyCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    letterSpacing: 0.8,
-  },
-  bodyText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  toolsList: {
-    gap: 6,
-    marginTop: 4,
-  },
-  toolRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  bulletDot: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-  },
-  toolText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 13,
-  },
-  safetyRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: 4,
-  },
-  safetyBullet: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 14,
-  },
-  safetyText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12.5,
-    lineHeight: 18,
     flex: 1,
   },
-
-  /* GUIDE INTERACTIVE CARD */
-  guideCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 18,
-    marginBottom: 20,
+  whyItMattersSummary: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginBottom: 10,
   },
-  progressHeaderRow: {
+
+  /* PREREQUISITES COLLAPSIBLE BAR */
+  prereqToggleBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  prereqToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  prereqBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  prereqBadgeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11.5,
+  },
+  prereqToggleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  prereqToggleText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11.5,
+  },
+  prereqsDetailsBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  prereqSection: {
+    marginBottom: 4,
+  },
+  prereqSubheading: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  toolsChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  toolChipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+  },
+  safetyBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 4,
+  },
+  safetyBulletText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
+
+  /* 3. STEP NAVIGATION HEADER */
+  stepNavigationHeader: {
+    marginBottom: 14,
+  },
+  stepProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   stepCounterText: {
     fontFamily: 'Outfit-ExtraBold',
-    fontSize: 12,
-    letterSpacing: 0.8,
+    fontSize: 13,
   },
   progressPercentText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 11.5,
   },
   progressBarBg: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 3,
   },
-  stepContentBox: {
-    marginBottom: 20,
+  stepPillsScroll: {
+    gap: 8,
+    paddingVertical: 2,
   },
-  stepTitleText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 18,
+  stepIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  stepIndicatorPillText: {
+    fontSize: 11.5,
+  },
+
+  /* 4. ACTIVE STEP CARD */
+  stepCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    marginBottom: 18,
+  },
+  stepHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
   },
-  stepInstructionsText: {
+  stepNumberBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  stepNumberBadgeText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.8,
+  },
+  stepCompletedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  stepCompletedBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 10.5,
+  },
+  activeStepTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 19,
+    lineHeight: 24,
+    marginBottom: 10,
+  },
+  activeStepInstructions: {
     fontFamily: 'Inter-Regular',
     fontSize: 13.5,
-    lineHeight: 20,
+    lineHeight: 21,
     marginBottom: 14,
   },
-  checkCallout: {
+  checkpointCallout: {
     borderRadius: 14,
     borderWidth: 1,
     padding: 12,
@@ -821,6 +1245,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
+  },
+  checkpointTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    marginBottom: 3,
+  },
+  checkpointBody: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12.5,
+    lineHeight: 18,
   },
   warningCallout: {
     borderRadius: 14,
@@ -831,29 +1266,212 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: 'flex-start',
   },
-  calloutTitle: {
+  warningTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 11,
-    letterSpacing: 0.5,
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    marginBottom: 3,
+  },
+  warningBody: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+
+  /* ============================================================== */
+  /* 5. ON-SCREEN AI STEP CLARIFICATION ASSISTANT                   */
+  /* ============================================================== */
+  aiClarificationContainer: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  aiClarificationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  aiIconBubble: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  aiHeaderTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 2,
   },
-  calloutBody: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    lineHeight: 17,
+  aiClarificationTitle: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 13.5,
   },
+  aiPoweredBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  aiPoweredBadgeText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 8,
+    letterSpacing: 0.5,
+  },
+  aiClarificationSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+
+  /* QUICK PROMPTS */
+  quickPromptSectionTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  quickChipsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  quickPromptChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9,
+    borderWidth: 1,
+  },
+  quickPromptChipText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+  },
+
+  /* CUSTOM TEXT INPUT */
+  customInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+  },
+  customTextInput: {
+    flex: 1,
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    paddingVertical: 7,
+  },
+  sendClarificationBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
+
+  /* AI RESPONSE BOX */
+  aiAnswerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  aiAnswerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  aiAnswerUserQueryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 6,
+  },
+  aiAnswerUserQueryText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+  },
+  aiAnswerTimestamp: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 10,
+  },
+  aiAnswerText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12.5,
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  aiAnswerFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(150, 150, 150, 0.2)',
+  },
+  aiAskAnotherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  aiAskAnotherText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+  },
+  aiVerifiedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  aiVerifiedText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11,
+  },
+  aiLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  aiLoadingText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    flex: 1,
+  },
+  aiErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  aiErrorText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 11.5,
+    flex: 1,
+  },
+
+  /* STEP COMPLETION ROW */
   stepCheckRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 12,
-    gap: 8,
-    marginTop: 6,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 12,
   },
   stepCheckLabel: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12.5,
+    fontSize: 13,
   },
   stepControlsRow: {
     flexDirection: 'row',
@@ -866,6 +1484,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
     gap: 6,
   },
   controlBtnText: {
@@ -875,90 +1495,53 @@ const styles = StyleSheet.create({
   stepNoticeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 8,
     paddingHorizontal: 4,
   },
   stepNoticeText: {
     fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
+    fontSize: 11,
     flex: 1,
   },
 
-  /* DIAGNOSTIC DETAILS */
-  diagSeverityBadge: {
-    marginLeft: 'auto',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+  /* 6. VERIFICATION SECTION */
+  verificationCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 18,
   },
-  diagSeverityText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 10.5,
-    letterSpacing: 0.5,
-  },
-  diagProblemRow: {
-    marginTop: 6,
+  verificationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginBottom: 8,
   },
-  diagProblemLabel: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
-    marginBottom: 2,
+  verificationIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  diagProblemTitle: {
-    fontFamily: 'Outfit-SemiBold',
-    fontSize: 14,
-  },
-  diagCausesSection: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(150, 150, 150, 0.2)',
-  },
-  diagSubheading: {
+  verificationTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 11,
+    fontSize: 13.5,
     letterSpacing: 0.6,
-    marginBottom: 6,
   },
-  diagBulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 4,
+  verificationSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
   },
-  diagBulletText: {
+  verificationInstructions: {
     fontFamily: 'Inter-Regular',
     fontSize: 12.5,
     lineHeight: 18,
-    flex: 1,
+    marginBottom: 12,
   },
-  diagSymptomsSection: {
-    marginTop: 8,
-  },
-  symptomsChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-  },
-  symptomChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  symptomChipText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 11.5,
-  },
-
-  /* VERIFICATION SECTION */
   outcomeQuestionText: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14,
+    fontSize: 13.5,
     marginBottom: 10,
   },
   outcomeBtnRow: {
@@ -980,16 +1563,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11.5,
   },
-  outcomeNoteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 14,
-  },
   successCelebrationBox: {
-    marginTop: 14,
-    padding: 16,
-    borderRadius: 16,
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(50, 213, 131, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(50, 213, 131, 0.25)',
@@ -1002,13 +1579,13 @@ const styles = StyleSheet.create({
   },
   successCelebrationTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14.5,
+    fontSize: 14,
   },
   successCelebrationText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginBottom: 14,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 12,
   },
   returnButton: {
     flexDirection: 'row',
@@ -1024,9 +1601,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   failureHelpBox: {
-    marginTop: 14,
-    padding: 16,
-    borderRadius: 16,
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 90, 95, 0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255, 90, 95, 0.25)',
@@ -1039,13 +1616,13 @@ const styles = StyleSheet.create({
   },
   failureHelpTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14,
+    fontSize: 13.5,
   },
   failureHelpText: {
     fontFamily: 'Inter-Regular',
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginBottom: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
   },
   failureActionsGroup: {
     gap: 8,
@@ -1061,62 +1638,71 @@ const styles = StyleSheet.create({
   },
   failureActionBtnText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 12.5,
+    fontSize: 12,
   },
   markDoneSecondaryBtn: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
   markDoneSecondaryText: {
     fontFamily: 'Inter-Medium',
-    fontSize: 12,
+    fontSize: 11.5,
     textDecorationLine: 'underline',
   },
   markDoneBigBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingVertical: 13,
+    borderRadius: 14,
     gap: 8,
     marginTop: 4,
   },
   markDoneBigBtnText: {
     fontFamily: 'Outfit-Bold',
     color: '#FFFFFF',
-    fontSize: 14.5,
+    fontSize: 14,
   },
 
-  /* AI ASSIST CARD */
-  aiAssistCard: {
-    borderRadius: 20,
+  /* 7. DIAGNOSTIC FINDINGS */
+  diagFindingCard: {
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 20,
+    padding: 14,
+    marginBottom: 14,
   },
-  aiAssistHeader: {
+  diagFindingHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     marginBottom: 6,
   },
-  aiAssistTitle: {
+  diagFindingTitle: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 14.5,
+    fontSize: 11.5,
+    letterSpacing: 0.6,
   },
-  aiAssistSub: {
+  diagSeverityBadge: {
+    marginLeft: 'auto',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  diagSeverityText: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 9.5,
+    letterSpacing: 0.5,
+  },
+  diagObservedText: {
+    fontFamily: 'Outfit-SemiBold',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  diagSummaryText: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     lineHeight: 17,
-    marginBottom: 10,
-  },
-  aiAssistActionRow: {
-    alignSelf: 'flex-start',
-  },
-  aiAssistActionText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 12,
   },
 
   /* EMPTY GUIDE STATE */

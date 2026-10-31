@@ -26,7 +26,26 @@ class VehicleValidationService
         $model = trim((string) ($params['model'] ?? $params['custom_model'] ?? ''));
         $yearRaw = $params['year'] ?? $params['custom_year'] ?? null;
         $year = (is_numeric($yearRaw) && (int)$yearRaw > 1900) ? (int)$yearRaw : null;
-        $modelNumber = isset($params['model_number']) ? trim((string)$params['model_number']) : null;
+        $vinOrModelNumber = $params['vin'] ?? $params['model_number'] ?? null;
+        $modelNumber = $vinOrModelNumber !== null ? strtoupper(trim((string)$vinOrModelNumber)) : null;
+
+        $isBicycle = str_contains(strtolower($vehicleType), 'bicycle') || strtolower($vehicleType) === 'bike';
+        if (!$isBicycle && $modelNumber !== null && $modelNumber !== '' && isset($params['vin']) && !preg_match('/^[A-HJ-NPR-Z0-9]{17}$/i', $modelNumber)) {
+            return [
+                'is_valid' => false,
+                'status' => 'invalid_vin',
+                'confidence' => 1.0,
+                'vehicle_type' => $vehicleType,
+                'brand' => $brand,
+                'model' => $model,
+                'requested_year' => $year,
+                'year_valid' => true,
+                'production_year_start' => null,
+                'production_year_end' => null,
+                'suggested_years' => [],
+                'reason' => 'Vehicle Identification Number (VIN) must be 17 alphanumeric characters (excluding I, O, and Q).',
+            ];
+        }
 
         if ($vehicleType === '' || $brand === '' || $model === '') {
             return [

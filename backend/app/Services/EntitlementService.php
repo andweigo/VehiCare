@@ -38,11 +38,23 @@ class EntitlementService
     {
         $plan = is_string($userOrPlan) ? strtolower(trim($userOrPlan)) : $this->resolvePlan($userOrPlan);
 
+        $vehicleCount = $userOrPlan instanceof User
+            ? ($plan === self::PLAN_PREMIUM ? $userOrPlan->vehicles()->count() : $userOrPlan->activeVehicles()->count())
+            : 0;
+        $vehicleAllowance = $userOrPlan instanceof User
+            ? $userOrPlan->vehicleAllowance()
+            : ($plan === self::PLAN_PREMIUM ? User::VEHICLE_LIMIT_PREMIUM : ($plan === self::PLAN_FREE ? User::VEHICLE_LIMIT_FREE : 0));
+        $canAddVehicle = $plan !== self::PLAN_GUEST && $vehicleCount < $vehicleAllowance;
+
         $base = [
             'plan' => $plan,
             'is_premium' => $plan === self::PLAN_PREMIUM,
             'is_free' => $plan === self::PLAN_FREE,
             'is_guest' => $plan === self::PLAN_GUEST,
+            'vehicle_count' => $vehicleCount,
+            'vehicle_allowance' => $vehicleAllowance,
+            'can_add_vehicle' => $canAddVehicle,
+            'can_add_custom_vehicle' => $plan === self::PLAN_PREMIUM && $canAddVehicle,
         ];
 
         return match ($plan) {

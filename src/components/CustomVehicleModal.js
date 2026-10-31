@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -126,6 +127,10 @@ const CustomVehicleModal = ({
               },
             ]}
           >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             {/* TITLE */}
 
             <Text
@@ -302,6 +307,7 @@ const CustomVehicleModal = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </SafeAreaView>
         </View>
       </View>
@@ -334,6 +340,7 @@ const styles = StyleSheet.create({
     bottom: 0,
 
     width: '100%',
+    maxHeight: '85%',
   },
 
   modalCard: {

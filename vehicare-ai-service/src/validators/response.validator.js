@@ -200,7 +200,11 @@ export const diagnosticOutputSchema = z.object({
 });
 
 export const conversationOutputSchema = z.object({
-  type: z.literal('conversation'),
-  status: z.literal('conversation'),
+  type: z.enum(['conversation', 'action_proposal']),
+  status: z.enum(['conversation', 'action_proposal']),
   response: z.string().min(1).max(3000),
+  action: z.string().max(100).optional().nullable(),
+  parameters: z.record(z.any()).optional().nullable(),
+  requires_confirmation: z.boolean().optional().nullable(),
+  confirmation_summary: z.string().max(1000).optional().nullable(),
 });

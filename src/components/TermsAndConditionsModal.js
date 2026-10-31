@@ -194,7 +194,7 @@ const TermsAndConditionsModal = ({
               <Bullet text="Brand" />
               <Bullet text="Model" />
               <Bullet text="Year" />
-              <Bullet text="Model number" />
+              <Bullet text="Vehicle Identification Number (VIN)" />
               <Bullet text="Custom vehicle information" />
               <Bullet text="Vehicle nickname" />
 

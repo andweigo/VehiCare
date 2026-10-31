@@ -12,7 +12,9 @@ import activityService from '../services/activity.service';
 import {
   clearGuestVehicle,
   getGuestVehicle,
+  getVehiclePhotoMap,
   saveGuestVehicle,
+  saveVehiclePhoto,
 } from '../services/storageService';
 import { transferGuestVehicleToAccount } from '../services/vehicleService';
 import { useAuth } from './AuthContext';
@@ -70,9 +72,30 @@ export const VehicleProvider = ({ children }) => {
         : null;
 
     if (storedGuest) {
-      setPendingVehicleState(storedGuest);
-      setActiveVehicle(storedGuest);
-      return storedGuest;
+      let photoMap = {};
+      try {
+        photoMap = await getVehiclePhotoMap();
+      } catch (_) {}
+
+      const guestPhoto =
+        photoMap['guest'] ||
+        photoMap[String(storedGuest.id)] ||
+        storedGuest.photo_url ||
+        storedGuest.image_url;
+
+      const mergedGuest = guestPhoto
+        ? {
+            ...storedGuest,
+            photo_url: guestPhoto,
+            image_url: guestPhoto,
+            photo: guestPhoto,
+            image: guestPhoto,
+          }
+        : storedGuest;
+
+      setPendingVehicleState(mergedGuest);
+      setActiveVehicle(mergedGuest);
+      return mergedGuest;
     }
 
     return null;
@@ -137,9 +160,35 @@ export const VehicleProvider = ({ children }) => {
 
       const result = await vehicleApi.getMyVehicles();
 
-      const vehicleList = Array.isArray(result)
+      const rawList = Array.isArray(result)
         ? result
         : [];
+
+      let photoMap = {};
+      try {
+        photoMap = await getVehiclePhotoMap();
+      } catch (_) {}
+
+      const vehicleList = rawList.map(v => {
+        const idKey = String(v?.id);
+        const savedPhoto =
+          photoMap[idKey] ||
+          v.photo_url ||
+          v.image_url ||
+          v.photo ||
+          v.image;
+
+        if (savedPhoto) {
+          return {
+            ...v,
+            photo_url: savedPhoto,
+            image_url: savedPhoto,
+            photo: savedPhoto,
+            image: savedPhoto,
+          };
+        }
+        return v;
+      });
 
       setVehicles(vehicleList);
 

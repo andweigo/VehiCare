@@ -18,6 +18,7 @@ import notificationService, {
   NEW_IN_APP_NOTIFICATION_EVENT,
   NOTIFICATION_READ_STATE_CHANGED,
 } from '../services/notificationService';
+import { BRAND } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import CustomToast from './CustomToast';
 
@@ -25,8 +26,8 @@ import CustomToast from './CustomToast';
 
 const TABS = [
   { key: 'Home',          icon: 'home',             label: 'Home' },
-  { key: 'Diagnose',      icon: 'medical-services',  label: 'Diagnose' },
   { key: 'Maintenance',   icon: 'build',             label: 'Maintenance' },
+  { key: 'Diagnose',      icon: 'medical-services',  label: 'Diagnose', isCenter: true },
   { key: 'Notifications', icon: 'notifications',     label: 'Notifications' },
   { key: 'Profile',       icon: 'person',            label: 'Profile' },
 ];
@@ -264,61 +265,77 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
           style={styles.wrapper}
           pointerEvents="box-none"
         >
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
-            shadowColor: theme.shadow,
-          },
-        ]}
-      >
-        {TABS.map(tab => {
-          const isActive = activeTab === tab.key;
+          <View
+            style={[
+              styles.container,
+              {
+                backgroundColor: theme.name === 'dark' ? 'rgba(18, 19, 22, 0.92)' : 'rgba(22, 23, 26, 0.94)',
+                borderColor: theme.glassBorder || 'rgba(255, 255, 255, 0.12)',
+              },
+            ]}
+          >
+            {TABS.map(tab => {
+              const isActive = activeTab === tab.key;
+              const isDark = theme.name === 'dark';
 
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabItem}
-              activeOpacity={0.78}
-              onPress={() => handleTabPress(tab.key)}
-            >
-              <View
-                style={[
-                  styles.iconContainer,
-                  isActive && styles.iconContainerActive,
-                ]}
-              >
-                <Icon
-                  name={tab.icon}
-                  size={23}
-                  color={isActive ? theme.accent : theme.textSecondary}
-                />
-                {tab.key === 'Notifications' && unread > 0 && (
-                  <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                    <Text style={styles.badgeText}>
-                      {unread > 99 ? '99+' : `${unread}`}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              if (tab.isCenter) {
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={styles.centerTabItem}
+                    activeOpacity={0.8}
+                    onPress={() => handleTabPress(tab.key)}
+                    accessibilityLabel="Start Diagnosis"
+                  >
+                    <View
+                      style={[
+                        styles.centerCircle,
+                        isActive && styles.centerCircleActive,
+                      ]}
+                    >
+                      <Icon
+                        name="medical-services"
+                        size={22}
+                        color={isActive ? BRAND : (isDark ? '#A3A3A3' : '#6B7280')}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
 
-              <Text
-                style={[
-                  styles.tabLabel,
-                  isActive && styles.tabLabelActive,
-                  { color: isActive ? theme.accent : theme.textSecondary },
-                ]}
-                numberOfLines={1}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={styles.tabItem}
+                  activeOpacity={0.78}
+                  onPress={() => handleTabPress(tab.key)}
+                  accessibilityLabel={tab.label}
+                >
+                  {isActive ? (
+                    <View style={styles.activePill}>
+                      <Icon
+                        name={tab.icon}
+                        size={22}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.inactiveIconBox}>
+                      <Icon
+                        name={tab.icon}
+                        size={22}
+                        color={isDark ? '#8E8E93' : '#64748B'}
+                      />
+                      {tab.key === 'Notifications' && unread > 0 && (
+                        <View style={styles.badgeDot} />
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       )}
     </>
   );
@@ -327,86 +344,103 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
-    zIndex: 20,
+    left: 18,
+    right: 18,
+    bottom: 20,
+    zIndex: 25,
+    alignItems: 'center',
   },
 
   container: {
+    width: '100%',
+    maxWidth: 400,
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
 
-    backgroundColor: '#000000',
-
-    borderRadius: 20,
+    borderRadius: 36,
     borderWidth: 1,
-    borderColor: '#1D1D1D',
 
-    paddingVertical: 7,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
 
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
     shadowOffset: {
       width: 0,
       height: 8,
     },
-
-    elevation: 8,
+    elevation: 12,
   },
 
   tabItem: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 58,
-  },
-
-  iconContainer: {
-    width: 38,
-    height: 32,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-
-  iconContainerActive: {
-    // subtle tint — can be customised
-  },
-
-  badge: {
-    position: 'absolute',
-    top: -6,
-    right: -10,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 52,
     paddingHorizontal: 4,
   },
 
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontFamily: 'Inter-SemiBold',
+  activePill: {
+    width: 50,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
-  tabLabel: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 9,
-    lineHeight: 11,
-    color: '#777777',
-    textAlign: 'center',
+  inactiveIconBox: {
+    width: 44,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
 
-  tabLabelActive: {
-    color: '#F63B05',
-    fontFamily: 'Inter-SemiBold',
+  centerTabItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+
+  centerCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+  },
+
+  centerCircleActive: {
+    backgroundColor: 'rgba(245, 80, 28, 0.18)',
+    borderColor: 'rgba(245, 80, 28, 0.48)',
+    borderWidth: 1.5,
+    shadowColor: '#F5501C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+
+  badgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#EF4444',
   },
 });
 

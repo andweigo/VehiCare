@@ -76,52 +76,104 @@ import {
 |--------------------------------------------------------------------------
 */
 const STANDARD_OUT_OF_SCOPE_MSG =
-  'Sorry, that question is unrelated to VehiCare. VehiCare is a vehicle-only diagnostic, repair, and maintenance system strictly for cars, motorcycles, and bicycles. I can only assist with vehicle diagnostics, troubleshooting, maintenance, repairs, and vehicle-related concerns.';
+  "That question isn't directly related to your vehicle's diagnosis, repair, or maintenance. I can help you investigate your vehicle's issue if you describe its symptoms or provide relevant information.";
+
+export const getOutOfScopeMessage = (language = 'en', vehicleType = 'vehicle') => {
+  const rawType = String(vehicleType || 'vehicle').toLowerCase();
+  const noun = rawType.includes('motor') || rawType.includes('scooter')
+    ? 'motorcycle'
+    : rawType.includes('bicycle') || rawType === 'bike'
+    ? 'bicycle'
+    : 'vehicle';
+  const lang = String(language || 'en').toLowerCase();
+  if (lang.startsWith('fil') || lang === 'tl') {
+    return `Hindi direktang konektado sa diagnosis, pagkukumpuni, o maintenance ng iyong ${noun} ang tanong na iyon. Matutulungan kitang suriin ang problema ng iyong ${noun} kung ilalarawan mo ang mga sintomas o magbibigay ka ng kaugnay na impormasyon.`;
+  }
+  if (lang === 'taglish') {
+    return `Hindi directly related sa diagnosis, repair, o maintenance ng ${noun} mo ang question na 'yon. I can help you investigate ang issue ng ${noun} mo kung ide-describe mo ang symptoms o magbibigay ka ng relevant info.`;
+  }
+  return `That question isn't directly related to your ${noun}'s diagnosis, repair, or maintenance. I can help you investigate your ${noun}'s issue if you describe its symptoms or provide relevant information.`;
+};
 
 export const isExplicitlyUnrelated = (text, history = []) => {
   if (!text || typeof text !== 'string') return false;
-  const lower = text.toLowerCase().trim();
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
 
-  // Vehicle keywords
+  // Strip disguised necessity / justification claims ("I need it to fix my motorcycle")
+  const justificationPatterns = [
+    /\b(?:i|we)\s+(?:really\s+|just\s+|absolutely\s+)?(?:need|require|must\s+(?:have|know))\s+(?:to\s+(?:know|learn|find\s+out)(?:\s+(?:it|this|that|the\s+answer|the\s+info(?:rmation)?))?|(?:it|this|that|the\s+answer|the\s+info(?:rmation)?))\s+(?:to|for|so\s+(?:that\s+)?i\s+can|in\s+order\s+to|before\s+i\s+can)\b[^.?!;\n]*/gi,
+    /\b(?:it'?s|it\s+is|this\s+is|that\s+is|that'?s)\s+(?:really\s+|absolutely\s+)?(?:necessary|needed|required|essential|important|crucial|part\s+of|relevant|connected)\s+(?:to|for|with)\b[^.?!;\n]*/gi,
+    /\b(?:so\s+(?:that\s+)?i\s+can|in\s+order\s+to|to\s+help\s+me|to\s+be\s+able\s+to)\s+(?:fix|repair|diagnose|solve|finish|complete|understand)\b[^.?!;\n]*/gi,
+    /\b(?:the\s+)?(?:mechanic|technician|shop|manual|guide)\s+(?:said|told|asked|says|requires|needs)\b[^.?!;\n]*/gi,
+    /\b(?:my\s+(?:motorcycle|motor|car|bike|vehicle)|it)\s+(?:won'?t|will\s+not|can'?t|cannot|doesn'?t)\s+(?:start|run|work|be\s+fixed)\s+(?:unless|until|without)\b[^.?!;\n]*/gi,
+    /\b(?:kailangan\s+ko\s+(?:ito|yan|iyan|malaman)|para\s+(?:maayos|magawa|ma-?diagnose)\s+(?:ko|ang))\b[^.?!;\n]*/gi,
+  ];
+
+  let stripped = lower;
+  justificationPatterns.forEach(re => {
+    stripped = stripped.replace(re, ' ');
+  });
+  stripped = stripped.replace(/\s+/g, ' ').trim();
+
+  // Prompt injection / system override patterns
+  const injectionPatterns = [
+    /\b(?:ignore|disregard|forget|override|bypass)\b[^.?!\n]{0,40}\b(?:previous|prior|above|all|your|system)\b[^.?!\n]{0,30}\b(?:instructions?|rules?|prompts?|guidelines?|restrictions?)\b/i,
+    /\b(?:reveal|show|print|repeat|output|leak)\b[^.?!\n]{0,30}\b(?:system\s+prompt|your\s+prompt|your\s+instructions)\b/i,
+    /\byou\s+are\s+(?:now|no\s+longer)\b/i,
+    /\b(?:pretend|role[- ]?play)\b/i,
+    /\b(?:kalimutan|huwag\s+mong\s+sundin)\b[^.?!\n]{0,30}\b(?:instruction|utos|patakaran|rules?)\b/i,
+  ];
+
+  // Genuine vehicle keywords (checked ONLY on stripped text, excluding generic 'fix'/'repair')
   const vehicleKeywords = [
     'car', 'auto', 'vehicle', 'motorcycle', 'motor', 'bike', 'bicycle', 'engine', 'brake',
     'tire', 'tyre', 'wheel', 'battery', 'oil', 'spark', 'chain', 'belt', 'clutch', 'transmission',
     'radiator', 'coolant', 'exhaust', 'muffler', 'suspension', 'steering', 'fuel', 'gasoline',
     'diesel', 'sniper', 'yamaha', 'honda', 'toyota', 'kawasaki', 'suzuki', 'vespa', 'bmw',
-    'nissan', 'ford', 'hyundai', 'kia', 'mitsubishi', 'mazda', 'mechanic', 'repair', 'diagnostic',
-    'symptom', 'noise', 'clicking', 'leak', 'smoke', 'overheating', 'starting', 'ignition', 'vehicare',
-    'flat', 'puncture', 'rim', 'chain', 'pedal', 'derailleur', 'spoke', 'handlebar'
+    'nissan', 'ford', 'hyundai', 'kia', 'mitsubishi', 'mazda', 'aerox', 'nmax', 'vios', 'civic',
+    'symptom', 'noise', 'clicking', 'squeak', 'squeal', 'leak', 'smoke', 'overheating', 'ignition',
+    'flat', 'puncture', 'rim', 'pedal', 'derailleur', 'spoke', 'handlebar', 'odometer', 'vin',
   ];
 
-  const hasVehicleKeyword = vehicleKeywords.some(kw => lower.includes(kw));
+  const hasVehicleKeyword = vehicleKeywords.some(kw =>
+    new RegExp(`\\b${kw}(?:s|es|ing)?\\b`, 'i').test(stripped),
+  );
+
+  if (injectionPatterns.some(re => re.test(lower)) && !hasVehicleKeyword) {
+    return true;
+  }
 
   // Explicit off-topic question patterns
   const offTopicPatterns = [
     /what'?s the capital of/i,
     /capital of [a-z]+/i,
-    /who is the president of/i,
-    /who (?:is|was) the founder of/i,
+    /cu[aá]l es la capital de/i,
+    /ano ang (?:capital|kabisera) ng/i,
+    /who (?:is|was) the (?:president|prime minister|king|queen|founder|ceo) of/i,
     /who founded/i,
     /when was .+ founded/i,
-    /history of (?!your vehicle|the vehicle|this vehicle)/i,
-    /who wrote [a-z]+/i,
+    /history of (?!your vehicle|the vehicle|this vehicle|my vehicle)/i,
+    /who (?:wrote|invented|painted|discovered) [a-z]+/i,
     /who is .+\b(?:actor|singer|celebrity|influencer|politician|athlete)\b/i,
     /solve (this )?(math|equation|\d+)/i,
-    /\b(?:program|programming|code|javascript|python|html|css)\b/i,
+    /\b\d+\s*(?:\+|\*|×|÷|plus|times|multiplied by|divided by)\s*\d+\b/i,
+    /\b(?:program|programming|write .*code|javascript|python|html|css)\b/i,
     /\b(?:crypto|cryptocurrency|bitcoin|stock market|shares)\b/i,
-    /\b(?:tiktok|discord|instagram|facebook|youtube)\b/i,
-    /\b(?:translate|translation|definition of|meaning of)\b/i,
+    /\b(?:tiktok|discord|instagram|facebook|youtube|netflix)\b/i,
+    /\b(?:translate|translation)\b/i,
     /recipe for/i,
-    /how to cook/i,
-    /write a (poem|story|song|essay) about/i,
-    /tell me a joke about/i,
+    /how to (?:cook|bake)/i,
+    /write (?:me )?a (poem|story|song|essay|joke) about/i,
+    /tell me a (?:joke|story|riddle)/i,
     /who won the (super bowl|world cup|nba|championship)/i,
     /weather in [a-z]+/i,
     /meaning of life/i,
-    /who is [a-z]+ (actor|singer|president|celebrity)/i,
+    /explain quantum/i,
+    /mag-?recommend ka ng .*movie/i,
   ];
 
-  const matchesOffTopic = offTopicPatterns.some(pattern => pattern.test(lower));
+  const matchesOffTopic = offTopicPatterns.some(pattern => pattern.test(stripped) || pattern.test(lower));
 
   if (matchesOffTopic && !hasVehicleKeyword) {
     return true;
@@ -212,8 +264,15 @@ const stripMarkdownSymbols = (text) => {
 };
 
 export const formatAiResponseText = (data) => {
+  const scopeNotice = typeof data?.scope_notice === 'string' && data.scope_notice.trim()
+    ? `${data.scope_notice.trim()}\n\n`
+    : '';
   const result = formatAiResponseTextRaw(data);
-  return typeof result === 'string' ? stripMarkdownSymbols(result) : result;
+  const formatted = typeof result === 'string' ? stripMarkdownSymbols(result) : result;
+  if (scopeNotice && typeof formatted === 'string' && !formatted.startsWith(data.scope_notice.trim())) {
+    return `${scopeNotice}${formatted}`;
+  }
+  return formatted;
 };
 
 const formatAiResponseTextRaw = (data) => {
@@ -222,8 +281,8 @@ const formatAiResponseTextRaw = (data) => {
   }
 
   // Check out of scope or pivot rejection
-  if (data?.type === 'out_of_scope' || data?.status === 'out_of_scope') {
-    return STANDARD_OUT_OF_SCOPE_MSG;
+  if (data?.type === 'out_of_scope' || data?.status === 'out_of_scope' || data?.out_of_scope === true) {
+    return (typeof data?.response === 'string' && data.response.trim()) || STANDARD_OUT_OF_SCOPE_MSG;
   }
 
   // Vehicle mismatch detected
@@ -250,6 +309,38 @@ const formatAiResponseTextRaw = (data) => {
       || (typeof data?.summary === 'string' && data.summary.trim())
       || 'Your question appears to refer to a different vehicle than your active vehicle profile. Would you like to switch your vehicle profile or start a separate consultation so maintenance records stay accurate?';
     return text;
+  }
+
+  // Action Proposal Formatter (Conversational vehicle management, priority, maintenance, briefings)
+  if (data?.type === 'action_proposal') {
+    if (data.action_result?.briefing) {
+      return data.action_result.briefing;
+    }
+    if (data.action_result?.ranked_vehicles && Array.isArray(data.action_result.ranked_vehicles)) {
+      const list = data.action_result.ranked_vehicles
+        .map((v, i) => `${i + 1}. **${v.vehicle_name}** — Priority: ${v.priority_score}/100 (${v.category})\n   Health: ${v.health_score}% | ${v.reasons?.[0] || 'All systems running normally'}`)
+        .join('\n\n');
+      return `${data.action_result.summary || 'Vehicle Priority Ranking:'}\n\n${list}`;
+    }
+    if (data.action_result?.recommended_plan && Array.isArray(data.action_result.recommended_plan)) {
+      const planItems = data.action_result.recommended_plan
+        .map((p, i) => `${i + 1}. **${p.title}** (${p.service_type})\n   • Interval: Every ${p.interval_km ? `${p.interval_km.toLocaleString()} km` : ''} or ${p.interval_months} months\n   • Standard: ${p.source}`)
+        .join('\n\n');
+      return `Recommended Maintenance Plan for your ${data.action_result.vehicle_type || 'vehicle'}:\n\n${planItems}`;
+    }
+    if (data.action_result?.breakdown_by_service_type && data.action_result?.total_spent !== undefined) {
+      const catList = (data.action_result.breakdown_by_service_type || [])
+        .map(c => `• ${c.service_type}: ₱${Number(c.total_cost).toLocaleString()} (${c.count} service${c.count > 1 ? 's' : ''})`)
+        .join('\n');
+      return `Total Vehicle Expenses for ${data.action_result.vehicle_name}:\n**₱${Number(data.action_result.total_spent).toLocaleString()}**\n\nBreakdown:\n${catList || 'No category breakdown recorded.'}`;
+    }
+    if (data.action_result?.summary && typeof data.action_result.summary === 'string') {
+      return `${data.response ? `${data.response}\n\n` : ''}${data.action_result.summary}`;
+    }
+    if (data.action_result?.message && typeof data.action_result.message === 'string') {
+      return `${data.response ? `${data.response}\n\n` : ''}${data.action_result.message}`;
+    }
+    return data.response || data.confirmation_summary || 'Action proposal prepared.';
   }
 
   if (typeof data === 'string') {
@@ -476,10 +567,17 @@ export default function AskVehiCareScreen({
 
   const {
     vehicles,
+    setVehicles,
     activeVehicle,
     pendingVehicle,
     setActiveVehicleById,
+    refreshActiveVehicle,
   } = useVehicle();
+
+  const [confirmedActionIds, setConfirmedActionIds] = useState([]);
+  const [confirmedActionMeta, setConfirmedActionMeta] = useState({});
+  const [cancelledActionIds, setCancelledActionIds] = useState([]);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
 
   const vehicleProfile =
     isAuthenticated
@@ -753,6 +851,14 @@ export default function AskVehiCareScreen({
   }, []);
 
   const historyId = route?.params?.historyId || route?.params?.sessionId;
+  const initialPromptParam = route?.params?.initialPrompt;
+
+  useEffect(() => {
+    if (initialPromptParam && typeof initialPromptParam === 'string' && initialPromptParam.trim()) {
+      setMessage(initialPromptParam.trim());
+      navigation.setParams?.({ initialPrompt: undefined });
+    }
+  }, [initialPromptParam, navigation, setMessage]);
 
   useEffect(() => {
     if (historyId) {
@@ -938,6 +1044,128 @@ export default function AskVehiCareScreen({
     } catch (err) {
       console.warn('[AskVehiCareScreen] Error switching vehicle:', err);
     }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | AI ASSISTANT ACTION CONFIRMATION HANDLERS
+  |--------------------------------------------------------------------------
+  */
+
+  const handleNavigateToMaintenanceRecord = useCallback(
+    (target = {}) => {
+      const recordId = target?.recordId ?? target?.record?.id ?? null;
+      const targetVehicleId =
+        target?.vehicleId ??
+        target?.record?.vehicle_id ??
+        vehicleProfile?.id ??
+        vehicleProfile?.vehicle_id ??
+        null;
+      navigation.navigate('Maintenance', {
+        maintenanceId: recordId,
+        focusRecordId: recordId,
+        vehicleId: targetVehicleId,
+        createdRecord: target?.record || null,
+      });
+    },
+    [navigation, vehicleProfile],
+  );
+
+  const handleConfirmAIAction = async (itemId, action, parameters) => {
+    setIsExecutingAction(true);
+    try {
+      const res = await vehicleApi.executeAIAction(action, parameters);
+      const resultPayload = res?.data || res || {};
+      const createdRecord = resultPayload?.record || null;
+      const createdRecordId = resultPayload?.record_id ?? createdRecord?.id ?? null;
+      const createdVehicle = resultPayload?.vehicle || resultPayload?.active_vehicle || null;
+      const createdVehicleId =
+        resultPayload?.vehicle_id ??
+        createdVehicle?.id ??
+        createdRecord?.vehicle_id ??
+        vehicleProfile?.id ??
+        vehicleProfile?.vehicle_id ??
+        null;
+
+      const isMaintenanceCreationAction = [
+        'create_maintenance_task',
+        'create_maintenance_schedule',
+        'create_maintenance_reminder',
+        'create_diagnostic_followup_task',
+        'log_maintenance_record',
+      ].includes(action);
+
+      const maintenanceTarget =
+        isMaintenanceCreationAction && (createdRecordId || createdRecord)
+          ? {
+              recordId: createdRecordId,
+              vehicleId: createdVehicleId,
+              record: createdRecord,
+              action,
+            }
+          : null;
+
+      setConfirmedActionIds(prev => [...prev, itemId]);
+      setConfirmedActionMeta(prev => ({
+        ...prev,
+        [itemId]: {
+          action,
+          maintenanceTarget,
+          vehicleId: createdVehicleId,
+        },
+      }));
+
+      if (action === 'create_vehicle' || action === 'update_vehicle' || action === 'switch_active_vehicle') {
+        try {
+          const updatedVehicles = await vehicleApi.getMyVehicles();
+          if (Array.isArray(updatedVehicles)) {
+            setVehicles(updatedVehicles);
+          }
+          if (typeof refreshActiveVehicle === 'function') {
+            await refreshActiveVehicle();
+          } else if (resultPayload?.vehicle?.id) {
+            await setActiveVehicleById(resultPayload.vehicle.id);
+          } else if (resultPayload?.active_vehicle?.id) {
+            await setActiveVehicleById(resultPayload.active_vehicle.id);
+          }
+        } catch (vehErr) {
+          console.warn('[AskVehiCareScreen] Could not refresh vehicles after AI action:', vehErr);
+        }
+      }
+
+      const feedbackText = res?.message || resultPayload?.message || 'Action executed successfully.';
+      setFeedbackNotice(feedbackText);
+      setTimeout(() => setFeedbackNotice(null), 4000);
+
+      const confirmMessage = {
+        id: `assistant-confirmed-${Date.now()}`,
+        role: 'assistant',
+        sender: 'assistant',
+        text: `✅ ${feedbackText}`,
+        message: `✅ ${feedbackText}`,
+        maintenanceActionTarget: maintenanceTarget,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      addMessageToSession(currentSessionId, ownerUserId, confirmMessage);
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Could not execute requested action.';
+      Alert.alert('Action Failed', msg);
+    } finally {
+      setIsExecutingAction(false);
+    }
+  };
+
+  const handleCancelAIAction = itemId => {
+    setCancelledActionIds(prev => [...prev, itemId]);
+    const cancelMessage = {
+      id: `assistant-cancelled-${Date.now()}`,
+      role: 'assistant',
+      sender: 'assistant',
+      text: 'Action cancelled.',
+      message: 'Action cancelled.',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    addMessageToSession(currentSessionId, ownerUserId, cancelMessage);
   };
 
   /*
@@ -1337,12 +1565,14 @@ export default function AskVehiCareScreen({
     }
 
     if (trimmed && isExplicitlyUnrelated(trimmed, chatMessages)) {
+      const rawType = vehicleProfile?.vehicle_type?.name || vehicleProfile?.vehicle_type || vehicleProfile?.type || 'vehicle';
+      const localizedRefusal = getOutOfScopeMessage(language, rawType);
       const outOfScopeReply = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         sender: 'assistant',
-        text: STANDARD_OUT_OF_SCOPE_MSG,
-        message: STANDARD_OUT_OF_SCOPE_MSG,
+        text: localizedRefusal,
+        message: localizedRefusal,
         diagnosisData: null,
         time: new Date().toLocaleTimeString([], {
           hour: '2-digit',
@@ -1446,6 +1676,7 @@ export default function AskVehiCareScreen({
         ...(safeModelNumber ? { model_number: safeModelNumber } : {}),
         symptoms: activeSymptoms,
         root_symptom: rootComplaint,
+        language: language || 'en',
         input_type: currentAudio ? 'audio' : currentVideo ? 'video' : currentImage ? 'image' : 'text',
         video_duration: currentVideo?.durationSec || 0,
         audio_duration: currentAudio?.durationSec || 0,
@@ -2579,6 +2810,125 @@ export default function AskVehiCareScreen({
                         );
                       })()}
 
+                      {(() => {
+                        const diagData = item.diagnosisData || {};
+                        if (diagData.type !== 'action_proposal' || !diagData.action) return null;
+                        const isConfirmed = confirmedActionIds.includes(item.id);
+                        const isCancelled = cancelledActionIds.includes(item.id);
+
+                        if (isConfirmed) {
+                          const meta = confirmedActionMeta[item.id];
+                          const maintTarget = meta?.maintenanceTarget || null;
+                          return (
+                            <View style={{ marginTop: 10, gap: 8 }}>
+                              <View style={{ padding: 10, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.12)', borderWidth: 1, borderColor: '#10B981', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                                <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 12, color: '#10B981' }}>
+                                  Action Confirmed & Saved
+                                </Text>
+                              </View>
+                              {maintTarget && (
+                                <TouchableOpacity
+                                  testID={`view-maintenance-action-${item.id}`}
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                    paddingVertical: 9,
+                                    paddingHorizontal: 14,
+                                    borderRadius: 10,
+                                    backgroundColor: theme.accent || '#F63B05',
+                                  }}
+                                  activeOpacity={0.85}
+                                  onPress={() => handleNavigateToMaintenanceRecord(maintTarget)}
+                                >
+                                  <MaterialIcons name="build" size={14} color="#FFFFFF" />
+                                  <Text style={{ fontFamily: 'Inter-Bold', fontSize: 12.5, color: '#FFFFFF' }}>
+                                    View Maintenance
+                                  </Text>
+                                  <Feather name="arrow-right" size={14} color="#FFFFFF" />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        }
+
+                        if (isCancelled) {
+                          return (
+                            <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239, 68, 68, 0.12)', borderWidth: 1, borderColor: '#EF4444', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Ionicons name="close-circle" size={16} color="#EF4444" />
+                              <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 12, color: '#EF4444' }}>
+                                Action Cancelled
+                              </Text>
+                            </View>
+                          );
+                        }
+
+                        if (diagData.requires_confirmation) {
+                          return (
+                            <View style={{ marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, gap: 10 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Ionicons name="flash" size={16} color={theme.accent || '#F63B05'} />
+                                <Text style={{ fontFamily: 'Inter-Bold', fontSize: 11, color: theme.accent || '#F63B05', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                  Action Confirmation
+                                </Text>
+                              </View>
+                              <Text style={{ fontFamily: 'Inter-Medium', fontSize: 13, color: theme.text, lineHeight: 18 }}>
+                                {diagData.confirmation_summary || 'Would you like to proceed with this vehicle action?'}
+                              </Text>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                                <TouchableOpacity
+                                  style={{ flex: 1, paddingVertical: 9, borderRadius: 8, backgroundColor: theme.accent || '#F63B05', alignItems: 'center', justifyContent: 'center' }}
+                                  disabled={isExecutingAction}
+                                  onPress={() => handleConfirmAIAction(item.id, diagData.action, diagData.parameters)}
+                                >
+                                  <Text style={{ fontFamily: 'Inter-Bold', fontSize: 13, color: '#FFFFFF' }}>
+                                    Confirm
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={{ flex: 1, paddingVertical: 9, borderRadius: 8, backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+                                  disabled={isExecutingAction}
+                                  onPress={() => handleCancelAIAction(item.id)}
+                                >
+                                  <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 13, color: theme.textSecondary }}>
+                                    Cancel
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        }
+
+                        return null;
+                      })()}
+
+                      {Boolean(item.maintenanceActionTarget) && (
+                        <TouchableOpacity
+                          testID={`view-maintenance-msg-${item.id}`}
+                          style={{
+                            marginTop: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            paddingVertical: 9,
+                            paddingHorizontal: 14,
+                            borderRadius: 10,
+                            backgroundColor: theme.accent || '#F63B05',
+                          }}
+                          activeOpacity={0.85}
+                          onPress={() => handleNavigateToMaintenanceRecord(item.maintenanceActionTarget)}
+                        >
+                          <MaterialIcons name="build" size={14} color="#FFFFFF" />
+                          <Text style={{ fontFamily: 'Inter-Bold', fontSize: 12.5, color: '#FFFFFF' }}>
+                            View Maintenance
+                          </Text>
+                          <Feather name="arrow-right" size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      )}
+
                       {Boolean(
                         item.diagnosisData &&
                         item.diagnosisData.type === 'diagnostic' &&
@@ -2833,12 +3183,27 @@ export default function AskVehiCareScreen({
                         ) : null}
                       </TouchableOpacity>
                     ) : item.audioUri ? (
-                      <VoiceMessagePlayer
-                        audioUri={item.audioUri}
-                        isPlaying={playingAudioId === item.id}
-                        onTogglePlay={() => handlePlayAudio(item.id, item.audioUri)}
-                        isUser={true}
-                      />
+                      <View>
+                        <VoiceMessagePlayer
+                          audioUri={item.audioUri}
+                          isPlaying={playingAudioId === item.id}
+                          onTogglePlay={() => handlePlayAudio(item.id, item.audioUri)}
+                          isUser={true}
+                        />
+                        {item.text ? (
+                          <Text
+                            style={[
+                              styles.userMessageText,
+                              {
+                                color: theme.surface,
+                                marginTop: 6,
+                              },
+                            ]}
+                          >
+                            {item.text}
+                          </Text>
+                        ) : null}
+                      </View>
                     ) : item.imageUri ? (
                       <TouchableOpacity
                         activeOpacity={0.9}
