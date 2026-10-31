@@ -175,7 +175,7 @@ const DashboardScreen = ({ navigation }) => {
     refreshActiveVehicle,
   } = useVehicle();
   const { usage, isDetailsModalVisible, openDetailsModal, closeDetailsModal, refreshUsage } = useAIUsage();
-  const showSkeleton = useScreenSkeleton(Boolean(vehicleLoading), activeVehicle?.id ?? pendingVehicle?.id);
+  const showSkeleton = useScreenSkeleton(Boolean(vehicleLoading), 'Dashboard');
 
   const [requestedFeature, setRequestedFeature] = useState('');
   const [requestedRoute, setRequestedRoute] = useState(null);

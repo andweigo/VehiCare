@@ -37,7 +37,7 @@ const ActivityScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
   const { activities, loading } = useRecentActivities(100);
-  const showSkeleton = useScreenSkeleton(loading);
+  const showSkeleton = useScreenSkeleton(loading, 'Activity');
   const [currentPage, setCurrentPage] = useState(1);
   const listRef = useRef(null);
 

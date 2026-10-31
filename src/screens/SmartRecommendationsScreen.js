@@ -81,7 +81,7 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   const healthPercentage = typeof hookHealthPercentage === 'number' ? hookHealthPercentage : 44;
   const healthStatus = hookHealthStatus || 'Needs attention';
   const loading = hookLoading;
-  const showSkeleton = useScreenSkeleton(loading, activeVehicleId);
+  const showSkeleton = useScreenSkeleton(loading, 'SmartRecommendations');
 
   const [itemOpacity] = useState(new Animated.Value(0));
   const [localCompletedIds, setLocalCompletedIds] = useState([]);

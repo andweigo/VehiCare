@@ -510,7 +510,7 @@ STRICT INSTRUCTIONS FOR RESPONSE:
 
   const hasTools = Array.isArray(guide.tools) && guide.tools.length > 0;
   const hasSafety = Array.isArray(guide.safetyNotes) && guide.safetyNotes.length > 0;
-  const showSkeleton = useScreenSkeleton(false, item?.id || item?.title);
+  const showSkeleton = useScreenSkeleton(false, 'MaintenanceGuide');
 
   if (showSkeleton) {
     return (

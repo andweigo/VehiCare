@@ -40,7 +40,7 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const showSkeleton = useScreenSkeleton(false);
+  const showSkeleton = useScreenSkeleton(false, 'Settings');
 
   if (showSkeleton) {
     return (

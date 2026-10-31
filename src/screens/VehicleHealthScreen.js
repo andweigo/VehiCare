@@ -173,7 +173,7 @@ const VehicleHealthScreen = ({ navigation }) => {
     return reversedCompleted.slice(start, start + COMPLETED_PAGE_SIZE);
   }, [reversedCompleted, completedPage]);
 
-  const showSkeleton = useScreenSkeleton(loading && !refreshing, vehicleProfile?.id);
+  const showSkeleton = useScreenSkeleton(loading && !refreshing, 'VehicleHealth');
 
   if (showSkeleton) {
     return (

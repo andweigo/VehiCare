@@ -206,6 +206,7 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
         path.resolve(__dirname, '..', 'src/components/SkeletonLoader.js'),
         'utf8',
       );
+      expect(skeletonCode).toContain('const hydratedScreensInSession = new Set()');
       expect(skeletonCode).toContain('export const useScreenSkeleton');
       expect(skeletonCode).toContain("variant === 'dashboard'");
       expect(skeletonCode).toContain("variant === 'maintenance'");
@@ -213,6 +214,7 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(skeletonCode).toContain("variant === 'vehicles'");
       expect(skeletonCode).toContain("variant === 'history'");
       expect(skeletonCode).toContain("variant === 'repairShops'");
+      expect(skeletonCode).toContain("variant === 'repairShopsList'");
       expect(skeletonCode).toContain("variant === 'vehicleHealth'");
       expect(skeletonCode).toContain("variant === 'notifications'");
       expect(skeletonCode).toContain("variant === 'notificationPreferences'");
@@ -226,10 +228,29 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(skeletonCode).toContain("variant === 'settings'");
       expect(skeletonCode).toContain("variant === 'helpSupport'");
 
-      expect(maintScreenCode).toContain('useScreenSkeleton(loading, activeVehicleId)');
+      expect(maintScreenCode).toContain("useScreenSkeleton(loading, 'Maintenance')");
       expect(maintScreenCode).toContain('<SkeletonLoader variant="maintenance" />');
       expect(guideCode).toContain('<SkeletonLoader variant="maintenanceGuide" />');
       expect(dashboardCode).toContain('<SkeletonLoader variant="dashboard" />');
+
+      // 8. NotificationPreferences & RepairShops full-screen skeletons + GlobalBottomTabBar active icon color only
+      const notifPrefsCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/NotificationPreferencesScreen.js'),
+        'utf8',
+      );
+      const repairShopsCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/RepairShopsScreen.js'),
+        'utf8',
+      );
+      const bottomTabCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/components/GlobalBottomTabBar.js'),
+        'utf8',
+      );
+      expect(notifPrefsCode).toContain("useScreenSkeleton(loading, 'NotificationPreferences')");
+      expect(repairShopsCode).toContain("useScreenSkeleton(loading && !refreshing, 'RepairShops')");
+      expect(bottomTabCode).toContain('const activeIconColor = theme.accent || BRAND;');
+      expect(bottomTabCode).toContain('color={isActive ? activeIconColor : inactiveIconColor}');
+      expect(bottomTabCode).not.toContain('style={styles.activePill}');
     });
   });
 });

@@ -177,7 +177,7 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  const showSkeleton = useScreenSkeleton(false, user?.id);
+  const showSkeleton = useScreenSkeleton(false, 'Profile');
 
   if (showSkeleton) {
     return (

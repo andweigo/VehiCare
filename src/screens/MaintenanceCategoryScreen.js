@@ -32,7 +32,7 @@ const MaintenanceCategoryScreen = ({ route, navigation }) => {
     markAsDone,
     undo,
   } = useMaintenanceRecommendations();
-  const showSkeleton = useScreenSkeleton(loading, `${activeVehicleId || ''}-${categoryId || ''}`);
+  const showSkeleton = useScreenSkeleton(loading, `MaintenanceCategory:${categoryId || 'default'}`);
 
   /* -------------------------------------------------------
      CATEGORY

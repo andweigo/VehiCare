@@ -402,7 +402,7 @@ const MaintenanceScreen = ({ navigation, route }) => {
   };
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const showSkeleton = useScreenSkeleton(loading, activeVehicleId);
+  const showSkeleton = useScreenSkeleton(loading, 'Maintenance');
 
   useEffect(() => {
     Animated.timing(fadeAnim, {

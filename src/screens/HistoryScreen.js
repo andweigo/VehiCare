@@ -30,7 +30,7 @@ import { getVehicleRecommendations } from '../utils/maintenanceUtils';
 import { getVehicleDisplayName } from '../utils/vehicleDisplay';
 import ConfidenceCard from '../components/ConfidenceCard';
 import PossibleCauseCard from '../components/PossibleCauseCard';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 
 const ORANGE = '#F63B05';
 const BACKGROUND = '#0A0A0A';
@@ -344,6 +344,8 @@ const normalizeHistoryItem = item => {
   };
 };
 
+let sessionHistoryCache = null;
+
 const HistoryScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
@@ -351,7 +353,7 @@ const HistoryScreen = ({ navigation, route }) => {
   const { openSidebar } = useSidebar();
   const { activeVehicle: contextActiveVehicle, vehicles: contextVehicles } = useVehicle();
 
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => sessionHistoryCache || []);
   const [vehicles, setVehicles] = useState([]);
 
   const initialFilterParam = route?.params?.initialFilter || route?.params?.filter || route?.params?.type || 'all';
@@ -359,7 +361,8 @@ const HistoryScreen = ({ navigation, route }) => {
   const [sort, setSort] = useState('recent');
   const [search, setSearch] = useState('');
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => sessionHistoryCache === null);
+  const showSkeleton = useScreenSkeleton(loading, 'History');
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -424,9 +427,9 @@ const HistoryScreen = ({ navigation, route }) => {
       try {
         if (isRefresh) {
           setRefreshing(true);
-        } else if (pageNum === 1) {
+        } else if (pageNum === 1 && !sessionHistoryCache) {
           setLoading(true);
-        } else {
+        } else if (pageNum > 1) {
           setLoadingMore(true);
         }
 
@@ -638,6 +641,7 @@ const HistoryScreen = ({ navigation, route }) => {
         });
 
         if (pageNum === 1) {
+          sessionHistoryCache = uniqueItems;
           setHistory(uniqueItems);
         } else {
           setHistory(prev => {
@@ -989,7 +993,7 @@ const HistoryScreen = ({ navigation, route }) => {
     );
   };
 
-  if (loading) {
+  if (showSkeleton) {
     return (
       <SafeAreaView
         style={[

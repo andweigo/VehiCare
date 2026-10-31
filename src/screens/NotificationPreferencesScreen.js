@@ -43,13 +43,15 @@ const formatTimeLabel = (timeStr) => {
   return `${displayHour.toString().padStart(2, '0')}:${m} ${period}`;
 };
 
+let sessionCachedPrefs = null;
+
 const NotificationPreferencesScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const [loading, setLoading] = useState(true);
-  const showSkeleton = useScreenSkeleton(loading);
+  const [loading, setLoading] = useState(() => sessionCachedPrefs === null);
+  const showSkeleton = useScreenSkeleton(loading, 'NotificationPreferences');
   const [saving, setSaving] = useState(false);
-  const [prefs, setPrefs] = useState(DEFAULT_PREFERENCES);
+  const [prefs, setPrefs] = useState(() => sessionCachedPrefs || DEFAULT_PREFERENCES);
   const [toast, setToast] = useState({ visible: false, type: 'info', title: '', message: '' });
 
   // Quiet hours time picker state
@@ -57,9 +59,13 @@ const NotificationPreferencesScreen = ({ navigation }) => {
 
   const loadPreferences = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!sessionCachedPrefs) {
+        setLoading(true);
+      }
       const data = await getNotificationPreferences();
-      setPrefs({ ...DEFAULT_PREFERENCES, ...data });
+      const merged = { ...DEFAULT_PREFERENCES, ...data };
+      sessionCachedPrefs = merged;
+      setPrefs(merged);
     } catch (e) {
       console.warn('Error loading notification preferences:', e);
     } finally {
@@ -166,6 +172,14 @@ const NotificationPreferencesScreen = ({ navigation }) => {
     </View>
   );
 
+  if (showSkeleton) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.background }]}>
+        <SkeletonLoader variant="notificationPreferences" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.background }]}>
       <CustomToast
@@ -196,13 +210,10 @@ const NotificationPreferencesScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {showSkeleton ? (
-        <SkeletonLoader variant="notificationPreferences" />
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
           {/* GENERAL */}
           <View style={styles.sectionBlock}>
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>{t('generalSec', 'GENERAL')}</Text>
@@ -394,8 +405,7 @@ const NotificationPreferencesScreen = ({ navigation }) => {
               Critical vehicle safety notifications may still be delivered during quiet hours.
             </Text>
           </View>
-        </ScrollView>
-      )}
+      </ScrollView>
 
       {/* TIME PICKER MODAL */}
       <Modal

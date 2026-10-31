@@ -15,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import RepairShopCard from '../components/RepairShopCard';
 import RepairShopDetails from '../components/RepairShopDetails';
 import RepairShopMap from '../components/RepairShopMap';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
 import useRepairShops, { LOCATION_PRESETS } from '../hooks/useRepairShops';
@@ -115,6 +115,18 @@ const RepairShopsScreen = ({ navigation, route }) => {
       name: geocodedName || 'Selected Location',
     });
   };
+
+  const showSkeleton = useScreenSkeleton(loading && !refreshing, 'RepairShops');
+
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.background || '#0A0A0A' }]}
+      >
+        <SkeletonLoader variant="repairShops" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -434,7 +446,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
 
             {/* LOADING STATE */}
             {loading && !refreshing && (
-              <SkeletonLoader variant="repairShops" />
+              <SkeletonLoader variant="repairShopsList" />
             )}
 
             {/* ERROR STATE */}

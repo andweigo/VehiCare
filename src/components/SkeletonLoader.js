@@ -31,33 +31,70 @@ export const useSkeletonPulse = () => {
 };
 
 /**
+ * In-memory session registry of screens that have already completed their initial data fetch
+ * during the current app launch. Resets automatically whenever the app relaunches,
+ * ensuring skeleton loading only appears on initial fetch and NOT every time the user
+ * switches between screens.
+ */
+const hydratedScreensInSession = new Set();
+
+export const hasScreenHydrated = (screenKey = 'default') =>
+  hydratedScreensInSession.has(String(screenKey || 'default'));
+
+export const markScreenHydrated = (screenKey = 'default') => {
+  hydratedScreensInSession.add(String(screenKey || 'default'));
+};
+
+export const resetHydratedScreensInSession = () => {
+  hydratedScreensInSession.clear();
+};
+
+/**
  * Reusable screen-level skeleton hook.
- * Ensures screens whose context data is already cached in memory still display
- * a smooth, card-matched skeleton transition on screen mount or vehicle switch,
- * while remaining instant in synchronous Jest unit tests unless externalLoading is true.
+ * Shows the screen's custom skeleton ONLY when data is initially being fetched after app launch,
+ * and skips the skeleton on subsequent screen switches within the same app session.
  */
 export const useScreenSkeleton = (
   externalLoading = false,
-  triggerKey = null,
+  screenKey = 'default',
   durationMs = 340,
 ) => {
   const isTestEnv =
     typeof process !== 'undefined' &&
     process?.env?.JEST_WORKER_ID !== undefined;
 
-  const [hydrating, setHydrating] = useState(!isTestEnv);
+  const key = String(screenKey || 'default');
+  const alreadyHydrated = !isTestEnv && hydratedScreensInSession.has(key);
+
+  const [hydrating, setHydrating] = useState(() => !isTestEnv && !alreadyHydrated);
 
   useEffect(() => {
     if (isTestEnv) {
       setHydrating(false);
       return undefined;
     }
-    setHydrating(true);
+
+    if (hydratedScreensInSession.has(key)) {
+      setHydrating(false);
+      return undefined;
+    }
+
     const timer = setTimeout(() => {
       setHydrating(false);
     }, durationMs);
+
     return () => clearTimeout(timer);
-  }, [triggerKey, durationMs, isTestEnv]);
+  }, [key, durationMs, isTestEnv]);
+
+  useEffect(() => {
+    if (!isTestEnv && !externalLoading && !hydrating) {
+      hydratedScreensInSession.add(key);
+    }
+  }, [externalLoading, hydrating, key, isTestEnv]);
+
+  if (alreadyHydrated) {
+    return false;
+  }
 
   return Boolean(externalLoading || hydrating);
 };
@@ -432,10 +469,100 @@ const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
     );
   }
 
-  // 5. REPAIR SHOPS LIST SKELETON (embedded inside RepairShopsScreen)
+  // 5. REPAIR SHOPS FULL SCREEN SKELETON (includes Header, Location Bar, Assistance Card, Map, Filters & Shop Cards)
   if (variant === 'repairShops') {
     return (
-      <View testID="skeleton-repair-shops" style={style}>
+      <View testID="skeleton-repair-shops" style={[styles.screenWrap, style]}>
+        {/* Header ("Nearby Repair Shops") */}
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="64%" height={18} pulseAnim={pulse} />
+          </View>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+        </View>
+
+        {/* Location Bar Card */}
+        <SkeletonCard style={styles.mb12}>
+          <View style={styles.rowBetween}>
+            <View style={[styles.rowCenter, styles.flex1]}>
+              <SkeletonBox width={34} height={34} borderRadius={10} pulseAnim={pulse} />
+              <View style={[styles.ml12, styles.flex1]}>
+                <SkeletonLine width="42%" height={10} style={styles.mb6} pulseAnim={pulse} />
+                <SkeletonLine width="74%" height={14} pulseAnim={pulse} />
+              </View>
+            </View>
+            <SkeletonBox width={72} height={28} borderRadius={10} pulseAnim={pulse} />
+          </View>
+        </SkeletonCard>
+
+        {/* Dual-Purpose Repair Assistance Context Card */}
+        <SkeletonCard style={styles.mb14}>
+          <SkeletonBox width={210} height={20} borderRadius={8} style={styles.mb10} pulseAnim={pulse} />
+          <SkeletonLine width="94%" height={11} style={styles.mb6} pulseAnim={pulse} />
+          <SkeletonLine width="76%" height={11} style={styles.mb12} pulseAnim={pulse} />
+          {[0, 1].map(optIdx => (
+            <View
+              key={optIdx}
+              style={[
+                styles.rowBetween,
+                styles.statBoxPlaceholder,
+                { paddingHorizontal: 12, paddingVertical: 12 },
+                optIdx > 0 && styles.mt10,
+              ]}
+            >
+              <View style={[styles.rowCenter, styles.flex1]}>
+                <SkeletonBox width={32} height={32} borderRadius={10} pulseAnim={pulse} />
+                <View style={[styles.ml12, styles.flex1]}>
+                  <SkeletonLine width="32%" height={9} style={styles.mb6} pulseAnim={pulse} />
+                  <SkeletonLine width="76%" height={14} pulseAnim={pulse} />
+                </View>
+              </View>
+              <SkeletonCircle size={18} pulseAnim={pulse} />
+            </View>
+          ))}
+        </SkeletonCard>
+
+        {/* Map Area Placeholder */}
+        <SkeletonBox width="100%" height={148} borderRadius={18} style={styles.mb12} pulseAnim={pulse} />
+
+        {/* Category Filter Chips */}
+        <View style={[styles.rowGap8, styles.mb14]}>
+          <SkeletonBox width={104} height={34} borderRadius={17} pulseAnim={pulse} />
+          <SkeletonBox width={88} height={34} borderRadius={17} pulseAnim={pulse} />
+          <SkeletonBox width={94} height={34} borderRadius={17} pulseAnim={pulse} />
+        </View>
+
+        {/* Section Header + Shop Cards */}
+        <SkeletonLine width="54%" height={16} style={styles.mb6} pulseAnim={pulse} />
+        <SkeletonLine width="72%" height={11} style={styles.mb12} pulseAnim={pulse} />
+        {[0, 1].map(i => (
+          <SkeletonCard key={i} style={styles.mb12}>
+            <View style={styles.rowBetween}>
+              <View style={[styles.rowCenter, styles.flex1]}>
+                <SkeletonBox width={44} height={44} borderRadius={12} pulseAnim={pulse} />
+                <View style={[styles.ml12, styles.flex1]}>
+                  <SkeletonLine width="72%" height={15} style={styles.mb6} pulseAnim={pulse} />
+                  <SkeletonLine width="50%" height={11} pulseAnim={pulse} />
+                </View>
+              </View>
+              <SkeletonBox width={54} height={24} borderRadius={8} pulseAnim={pulse} />
+            </View>
+            <SkeletonLine width="85%" height={11} style={styles.mt12} pulseAnim={pulse} />
+            <View style={[styles.rowGap10, styles.mt12]}>
+              <SkeletonBox width="48%" height={36} borderRadius={10} pulseAnim={pulse} />
+              <SkeletonBox width="48%" height={36} borderRadius={10} pulseAnim={pulse} />
+            </View>
+          </SkeletonCard>
+        ))}
+      </View>
+    );
+  }
+
+  // 5b. REPAIR SHOPS INLINE LIST SKELETON
+  if (variant === 'repairShopsList') {
+    return (
+      <View testID="skeleton-repair-shops-list" style={style}>
         {[0, 1, 2].map(i => (
           <SkeletonCard key={i} style={styles.mb12}>
             <View style={styles.rowBetween}>
@@ -561,10 +688,19 @@ const SkeletonLoader = ({ variant = 'cards', count = 3, style }) => {
     );
   }
 
-  // 8. NOTIFICATION PREFERENCES SKELETON
+  // 8. NOTIFICATION PREFERENCES SKELETON (includes Header + Section Toggle Cards)
   if (variant === 'notificationPreferences') {
     return (
       <View testID="skeleton-notification-preferences" style={[styles.screenWrap, style]}>
+        {/* Header ("Notification Preferences" + Subtitle) */}
+        <View style={styles.headerRow}>
+          <SkeletonBox width={42} height={42} borderRadius={13} pulseAnim={pulse} />
+          <View style={styles.flex1}>
+            <SkeletonLine width="64%" height={18} style={styles.mb6} pulseAnim={pulse} />
+            <SkeletonLine width="84%" height={11} pulseAnim={pulse} />
+          </View>
+        </View>
+
         {[0, 1].map(sectionIdx => (
           <View key={sectionIdx} style={styles.mb16}>
             <SkeletonLine width={110} height={11} style={styles.mb10} pulseAnim={pulse} />
@@ -1088,6 +1224,9 @@ const styles = StyleSheet.create({
   },
   mt6: {
     marginTop: 6,
+  },
+  mt10: {
+    marginTop: 10,
   },
   mt12: {
     marginTop: 12,

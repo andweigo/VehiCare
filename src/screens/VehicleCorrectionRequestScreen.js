@@ -368,7 +368,7 @@ const VehicleCorrectionRequestScreen = ({
     }
   };
 
-  const showSkeleton = useScreenSkeleton(loading || fetchingActiveRequest, vehicle?.id);
+  const showSkeleton = useScreenSkeleton(loading || fetchingActiveRequest, 'VehicleCorrectionRequest');
 
   if (showSkeleton) {
     return (

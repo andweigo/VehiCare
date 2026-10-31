@@ -277,6 +277,8 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
             {TABS.map(tab => {
               const isActive = activeTab === tab.key;
               const isDark = theme.name === 'dark';
+              const activeIconColor = theme.accent || BRAND;
+              const inactiveIconColor = isDark ? '#8E8E93' : '#64748B';
 
               if (tab.isCenter) {
                 return (
@@ -287,16 +289,11 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
                     onPress={() => handleTabPress(tab.key)}
                     accessibilityLabel="Start Diagnosis"
                   >
-                    <View
-                      style={[
-                        styles.centerCircle,
-                        isActive && styles.centerCircleActive,
-                      ]}
-                    >
+                    <View style={styles.inactiveIconBox}>
                       <Icon
                         name="medical-services"
-                        size={22}
-                        color={isActive ? BRAND : (isDark ? '#A3A3A3' : '#6B7280')}
+                        size={23}
+                        color={isActive ? activeIconColor : inactiveIconColor}
                       />
                     </View>
                   </TouchableOpacity>
@@ -311,26 +308,16 @@ const GlobalBottomTabBar = ({ navigationRef }) => {
                   onPress={() => handleTabPress(tab.key)}
                   accessibilityLabel={tab.label}
                 >
-                  {isActive ? (
-                    <View style={styles.activePill}>
-                      <Icon
-                        name={tab.icon}
-                        size={22}
-                        color="#FFFFFF"
-                      />
-                    </View>
-                  ) : (
-                    <View style={styles.inactiveIconBox}>
-                      <Icon
-                        name={tab.icon}
-                        size={22}
-                        color={isDark ? '#8E8E93' : '#64748B'}
-                      />
-                      {tab.key === 'Notifications' && unread > 0 && (
-                        <View style={styles.badgeDot} />
-                      )}
-                    </View>
-                  )}
+                  <View style={styles.inactiveIconBox}>
+                    <Icon
+                      name={tab.icon}
+                      size={23}
+                      color={isActive ? activeIconColor : inactiveIconColor}
+                    />
+                    {tab.key === 'Notifications' && unread > 0 && (
+                      <View style={styles.badgeDot} />
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })}

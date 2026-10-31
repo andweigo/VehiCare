@@ -253,7 +253,7 @@ const HelpSupportScreen = ({ navigation }) => {
     return list;
   }, [selectedCategory, query]);
 
-  const showSkeleton = useScreenSkeleton(false);
+  const showSkeleton = useScreenSkeleton(false, 'HelpSupport');
 
   if (showSkeleton) {
     return (

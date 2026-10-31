@@ -24,7 +24,7 @@ import vehicleApi from '../api/vehicleApi';
 import { requestNotificationPermission } from '../services/permissionService';
 import { useTheme } from '../theme/ThemeContext';
 import CustomModal from '../components/CustomModal';
-import SkeletonLoader from '../components/SkeletonLoader';
+import SkeletonLoader, { useScreenSkeleton } from '../components/SkeletonLoader';
 
 const CATEGORY_KEYS = [
   'All',
@@ -481,6 +481,8 @@ const AnnouncementModal = ({
    MAIN NOTIFICATIONS SCREEN
 ============================================================ */
 
+let sessionNotificationsCache = null;
+
 const NotificationsScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const isDark = theme?.name === 'dark';
@@ -488,8 +490,9 @@ const NotificationsScreen = ({ navigation, route }) => {
   const { refreshActiveVehicle } = useVehicle();
   const { user } = useAuth();
 
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState(() => sessionNotificationsCache || []);
+  const [loading, setLoading] = useState(() => sessionNotificationsCache === null);
+  const showSkeleton = useScreenSkeleton(loading, 'Notifications');
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState('All');
   const [fetchError, setFetchError] = useState(null);
@@ -557,6 +560,7 @@ const NotificationsScreen = ({ navigation, route }) => {
                 : item,
             )
           : [];
+        sessionNotificationsCache = normalizedItems;
         setNotifications(normalizedItems);
       }
     } catch (error) {
@@ -1032,7 +1036,7 @@ const NotificationsScreen = ({ navigation, route }) => {
      LOADING STATE
   ========================================================== */
 
-  if (loading) {
+  if (showSkeleton) {
     return (
       <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.background }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.background} />

@@ -178,7 +178,7 @@ const PersonalInformationScreen = ({ navigation }) => {
     }
   };
 
-  const showSkeleton = useScreenSkeleton(false, user?.id);
+  const showSkeleton = useScreenSkeleton(false, 'PersonalInformation');
 
   if (showSkeleton) {
     return (

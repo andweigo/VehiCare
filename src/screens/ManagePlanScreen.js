@@ -384,7 +384,7 @@ const ManagePlanScreen = ({ navigation }) => {
     navigation.navigate('HelpSupport');
   };
 
-  const showSkeleton = useScreenSkeleton(statusLoading || vehicleLoading);
+  const showSkeleton = useScreenSkeleton(statusLoading || vehicleLoading, 'ManagePlan');
 
   if (showSkeleton) {
     return (
