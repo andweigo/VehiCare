@@ -183,6 +183,15 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       // 5. Marked as Complete reflects across the system
       expect(maintHookCode).toContain('effectiveMaintenanceRecords.forEach');
       expect(maintScreenCode).toContain('isRecommendationCompleted(item)');
+
+      // 6. Dashboard "How can we help?" replaces redundant Vehicle health card with Manage plan
+      const dashboardCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/DashboardScreen.js'),
+        'utf8',
+      );
+      expect(dashboardCode).toContain("title: 'Manage plan'");
+      expect(dashboardCode).toContain("description: 'Plan & subscription'");
+      expect(dashboardCode).not.toContain("title: 'Vehicle health'");
     });
   });
 });

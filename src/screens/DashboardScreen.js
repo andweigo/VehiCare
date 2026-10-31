@@ -429,12 +429,12 @@ const DashboardScreen = ({ navigation }) => {
       routeName: 'RepairShops',
     },
     {
-      iconName: 'show-chart',
-      title: 'Vehicle health',
-      description: 'See what needs care',
-      feature: 'Vehicle Health',
+      iconName: 'workspace-premium',
+      title: 'Manage plan',
+      description: 'Plan & subscription',
+      feature: 'Manage Plan',
       requiresAuth: true,
-      routeName: 'VehicleHealth',
+      routeName: 'ManagePlan',
     },
     {
       iconName: 'auto-awesome',
