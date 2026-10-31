@@ -17,6 +17,12 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       'src/screens/MaintenanceScreen.js',
       'src/screens/MaintenanceGuideScreen.js',
       'src/screens/SmartRecommendationsScreen.js',
+      'src/screens/MyVehiclesScreen.js',
+      'src/screens/HistoryScreen.js',
+      'src/screens/RepairShopsScreen.js',
+      'src/screens/NotificationsScreen.js',
+      'src/screens/NotificationPreferencesScreen.js',
+      'src/components/SkeletonLoader.js',
       'src/components/TermsAndConditionsModal.js',
       'src/data/legalDocuments.js',
       'src/components/VehicleHealthSpeedometer.js',
@@ -194,6 +200,20 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(dashboardCode).toContain("description: 'Plan & subscription'");
       expect(dashboardCode).toContain("title: 'Smart tips'");
       expect(dashboardCode).not.toContain("title: 'Vehicle health'");
+
+      // 7. Reusable SkeletonLoader & screen-specific card skeleton variants
+      const skeletonCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/components/SkeletonLoader.js'),
+        'utf8',
+      );
+      expect(skeletonCode).toContain("variant === 'maintenance'");
+      expect(skeletonCode).toContain("variant === 'smartTips'");
+      expect(skeletonCode).toContain("variant === 'vehicles'");
+      expect(skeletonCode).toContain("variant === 'history'");
+      expect(skeletonCode).toContain("variant === 'repairShops'");
+      expect(skeletonCode).toContain("variant === 'vehicleHealth'");
+      expect(skeletonCode).toContain("variant === 'notifications'");
+      expect(maintScreenCode).toContain('<SkeletonLoader variant="maintenance" />');
     });
   });
 });

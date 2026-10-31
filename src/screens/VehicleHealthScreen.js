@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { useVehicle } from '../context/VehicleContext';
 import useVehicleHealth from '../hooks/useVehicleHealth';
+import SkeletonLoader from '../components/SkeletonLoader';
 import VehicleHealthSpeedometer from '../components/VehicleHealthSpeedometer';
 import { useTheme } from '../theme/ThemeContext';
 import {
@@ -539,27 +540,7 @@ const VehicleHealthScreen = ({ navigation }) => {
           </View>
 
           {loading && completedRecommendations.length === 0 ? (
-            <View
-              style={[
-                styles.emptyCard,
-                {
-                  backgroundColor: isDark ? '#141416' : '#FFFFFF',
-                  borderColor: isDark ? '#232326' : '#E8EDF2',
-                },
-              ]}
-            >
-              <ActivityIndicator size="small" color={theme.accent} style={{ marginBottom: 8 }} />
-              <Text
-                style={[
-                  styles.emptyDescription,
-                  {
-                    color: theme.textSecondary,
-                  },
-                ]}
-              >
-                Checking completed vehicle records...
-              </Text>
-            </View>
+            <SkeletonLoader variant="vehicleHealth" />
           ) : completedRecommendations.length === 0 ? (
             <View
               style={[

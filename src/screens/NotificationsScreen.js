@@ -24,6 +24,7 @@ import vehicleApi from '../api/vehicleApi';
 import { requestNotificationPermission } from '../services/permissionService';
 import { useTheme } from '../theme/ThemeContext';
 import CustomModal from '../components/CustomModal';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const CATEGORY_KEYS = [
   'All',
@@ -1035,12 +1036,7 @@ const NotificationsScreen = ({ navigation, route }) => {
     return (
       <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: theme.background }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.background} />
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color={BRAND} />
-          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
-            Loading notifications...
-          </Text>
-        </View>
+        <SkeletonLoader variant="notifications" />
       </SafeAreaView>
     );
   }

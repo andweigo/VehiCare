@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import vehicleApi from '../api/vehicleApi';
 import MaintenanceRecordModal from '../components/MaintenanceRecordModal';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
@@ -413,14 +414,11 @@ const MaintenanceScreen = ({ navigation, route }) => {
   if (loading) {
     return (
       <SafeAreaView
-        style={[styles.loadingContainer, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}
+        style={[styles.container, { backgroundColor: isDark ? '#0A0A0A' : theme.background }]}
         edges={['top']}
       >
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0A0A' : theme.background} />
-        <ActivityIndicator size="large" color={ORANGE} />
-        <Text style={[styles.loadingText, { color: isDark ? '#8E8E93' : theme.textSecondary }]}>
-          Loading maintenance status...
-        </Text>
+        <SkeletonLoader variant="maintenance" />
       </SafeAreaView>
     );
   }

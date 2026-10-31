@@ -21,6 +21,7 @@ import { getGuestVehicle, getVehiclePhotoMap } from '../services/storageService'
 
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import LimitModal from '../components/LimitModal';
+import SkeletonLoader from '../components/SkeletonLoader';
 import VehicleCard from '../components/VehicleCard';
 import VehicleProfileModal from '../components/VehicleProfileModal';
 
@@ -1453,31 +1454,7 @@ const MyVehiclesScreen = ({ navigation, route }) => {
           }
         />
 
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <ActivityIndicator
-            size="large"
-            color={
-              theme.accent
-            }
-          />
-
-          <Text
-            style={[
-              styles.loadingText,
-              {
-                color:
-                  theme.textSecondary,
-              },
-            ]}
-          >
-            Loading your
-            vehicles...
-          </Text>
-        </View>
+        <SkeletonLoader variant="vehicles" />
       </SafeAreaView>
     );
   }

@@ -30,6 +30,7 @@ import { getVehicleRecommendations } from '../utils/maintenanceUtils';
 import { getVehicleDisplayName } from '../utils/vehicleDisplay';
 import ConfidenceCard from '../components/ConfidenceCard';
 import PossibleCauseCard from '../components/PossibleCauseCard';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 const ORANGE = '#F63B05';
 const BACKGROUND = '#0A0A0A';
@@ -999,30 +1000,7 @@ const HistoryScreen = ({ navigation, route }) => {
           },
         ]}
       >
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <ActivityIndicator
-            size="large"
-            color={
-              theme.accent
-            }
-          />
-
-          <Text
-            style={[
-              styles.loadingText,
-              {
-                color:
-                  theme.textSecondary,
-              },
-            ]}
-          >
-            Loading your history...
-          </Text>
-        </View>
+        <SkeletonLoader variant="history" />
       </SafeAreaView>
     );
   }

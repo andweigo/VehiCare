@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
+import SkeletonLoader from '../components/SkeletonLoader';
 import { useAuth } from '../context/AuthContext';
 import { useVehicle } from '../context/VehicleContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
@@ -522,23 +523,13 @@ const SmartRecommendationsScreen = ({ navigation }) => {
     return (
       <SafeAreaView
         style={[
-          styles.loadingContainer,
+          styles.container,
           {
             backgroundColor: theme.background,
           },
         ]}
       >
-        <ActivityIndicator size="large" color={theme.accent} />
-        <Text
-          style={[
-            styles.loadingText,
-            {
-              color: theme.text,
-            },
-          ]}
-        >
-          Loading recommendations...
-        </Text>
+        <SkeletonLoader variant="smartTips" />
       </SafeAreaView>
     );
   }

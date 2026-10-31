@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import CustomToast from '../components/CustomToast';
+import SkeletonLoader from '../components/SkeletonLoader';
 import { DEFAULT_PREFERENCES, getNotificationPreferences, updateNotificationPreferences } from '../services/notificationService';
 import { requestNotificationPermission } from '../services/permissionService';
 import { useLanguage } from '../context/LanguageContext';
@@ -195,12 +196,7 @@ const NotificationPreferencesScreen = ({ navigation }) => {
       </View>
 
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
-            {t('loading', 'Loading...')}
-          </Text>
-        </View>
+        <SkeletonLoader variant="notificationPreferences" />
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}

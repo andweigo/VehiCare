@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import RepairShopCard from '../components/RepairShopCard';
 import RepairShopDetails from '../components/RepairShopDetails';
 import RepairShopMap from '../components/RepairShopMap';
+import SkeletonLoader from '../components/SkeletonLoader';
 import { useSidebar } from '../context/SidebarContext';
 import { useVehicle } from '../context/VehicleContext';
 import useRepairShops, { LOCATION_PRESETS } from '../hooks/useRepairShops';
@@ -433,12 +434,7 @@ const RepairShopsScreen = ({ navigation, route }) => {
 
             {/* LOADING STATE */}
             {loading && !refreshing && (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={BRAND} />
-                <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
-                  Acquiring location & finding repair shops...
-                </Text>
-              </View>
+              <SkeletonLoader variant="repairShops" />
             )}
 
             {/* ERROR STATE */}
