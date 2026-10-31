@@ -334,7 +334,11 @@ const VehicleHealthSpeedometer = ({
 
           {/* Crisp White Inner Ring & Perfectly Centered Readout */}
           <View style={styles.innerWhiteRing}>
-            <Text style={styles.centerGiantScore}>{score}</Text>
+            <Text style={styles.healthModeLabel}>Health status</Text>
+            <View style={styles.scoreRow}>
+              <Text style={styles.centerGiantScore}>{score}</Text>
+              <Text style={styles.centerPercentSign}>%</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -536,13 +540,24 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     letterSpacing: 0.7,
   },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
   centerGiantScore: {
     fontFamily: 'Outfit-Bold',
     fontSize: 42,
     lineHeight: 46,
     color: '#FFFFFF',
     letterSpacing: -1,
-    marginTop: 2,
+  },
+  centerPercentSign: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 16,
+    color: '#94A3B8',
+    marginLeft: 2,
   },
   centerUnitLabel: {
     fontFamily: 'Inter-Regular',
