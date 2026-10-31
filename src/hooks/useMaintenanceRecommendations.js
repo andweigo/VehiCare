@@ -494,6 +494,10 @@ export const useMaintenanceRecommendationsInternal = () => {
             const norm = normalizeKey(item.title);
             if (norm) ids.add(norm);
           }
+          if (item.what_to_do) {
+            const normWhat = normalizeKey(item.what_to_do);
+            if (normWhat) ids.add(normWhat);
+          }
           if (item.recommendationId) {
             ids.add(String(item.recommendationId));
           }
@@ -501,8 +505,22 @@ export const useMaintenanceRecommendationsInternal = () => {
       });
     }
 
+    if (Array.isArray(effectiveMaintenanceRecords)) {
+      effectiveMaintenanceRecords.forEach(record => {
+        if (record && (record.status || '') === 'completed') {
+          if (record.id) {
+            ids.add(String(record.id));
+          }
+          if (record.title) {
+            const norm = normalizeKey(record.title);
+            if (norm) ids.add(norm);
+          }
+        }
+      });
+    }
+
     return ids;
-  }, [localCompletedIds, hookCompletedRecs]);
+  }, [localCompletedIds, hookCompletedRecs, effectiveMaintenanceRecords]);
 
   // Checks if an item or ID is marked as completed
   const isRecommendationCompleted = useCallback(
@@ -514,10 +532,19 @@ export const useMaintenanceRecommendationsInternal = () => {
         return norm ? completedIdsSet.has(norm) : false;
       }
       if (typeof itemOrId === 'object') {
-        if (itemOrId.id && completedIdsSet.has(String(itemOrId.id))) return true;
+        if (itemOrId.id) {
+          const idStr = String(itemOrId.id);
+          if (completedIdsSet.has(idStr)) return true;
+          const normId = normalizeKey(idStr);
+          if (normId && completedIdsSet.has(normId)) return true;
+        }
         if (itemOrId.title) {
           const norm = normalizeKey(itemOrId.title);
           if (norm && completedIdsSet.has(norm)) return true;
+        }
+        if (itemOrId.what_to_do) {
+          const normWhat = normalizeKey(itemOrId.what_to_do);
+          if (normWhat && completedIdsSet.has(normWhat)) return true;
         }
         if (itemOrId.recommendationId && completedIdsSet.has(String(itemOrId.recommendationId))) return true;
       }
@@ -619,42 +646,68 @@ export const useMaintenanceRecommendationsInternal = () => {
   // Mark item as completed across all screens, AsyncStorage, and backend
   const markAsDone = useCallback(
     async item => {
-      const id = typeof item === 'object' ? item.id : item;
-      if (!id) return;
-      const title = typeof item === 'object' ? item.title : String(item);
+      if (!item) return false;
+      const title =
+        typeof item === 'object'
+          ? (item.title || item.what_to_do || String(item.id || 'Maintenance Task'))
+          : String(item);
       const normKey = title ? normalizeKey(title) : null;
+      const normWhatKey =
+        typeof item === 'object' && item.what_to_do ? normalizeKey(item.what_to_do) : null;
+      const id = typeof item === 'object' ? (item.id || normKey || title) : item;
+      if (!id) return false;
 
       const writeKey = `${activeVehicleId || 'guest'}:${String(id)}`;
       if (maintenanceWriteIdsRef.current.has(writeKey)) return false;
       maintenanceWriteIdsRef.current.add(writeKey);
+
+      const nowIso = new Date().toISOString();
+      const rawDiagId = typeof item === 'object' && item.diagnosisId ? Number(item.diagnosisId) : NaN;
+      const safeDiagId =
+        Number.isInteger(rawDiagId) && rawDiagId > 0 && rawDiagId < 2147483647 ? rawDiagId : null;
+
+      let savedBackendRecord = null;
       try {
         if (isAuthenticated && activeVehicleId) {
           const numVehicleId = Number.parseInt(activeVehicleId, 10);
           if (!Number.isInteger(numVehicleId)) {
             throw new Error('The selected vehicle could not be confirmed.');
           }
-          const existingPending = (maintenanceRecords || []).find(record =>
-            record?.status === 'pending' && normalizeKey(record.title) === normKey,
+          const existingPending = (maintenanceRecords || []).find(
+            record =>
+              record?.status === 'pending' &&
+              (normalizeKey(record.title) === normKey ||
+                (normWhatKey && normalizeKey(record.title) === normWhatKey)),
           );
           const completedPayload = {
             title,
-            description: typeof item === 'object' ? item.description : null,
+            description: typeof item === 'object' ? (item.description || item.why_it_matters || null) : null,
             service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
             status: 'completed',
-            performed_at: new Date().toISOString(),
+            performed_at: nowIso,
             urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
-            is_inspection: typeof item === 'object' ? Boolean(item.isInspection) : true,
+            is_inspection: typeof item === 'object' ? Boolean(item.isInspection ?? true) : true,
           };
           if (existingPending?.id) {
-            await vehicleApi.updateMaintenanceRecord(existingPending.id, completedPayload);
+            savedBackendRecord = await vehicleApi.updateMaintenanceRecord(existingPending.id, completedPayload);
           } else {
-            await vehicleApi.createMaintenanceRecord({
-              vehicle_id: numVehicleId,
-              diagnostic_id: typeof item === 'object' && item.diagnosisId && !isNaN(parseInt(item.diagnosisId, 10))
-                ? parseInt(item.diagnosisId, 10)
-                : null,
-              ...completedPayload,
-            });
+            try {
+              savedBackendRecord = await vehicleApi.createMaintenanceRecord({
+                vehicle_id: numVehicleId,
+                diagnostic_id: safeDiagId,
+                ...completedPayload,
+              });
+            } catch (createErr) {
+              if (safeDiagId !== null && createErr?.response?.status === 422) {
+                savedBackendRecord = await vehicleApi.createMaintenanceRecord({
+                  vehicle_id: numVehicleId,
+                  diagnostic_id: null,
+                  ...completedPayload,
+                });
+              } else {
+                throw createErr;
+              }
+            }
           }
         }
       } catch (error) {
@@ -666,13 +719,76 @@ export const useMaintenanceRecommendationsInternal = () => {
       }
 
       const keysToAdd = [String(id)];
+      const normId = normalizeKey(String(id));
+      if (normId) keysToAdd.push(normId);
       if (normKey) keysToAdd.push(normKey);
+      if (normWhatKey) keysToAdd.push(normWhatKey);
+      if (savedBackendRecord?.id) keysToAdd.push(String(savedBackendRecord.id));
 
       setLocalCompletedIds(prev => {
         const next = Array.from(new Set([...prev, ...keysToAdd]));
         saveCompletedState(next);
         return next;
       });
+
+      const optimisticRecord = savedBackendRecord || {
+        id: `completed-${String(id)}`,
+        vehicle_id: activeVehicleId,
+        diagnostic_id: safeDiagId,
+        title,
+        description: typeof item === 'object' ? (item.description || null) : null,
+        service_type: typeof item === 'object' && item.serviceType ? item.serviceType : 'General Inspection',
+        status: 'completed',
+        performed_at: nowIso,
+        created_at: nowIso,
+        urgency: typeof item === 'object' && item.priority ? item.priority : 'Routine',
+        is_inspection: true,
+      };
+
+      setMaintenanceRecords(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        let matched = false;
+        const updated = list.map(rec => {
+          if (
+            (savedBackendRecord?.id && String(rec?.id) === String(savedBackendRecord.id)) ||
+            (rec?.status === 'pending' &&
+              (normalizeKey(rec?.title) === normKey ||
+                (normWhatKey && normalizeKey(rec?.title) === normWhatKey)))
+          ) {
+            matched = true;
+            return { ...rec, ...optimisticRecord, status: 'completed', performed_at: nowIso };
+          }
+          return rec;
+        });
+        const nextMaint = matched ? updated : [optimisticRecord, ...updated];
+        if (activeVehicleId && vehicleDataMemoryCache.has(activeVehicleId)) {
+          const prevSnap = vehicleDataMemoryCache.get(activeVehicleId);
+          vehicleDataMemoryCache.set(activeVehicleId, {
+            ...prevSnap,
+            maintenanceRecords: nextMaint,
+          });
+        }
+        return nextMaint;
+      });
+
+      setServiceHistory(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        const exists = list.some(
+          rec =>
+            (optimisticRecord.id && String(rec?.id) === String(optimisticRecord.id)) ||
+            normalizeKey(rec?.title) === normKey,
+        );
+        const nextServices = exists ? list : [optimisticRecord, ...list];
+        if (activeVehicleId && vehicleDataMemoryCache.has(activeVehicleId)) {
+          const prevSnap = vehicleDataMemoryCache.get(activeVehicleId);
+          vehicleDataMemoryCache.set(activeVehicleId, {
+            ...prevSnap,
+            serviceHistory: nextServices,
+          });
+        }
+        return nextServices;
+      });
+
       DeviceEventEmitter.emit('vehicleHealthChanged');
 
       const isDiag = typeof item === 'object' && item.source === 'diagnostic';

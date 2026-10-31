@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,35 +14,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import vehicleApi from '../api/vehicleApi';
+import { useAIUsage } from '../context/AIUsageContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useVehicle } from '../context/VehicleContext';
 import useMaintenanceRecommendations from '../hooks/useMaintenanceRecommendations';
+import { incrementGuestDiagnosisCount } from '../services/storageService';
 import { useTheme } from '../theme/ThemeContext';
 import {
   ensureRecommendationGuide,
   resolveVehicleTypeString,
 } from '../utils/maintenanceUtils';
-import { getVehicleDisplayName } from '../utils/vehicleDisplay';
-
-const QUICK_CLARIFICATION_OPTIONS = [
-  { id: 'locate', label: '📍 Where is this located?', query: 'Where is this component located on my vehicle?' },
-  { id: 'tools', label: '🛠️ What tools do I need?', query: 'What specific tools or equipment do I need for this step?' },
-  { id: 'simpler', label: '💬 Explain in simpler terms', query: 'Can you explain this step in simpler beginner-friendly terms?' },
-  { id: 'verify', label: '🔍 How to verify it\'s right?', query: 'How do I know if I completed this step correctly?' },
-  { id: 'avoid', label: '⚠️ Common mistakes to avoid', query: 'What are common mistakes or hazards to avoid in this step?' },
-  { id: 'diy', label: '🧑‍🔧 DIY or mechanic?', query: 'Can I safely do this step myself or should a professional mechanic handle it?' },
-];
+import { getDisplayValue, getVehicleDisplayName } from '../utils/vehicleDisplay';
 
 const MaintenanceGuideScreen = ({ route, navigation }) => {
   const { theme } = useTheme();
   const { item } = route.params || {};
 
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { language } = useLanguage();
   const { activeVehicle, pendingVehicle } = useVehicle();
   const vehicleProfile = activeVehicle || pendingVehicle;
-  const { markAsDone } = useMaintenanceRecommendations();
+  const { markAsDone, isRecommendationCompleted } = useMaintenanceRecommendations();
+  const {
+    usage,
+    recordConsultationOptimistic,
+    refreshUsage,
+    setQuotaExhausted,
+  } = useAIUsage();
+
+  const scrollViewRef = useRef(null);
 
   // Resolve step-by-step guide
   const guide = useMemo(
@@ -53,17 +54,36 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
   const steps = guide?.steps || [];
   const totalSteps = steps.length;
 
+  const alreadyCompleted = useMemo(
+    () => Boolean(item && typeof isRecommendationCompleted === 'function' && isRecommendationCompleted(item)),
+    [item, isRecommendationCompleted],
+  );
+
   // Active step state
   const [currentStep, setCurrentStep] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState([]);
-  const [outcomeStatus, setOutcomeStatus] = useState(null); // 'success' | 'failure' | null
-  const [isDoneSaved, setIsDoneSaved] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState(() =>
+    alreadyCompleted ? steps.map((_, idx) => idx + 1) : [],
+  );
+  const [outcomeStatus, setOutcomeStatus] = useState(() => (alreadyCompleted ? 'success' : null)); // 'success' | 'failure' | null
+  const [isDoneSaved, setIsDoneSaved] = useState(alreadyCompleted);
   const [isSubmittingDone, setIsSubmittingDone] = useState(false);
+  const [showFinalVerification, setShowFinalVerification] = useState(alreadyCompleted);
+
+  // Sync if item completion changes externally
+  useEffect(() => {
+    if (alreadyCompleted) {
+      setIsDoneSaved(true);
+      setCompletedSteps(steps.map((_, idx) => idx + 1));
+      setOutcomeStatus(prev => prev || 'success');
+      setShowFinalVerification(true);
+    }
+  }, [alreadyCompleted, steps]);
 
   // UI accordion for tools/safety prerequisites
   const [showPrereqs, setShowPrereqs] = useState(false);
 
-  // ON-SCREEN AI STEP CLARIFICATION STATE
+  // ON-SCREEN AI STEP CLARIFICATION STATE (collapsed by default so step card is uncramped)
+  const [isClarificationOpen, setIsClarificationOpen] = useState(false);
   const [clarificationHistory, setClarificationHistory] = useState({}); // { [stepIndex]: { question, answer, timestamp } }
   const [activeInputText, setActiveInputText] = useState('');
   const [isAskingAI, setIsAskingAI] = useState(false);
@@ -71,11 +91,23 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
 
   const activeStepData = steps[currentStep] || steps[0] || {};
   const isFirstStep = currentStep === 0;
-  const isLastStep = currentStep === totalSteps - 1;
+  const isLastStep = currentStep === Math.max(0, totalSteps - 1);
   const isCurrentStepChecked = completedSteps.includes(currentStep + 1);
-  const progressPercent = totalSteps > 0 ? Math.round(((currentStep + 1) / totalSteps) * 100) : 100;
+  const progressPercent = totalSteps > 0
+    ? Math.round((Math.min(totalSteps, Math.max(completedSteps.length, isDoneSaved ? totalSteps : currentStep + (isCurrentStepChecked ? 1 : 0))) / totalSteps) * 100)
+    : 100;
 
   const currentStepClarification = clarificationHistory[currentStep] || null;
+
+  const completionCheck = useMemo(
+    () =>
+      guide?.completionCheck || {
+        title: 'FINAL VERIFICATION & RESULT',
+        instructions:
+          'Perform a final visual and functional check to confirm all components are secure and operating normally.',
+      },
+    [guide],
+  );
 
   const toggleStepComplete = stepNum => {
     setCompletedSteps(prev =>
@@ -83,12 +115,32 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     );
   };
 
+  const scrollToVerificationSection = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd?.({ animated: true });
+    }, 120);
+  };
+
+  const handleFinalVerificationPress = () => {
+    const finalStepNumber = currentStep + 1;
+    setCompletedSteps(prev =>
+      prev.includes(finalStepNumber) ? prev : [...prev, finalStepNumber],
+    );
+    setShowFinalVerification(true);
+    scrollToVerificationSection();
+  };
+
   const handleMarkAsDone = async () => {
     if (!item || isSubmittingDone) return;
     setIsSubmittingDone(true);
     try {
-      await markAsDone(item);
-      setIsDoneSaved(true);
+      const ok = await markAsDone(item);
+      if (ok !== false) {
+        setIsDoneSaved(true);
+        setCompletedSteps(steps.map((_, idx) => idx + 1));
+        setShowFinalVerification(true);
+        setOutcomeStatus(prev => prev || 'success');
+      }
     } catch (err) {
       console.warn('Failed to mark guide item as done:', err);
     } finally {
@@ -103,10 +155,15 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     }
   };
 
-  // ON-SCREEN AI CLARIFICATION SUBMISSION
+  // ON-SCREEN AI CLARIFICATION SUBMISSION (taps into real AI & updates AI usage)
   const handleAskClarification = async customQuery => {
     const query = (customQuery || activeInputText).trim();
     if (!query || isAskingAI) return;
+
+    if (usage?.exhausted) {
+      setAiError('You have reached your AI consultation limit for this period.');
+      return;
+    }
 
     setIsAskingAI(true);
     setAiError(null);
@@ -127,46 +184,115 @@ User's Question / Confusion about this step: "${query}".
 Please provide a concise, direct, step-specific automotive clarification explaining what to do, where to look, tools to use, safety precautions, whether it is safe for DIY or requires a mechanic, or how to verify. Clearly distinguish general maintenance guidance from verified manufacturer-specific specifications.`;
 
       let answerText = null;
+      let aiConsultationSucceeded = false;
 
       // Build conversation history from prior step clarifications in this guide session
       const priorHistory = Object.entries(clarificationHistory || {}).flatMap(([stepIdx, entry]) => {
         if (!entry?.question || !entry?.answer) return [];
+        const userTurn = `[Step ${Number(stepIdx) + 1}] ${entry.question}`;
         return [
-          { sender: 'user', text: `[Step ${Number(stepIdx) + 1}] ${entry.question}` },
-          { sender: 'ai', text: entry.answer },
+          { role: 'user', content: userTurn, sender: 'user', text: userTurn },
+          { role: 'assistant', content: entry.answer, sender: 'ai', text: entry.answer },
         ];
       });
 
+      const rawId = vehicleProfile?.id ?? vehicleProfile?.vehicle_id;
+      const numericVehicleId =
+        rawId !== null && rawId !== undefined && Number.isInteger(Number(rawId)) && Number(rawId) > 0
+          ? Number(rawId)
+          : null;
+      const safeBrand = getDisplayValue(
+        vehicleProfile?.custom_brand ??
+          vehicleProfile?.vehicle_brand ??
+          vehicleProfile?.vehicleBrand ??
+          vehicleProfile?.brand ??
+          vehicleProfile?.make,
+        '',
+      );
+      const safeModel = getDisplayValue(
+        vehicleProfile?.custom_model ??
+          vehicleProfile?.vehicle_model ??
+          vehicleProfile?.vehicleModel ??
+          vehicleProfile?.model,
+        '',
+      );
+      const safeYear = getDisplayValue(
+        vehicleProfile?.custom_year ??
+          vehicleProfile?.vehicle_year ??
+          vehicleProfile?.vehicleYear ??
+          vehicleProfile?.year,
+        '',
+      );
+
       try {
         const payload = {
-          vehicle_id: vehicleProfile?.id || null,
+          ...(numericVehicleId ? { vehicle_id: numericVehicleId } : {}),
           vehicle_name: vehicleDisplayName,
           vehicle_type: vehicleType,
-          vehicle_brand: vehicleProfile?.brand || vehicleProfile?.vehicle_brand?.name || '',
-          vehicle_model: vehicleProfile?.model || vehicleProfile?.vehicle_model?.name || '',
-          vehicle_year: vehicleProfile?.year || vehicleProfile?.vehicle_year?.year || '',
+          ...(safeBrand ? { vehicle_brand: String(safeBrand) } : {}),
+          ...(safeModel ? { vehicle_model: String(safeModel) } : {}),
+          ...(safeYear ? { vehicle_year: String(safeYear) } : {}),
           symptoms: promptText,
           input_type: 'text',
-          diagnostic_state: 'step_clarification',
+          diagnostic_state: { assessments: [] },
           language: language || 'en',
           history: priorHistory,
         };
 
-        const res = await vehicleApi.submitDiagnostic(payload, token);
+        const res = await vehicleApi.submitDiagnostic(payload);
 
         if (res) {
+          aiConsultationSucceeded = true;
           if (typeof res === 'string') {
             answerText = res;
           } else if (res.response) {
             answerText = res.response;
-          } else if (res.whats_happening || res.summary) {
-            answerText = [res.whats_happening, res.summary].filter(Boolean).join('\n\n');
+          } else if (res.whats_happening || res.summary || res.repair_guidance) {
+            const parts = [
+              res.whats_happening,
+              res.summary,
+              typeof res.repair_guidance === 'string'
+                ? res.repair_guidance
+                : res.repair_guidance?.overview || res.repair_guidance?.steps?.join('\n'),
+              Array.isArray(res.recommended_actions) && res.recommended_actions.length > 0
+                ? res.recommended_actions
+                    .map(act => (typeof act === 'string' ? act : act?.action || act?.title || ''))
+                    .filter(Boolean)
+                    .join('\n• ')
+                : null,
+            ].filter(Boolean);
+            answerText = parts.join('\n\n');
           } else if (res.message) {
             answerText = res.message;
           }
         }
       } catch (apiErr) {
+        if (
+          apiErr?.response?.status === 403 &&
+          apiErr?.response?.data?.reason === 'ai_limit_reached'
+        ) {
+          if (typeof setQuotaExhausted === 'function') {
+            setQuotaExhausted(apiErr.response.data);
+          }
+          setAiError(
+            apiErr?.response?.data?.message ||
+              'You have reached your AI consultation limit for this period.',
+          );
+          return;
+        }
         console.warn('Live AI clarification API failed or offline, generating intelligent automotive fallback:', apiErr?.message);
+      }
+
+      if (aiConsultationSucceeded) {
+        if (!isAuthenticated) {
+          await incrementGuestDiagnosisCount().catch(() => {});
+        }
+        if (typeof recordConsultationOptimistic === 'function') {
+          recordConsultationOptimistic();
+        }
+        if (typeof refreshUsage === 'function') {
+          refreshUsage().catch(() => {});
+        }
       }
 
       // Intelligent automotive fallback if API was unavailable or returned empty
@@ -269,6 +395,7 @@ Please provide a concise, direct, step-specific automotive clarification explain
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -551,10 +678,18 @@ Please provide a concise, direct, step-specific automotive clarification explain
 
               {/* ============================================================== */}
               {/* 5. ON-SCREEN AI STEP CLARIFICATION ASSISTANT                    */}
-              {/* (Dedicated feature requested by professor for confused users)    */}
+              {/* (Collapsed by default so the step view stays uncramped)          */}
               {/* ============================================================== */}
               <View style={[styles.aiClarificationContainer, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                <View style={styles.aiClarificationHeaderRow}>
+                <TouchableOpacity
+                  testID="step-clarification-toggle"
+                  style={[
+                    styles.aiClarificationHeaderRow,
+                    !isClarificationOpen && { marginBottom: 0 },
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() => setIsClarificationOpen(prev => !prev)}
+                >
                   <View style={[styles.aiIconBubble, { backgroundColor: theme.accentSoft }]}>
                     <Icon name="auto-awesome" size={16} color={theme.accent} />
                   </View>
@@ -563,118 +698,110 @@ Please provide a concise, direct, step-specific automotive clarification explain
                       <Text style={[styles.aiClarificationTitle, { color: theme.text }]}>
                         Step Clarification Assistant
                       </Text>
-                      <View style={[styles.aiPoweredBadge, { backgroundColor: theme.accentSoft }]}>
-                        <Text style={[styles.aiPoweredBadgeText, { color: theme.accent }]}>AI POWERED</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={[styles.aiPoweredBadge, { backgroundColor: theme.accentSoft }]}>
+                          <Text style={[styles.aiPoweredBadgeText, { color: theme.accent }]}>AI POWERED</Text>
+                        </View>
+                        <Icon
+                          name={isClarificationOpen ? 'expand-less' : 'expand-more'}
+                          size={20}
+                          color={theme.accent}
+                        />
                       </View>
                     </View>
                     <Text style={[styles.aiClarificationSub, { color: theme.textSecondary }]}>
-                      Unsure about this step? Ask VehiCare AI for instant on-screen clarification.
+                      {isClarificationOpen
+                        ? 'Ask VehiCare AI for instant on-screen clarification about this step.'
+                        : `Unsure about Step ${currentStep + 1}? Tap to open AI clarification.`}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
-                {/* AI RESPONSE BOX (IF AVAILABLE FOR THIS STEP) */}
-                {currentStepClarification ? (
-                  <View style={[styles.aiAnswerCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
-                    <View style={styles.aiAnswerTopRow}>
-                      <View style={styles.aiAnswerUserQueryBadge}>
-                        <Icon name="help-outline" size={13} color={theme.textSecondary} style={{ marginRight: 4 }} />
-                        <Text style={[styles.aiAnswerUserQueryText, { color: theme.textSecondary }]} numberOfLines={1}>
-                          "{currentStepClarification.question}"
+                {isClarificationOpen && (
+                  <>
+                    {/* AI RESPONSE BOX (IF AVAILABLE FOR THIS STEP) */}
+                    {currentStepClarification ? (
+                      <View style={[styles.aiAnswerCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
+                        <View style={styles.aiAnswerTopRow}>
+                          <View style={styles.aiAnswerUserQueryBadge}>
+                            <Icon name="help-outline" size={13} color={theme.textSecondary} style={{ marginRight: 4 }} />
+                            <Text style={[styles.aiAnswerUserQueryText, { color: theme.textSecondary }]} numberOfLines={1}>
+                              "{currentStepClarification.question}"
+                            </Text>
+                          </View>
+                          <Text style={[styles.aiAnswerTimestamp, { color: theme.textSecondary }]}>
+                            {currentStepClarification.timestamp}
+                          </Text>
+                        </View>
+
+                        <Text style={[styles.aiAnswerText, { color: theme.text }]}>
+                          {currentStepClarification.answer}
+                        </Text>
+
+                        <View style={styles.aiAnswerFooterRow}>
+                          <TouchableOpacity
+                            style={[styles.aiAskAnotherBtn, { borderColor: theme.border }]}
+                            onPress={handleClearClarification}
+                          >
+                            <Icon name="chat" size={13} color={theme.accent} style={{ marginRight: 4 }} />
+                            <Text style={[styles.aiAskAnotherText, { color: theme.accent }]}>Ask another question</Text>
+                          </TouchableOpacity>
+
+                          <View style={styles.aiVerifiedChip}>
+                            <Icon name="check-circle" size={13} color={theme.success || '#32D583'} style={{ marginRight: 3 }} />
+                            <Text style={[styles.aiVerifiedText, { color: theme.success || '#32D583' }]}>Clarification applied</Text>
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      /* CUSTOM QUESTION INPUT ROW */
+                      <View style={[styles.customInputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        <TextInput
+                          style={[styles.customTextInput, { color: theme.text }]}
+                          placeholder={`Ask a question about Step ${currentStep + 1}...`}
+                          placeholderTextColor={theme.textSecondary}
+                          value={activeInputText}
+                          onChangeText={setActiveInputText}
+                          editable={!isAskingAI}
+                          returnKeyType="send"
+                          onSubmitEditing={() => handleAskClarification()}
+                        />
+
+                        <TouchableOpacity
+                          testID="send-step-clarification-btn"
+                          style={[
+                            styles.sendClarificationBtn,
+                            {
+                              backgroundColor: activeInputText.trim() ? theme.accent : theme.surfaceAlt,
+                              opacity: activeInputText.trim() ? 1 : 0.5,
+                            },
+                          ]}
+                          disabled={!activeInputText.trim() || isAskingAI}
+                          onPress={() => handleAskClarification()}
+                        >
+                          <Icon name="arrow-upward" size={18} color={activeInputText.trim() ? '#FFFFFF' : theme.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* LOADING STATE */}
+                    {isAskingAI && (
+                      <View style={styles.aiLoadingRow}>
+                        <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
+                        <Text style={[styles.aiLoadingText, { color: theme.textSecondary }]}>
+                          VehiCare AI is reviewing Step {currentStep + 1} for your {getVehicleDisplayName(vehicleProfile, 'vehicle')}...
                         </Text>
                       </View>
-                      <Text style={[styles.aiAnswerTimestamp, { color: theme.textSecondary }]}>
-                        {currentStepClarification.timestamp}
-                      </Text>
-                    </View>
+                    )}
 
-                    <Text style={[styles.aiAnswerText, { color: theme.text }]}>
-                      {currentStepClarification.answer}
-                    </Text>
-
-                    <View style={styles.aiAnswerFooterRow}>
-                      <TouchableOpacity
-                        style={[styles.aiAskAnotherBtn, { borderColor: theme.border }]}
-                        onPress={handleClearClarification}
-                      >
-                        <Icon name="chat" size={13} color={theme.accent} style={{ marginRight: 4 }} />
-                        <Text style={[styles.aiAskAnotherText, { color: theme.accent }]}>Ask another question</Text>
-                      </TouchableOpacity>
-
-                      <View style={styles.aiVerifiedChip}>
-                        <Icon name="check-circle" size={13} color={theme.success || '#32D583'} style={{ marginRight: 3 }} />
-                        <Text style={[styles.aiVerifiedText, { color: theme.success || '#32D583' }]}>Clarification applied</Text>
+                    {/* ERROR STATE */}
+                    {aiError && (
+                      <View style={styles.aiErrorRow}>
+                        <Icon name="error-outline" size={14} color="#FF5A5F" style={{ marginRight: 6 }} />
+                        <Text style={[styles.aiErrorText, { color: '#FF5A5F' }]}>{aiError}</Text>
                       </View>
-                    </View>
-                  </View>
-                ) : (
-                  <>
-                    {/* QUICK PROMPT CHIPS */}
-                    <Text style={[styles.quickPromptSectionTitle, { color: theme.textSecondary }]}>
-                      QUICK QUESTIONS FOR STEP {currentStep + 1}:
-                    </Text>
-                    <View style={styles.quickChipsWrapper}>
-                      {QUICK_CLARIFICATION_OPTIONS.map(opt => (
-                        <TouchableOpacity
-                          key={opt.id}
-                          style={[styles.quickPromptChip, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                          activeOpacity={0.75}
-                          disabled={isAskingAI}
-                          onPress={() => handleAskClarification(opt.query)}
-                        >
-                          <Text style={[styles.quickPromptChipText, { color: theme.text }]}>
-                            {opt.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* CUSTOM QUESTION INPUT ROW */}
-                    <View style={[styles.customInputRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                      <TextInput
-                        style={[styles.customTextInput, { color: theme.text }]}
-                        placeholder={`Ask a question about Step ${currentStep + 1}...`}
-                        placeholderTextColor={theme.textSecondary}
-                        value={activeInputText}
-                        onChangeText={setActiveInputText}
-                        editable={!isAskingAI}
-                        returnKeyType="send"
-                        onSubmitEditing={() => handleAskClarification()}
-                      />
-
-                      <TouchableOpacity
-                        style={[
-                          styles.sendClarificationBtn,
-                          {
-                            backgroundColor: activeInputText.trim() ? theme.accent : theme.surfaceAlt,
-                            opacity: activeInputText.trim() ? 1 : 0.5,
-                          },
-                        ]}
-                        disabled={!activeInputText.trim() || isAskingAI}
-                        onPress={() => handleAskClarification()}
-                      >
-                        <Icon name="arrow-upward" size={18} color={activeInputText.trim() ? '#FFFFFF' : theme.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
+                    )}
                   </>
-                )}
-
-                {/* LOADING STATE */}
-                {isAskingAI && (
-                  <View style={styles.aiLoadingRow}>
-                    <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
-                    <Text style={[styles.aiLoadingText, { color: theme.textSecondary }]}>
-                      VehiCare AI is reviewing Step {currentStep + 1} for your {getVehicleDisplayName(vehicleProfile, 'vehicle')}...
-                    </Text>
-                  </View>
-                )}
-
-                {/* ERROR STATE */}
-                {aiError && (
-                  <View style={styles.aiErrorRow}>
-                    <Icon name="error-outline" size={14} color="#FF5A5F" style={{ marginRight: 6 }} />
-                    <Text style={[styles.aiErrorText, { color: '#FF5A5F' }]}>{aiError}</Text>
-                  </View>
                 )}
               </View>
 
@@ -725,16 +852,19 @@ Please provide a concise, direct, step-specific automotive clarification explain
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  testID={isLastStep ? 'final-verification-btn' : 'next-step-btn'}
                   style={[
                     styles.controlBtn,
                     {
-                      backgroundColor: isCurrentStepChecked ? theme.accent : theme.surfaceAlt,
-                      opacity: isCurrentStepChecked ? 1 : 0.45,
+                      backgroundColor: (isCurrentStepChecked || isLastStep) ? theme.accent : theme.surfaceAlt,
+                      opacity: (isCurrentStepChecked || isLastStep) ? 1 : 0.45,
                     },
                   ]}
-                  disabled={!isCurrentStepChecked}
+                  disabled={!isCurrentStepChecked && !isLastStep}
                   onPress={() => {
-                    if (isCurrentStepChecked && !isLastStep) {
+                    if (isLastStep) {
+                      handleFinalVerificationPress();
+                    } else if (isCurrentStepChecked) {
                       setCurrentStep(prev => Math.min(totalSteps - 1, prev + 1));
                     }
                   }}
@@ -742,15 +872,15 @@ Please provide a concise, direct, step-specific automotive clarification explain
                   <Text
                     style={[
                       styles.controlBtnText,
-                      { color: isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary },
+                      { color: (isCurrentStepChecked || isLastStep) ? '#FFFFFF' : theme.textSecondary },
                     ]}
                   >
                     {isLastStep ? 'Final Verification' : 'Next Step'}
                   </Text>
                   <Icon
-                    name="arrow-forward"
+                    name={isLastStep ? 'verified' : 'arrow-forward'}
                     size={18}
-                    color={isCurrentStepChecked ? '#FFFFFF' : theme.textSecondary}
+                    color={(isCurrentStepChecked || isLastStep) ? '#FFFFFF' : theme.textSecondary}
                   />
                 </TouchableOpacity>
               </View>
@@ -759,7 +889,9 @@ Please provide a concise, direct, step-specific automotive clarification explain
                 <View style={styles.stepNoticeRow}>
                   <Icon name="info-outline" size={13} color={theme.accent} style={{ marginRight: 6 }} />
                   <Text style={[styles.stepNoticeText, { color: theme.textSecondary }]}>
-                    Confirm this step by checking the box above to proceed to the next step.
+                    {isLastStep
+                      ? 'Check the box above or tap Final Verification to complete and log this maintenance task.'
+                      : 'Confirm this step by checking the box above to proceed to the next step.'}
                   </Text>
                 </View>
               )}
@@ -772,8 +904,8 @@ Please provide a concise, direct, step-specific automotive clarification explain
             </View>
           )}
 
-          {/* 6. FINAL VERIFICATION & OUTCOME SECTION (WHEN ON LAST STEP) */}
-          {isLastStep && guide.completionCheck && (
+          {/* 6. FINAL VERIFICATION & OUTCOME SECTION (WHEN ON LAST STEP OR OPENED) */}
+          {(isLastStep || showFinalVerification) && (
             <View style={[styles.verificationCard, { backgroundColor: theme.surface, borderColor: theme.accent }]}>
               <View style={styles.verificationHeaderRow}>
                 <View style={[styles.verificationIconBox, { backgroundColor: theme.accentSoft }]}>
@@ -781,7 +913,7 @@ Please provide a concise, direct, step-specific automotive clarification explain
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.verificationTitle, { color: theme.text }]}>
-                    {guide.completionCheck.title || 'FINAL VERIFICATION & RESULT'}
+                    {completionCheck.title || 'FINAL VERIFICATION & RESULT'}
                   </Text>
                   <Text style={[styles.verificationSubtitle, { color: theme.textSecondary }]}>
                     Confirm mechanical condition after completing all maintenance steps.
@@ -790,7 +922,7 @@ Please provide a concise, direct, step-specific automotive clarification explain
               </View>
 
               <Text style={[styles.verificationInstructions, { color: theme.textSecondary }]}>
-                {guide.completionCheck.instructions}
+                {completionCheck.instructions}
               </Text>
 
               <Text style={[styles.outcomeQuestionText, { color: theme.text }]}>

@@ -142,4 +142,43 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       expect(getHealthBarColor(30)).toBe('#EF4444');
     });
   });
+
+  describe('Maintenance Guide Completion Sync, Final Verification & AI Step Clarification Verification', () => {
+    it('collapses Step Clarification by default, removes quick question setup, connects to AI usage, and handles Final Verification & system-wide completion sync', () => {
+      const guideCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/MaintenanceGuideScreen.js'),
+        'utf8',
+      );
+      const maintHookCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/hooks/useMaintenanceRecommendations.js'),
+        'utf8',
+      );
+      const maintScreenCode = fs.readFileSync(
+        path.resolve(__dirname, '..', 'src/screens/MaintenanceScreen.js'),
+        'utf8',
+      );
+
+      // 1. Quick question setup removed
+      expect(guideCode).not.toContain('QUICK_CLARIFICATION_OPTIONS');
+      expect(guideCode).not.toContain('QUICK QUESTIONS FOR STEP');
+
+      // 2. Step Clarification is collapsed by default
+      expect(guideCode).toContain('const [isClarificationOpen, setIsClarificationOpen] = useState(false);');
+      expect(guideCode).toContain('testID="step-clarification-toggle"');
+
+      // 3. Step Clarification taps into real AI and reflects in AI usage
+      expect(guideCode).toContain('useAIUsage');
+      expect(guideCode).toContain('recordConsultationOptimistic');
+      expect(guideCode).toContain('refreshUsage');
+      expect(guideCode).toContain('vehicleApi.submitDiagnostic(payload)');
+
+      // 4. Final Verification button performs an action
+      expect(guideCode).toContain('handleFinalVerificationPress');
+      expect(guideCode).toContain("testID={isLastStep ? 'final-verification-btn' : 'next-step-btn'}");
+
+      // 5. Marked as Complete reflects across the system
+      expect(maintHookCode).toContain('effectiveMaintenanceRecords.forEach');
+      expect(maintScreenCode).toContain('isRecommendationCompleted(item)');
+    });
+  });
 });

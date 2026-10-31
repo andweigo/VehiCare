@@ -172,15 +172,23 @@ const MaintenanceScreen = ({ navigation, route }) => {
   }, [currentVehicle]);
 
   const topRecommendations = useMemo(() => {
+    const isUncompleted = item =>
+      typeof isRecommendationCompleted === 'function'
+        ? !isRecommendationCompleted(item)
+        : !item?.isCompleted;
+
     if (safeAllRecommendations.length > 0) {
-      return safeAllRecommendations.slice(0, 3);
+      const pending = safeAllRecommendations.filter(isUncompleted);
+      return (pending.length > 0 ? pending : safeAllRecommendations).slice(0, 3);
     }
     const combined = [...safeDiagnosticItems, ...safePreventiveItems];
     if (combined.length > 0) {
-      return combined.slice(0, 3);
+      const pending = combined.filter(isUncompleted);
+      return (pending.length > 0 ? pending : combined).slice(0, 3);
     }
     if (Array.isArray(fallbackRecommendations) && fallbackRecommendations.length > 0) {
-      return fallbackRecommendations.slice(0, 3);
+      const pending = fallbackRecommendations.filter(isUncompleted);
+      return (pending.length > 0 ? pending : fallbackRecommendations).slice(0, 3);
     }
     return [
       {
@@ -208,7 +216,7 @@ const MaintenanceScreen = ({ navigation, route }) => {
         urgency: 'recommended',
       },
     ];
-  }, [safeAllRecommendations, safeDiagnosticItems, safePreventiveItems, fallbackRecommendations]);
+  }, [safeAllRecommendations, safeDiagnosticItems, safePreventiveItems, fallbackRecommendations, isRecommendationCompleted]);
 
   const now = Date.now();
   const soonLimit = now + (30 * 24 * 60 * 60 * 1000);
@@ -236,9 +244,12 @@ const MaintenanceScreen = ({ navigation, route }) => {
     ? overdueRecords.length
     : (overdueCount > 0 ? overdueCount : 0);
 
-  const completedNum = completedRecords.length > 0
-    ? completedRecords.length
-    : (completedCount > 0 ? completedCount : (safeHistoryItems.length > 0 ? safeHistoryItems.length : 3));
+  const maxCompletedCount = Math.max(
+    completedRecords.length,
+    Number.isInteger(completedCount) ? completedCount : 0,
+    safeHistoryItems.length,
+  );
+  const completedNum = maxCompletedCount > 0 ? maxCompletedCount : 3;
 
   // Health display values
   const displayHealth = typeof healthPercentage === 'number' ? healthPercentage : 44;
@@ -262,21 +273,21 @@ const MaintenanceScreen = ({ navigation, route }) => {
   const topAttentionItem = useMemo(() => {
     // 1. Highest priority: unresolved safety-critical diagnostic tasks
     const urgentDiag = safeDiagnosticItems.find(item => {
-      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item) : item.isCompleted;
       return !isDone && (item.priority === 'Urgent' || item.isSafetyCritical);
     });
     if (urgentDiag) return urgentDiag;
 
     // 2. Second priority: any pending diagnostic follow-up
     const anyDiag = safeDiagnosticItems.find(item => {
-      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item) : item.isCompleted;
       return !isDone;
     });
     if (anyDiag) return anyDiag;
 
     // 3. Third priority: pending overdue or urgent scheduled item
     const pendingRec = topRecommendations.find(item => {
-      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item.id) : item.isCompleted;
+      const isDone = typeof isRecommendationCompleted === 'function' ? isRecommendationCompleted(item) : item.isCompleted;
       return !isDone;
     });
     if (pendingRec) return pendingRec;
