@@ -77,6 +77,13 @@ const SmartRecommendationsScreen = ({ navigation }) => {
   const [localCompletedIds, setLocalCompletedIds] = useState([]);
   const [selectedDiagnosisModal, setSelectedDiagnosisModal] = useState(null);
 
+  useEffect(() => {
+    setLocalCompletedIds([]);
+    setExpandedCardIds(new Set());
+    setSelectedDiagnosisModal(null);
+    setRecPage(1);
+  }, [activeVehicleId]);
+
   const handleOpenDiagnosisModal = useCallback(item => {
     if (!item) return;
 

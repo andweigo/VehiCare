@@ -31,6 +31,7 @@ const DEFAULT_HEALTH_STATUS = {
 const healthScoreMemoryCache = new Map();
 export const healthFactorsMemoryCache = new Map();
 const vehicleDataMemoryCache = new Map();
+const completedIdsMemoryCache = new Map();
 
 export const getHealthScoreColor = score => {
   const num = Number(score);
@@ -183,6 +184,7 @@ export const useMaintenanceRecommendationsInternal = () => {
   // Load completed maintenance items for active vehicle
   useEffect(() => {
     let isCancelled = false;
+    setLocalCompletedIds(completedIdsMemoryCache.get(primaryStorageKey) || []);
     const loadCompletedState = async () => {
       try {
         let loadedKeys = [];
@@ -202,6 +204,7 @@ export const useMaintenanceRecommendationsInternal = () => {
           }
         }
         if (!isCancelled) {
+          completedIdsMemoryCache.set(primaryStorageKey, loadedKeys);
           setLocalCompletedIds(loadedKeys);
         }
       } catch (err) {
@@ -219,6 +222,7 @@ export const useMaintenanceRecommendationsInternal = () => {
   const saveCompletedState = useCallback(
     async updatedKeys => {
       try {
+        completedIdsMemoryCache.set(primaryStorageKey, updatedKeys);
         setLocalCompletedIds(updatedKeys);
         await AsyncStorage.setItem(primaryStorageKey, JSON.stringify(updatedKeys));
         if (fallbackStorageKey) {

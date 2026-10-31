@@ -16,6 +16,7 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
       'src/screens/AskVehiCareScreen.js',
       'src/screens/MaintenanceScreen.js',
       'src/screens/MaintenanceGuideScreen.js',
+      'src/screens/SmartRecommendationsScreen.js',
       'src/components/TermsAndConditionsModal.js',
       'src/data/legalDocuments.js',
       'src/components/VehicleHealthSpeedometer.js',
