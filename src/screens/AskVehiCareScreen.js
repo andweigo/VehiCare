@@ -1374,6 +1374,22 @@ export default function AskVehiCareScreen({
   };
 
   const handleDiagnosticResponse = async resultData => {
+    if (resultData?.vehicle_created || resultData?.action_result?.vehicle) {
+      try {
+        const updatedVehicles = await vehicleApi.getMyVehicles();
+        if (Array.isArray(updatedVehicles)) {
+          setVehicles(updatedVehicles);
+        }
+        if (typeof refreshActiveVehicle === 'function') {
+          await refreshActiveVehicle();
+        } else if (resultData?.action_result?.vehicle?.id) {
+          await setActiveVehicleById(resultData.action_result.vehicle.id);
+        }
+      } catch (vehErr) {
+        console.warn('[AskVehiCareScreen] Could not refresh vehicles after chat onboarding:', vehErr);
+      }
+    }
+
     const isMismatch = resultData?.type === 'vehicle_mismatch' || resultData?.status === 'vehicle_mismatch' || resultData?.image_vehicle_match === 'possible_mismatch';
     const isSwitchRequired = resultData?.type === 'vehicle_switch_confirmation_required' || resultData?.status === 'vehicle_switch_confirmation_required' || resultData?.vehicle_context_status === 'different_vehicle_mentioned';
 
@@ -1562,6 +1578,38 @@ export default function AskVehiCareScreen({
       !addMessageToSession(requestSessionId, requestOwnerUserId, userMessage)
     ) {
       return;
+    }
+
+    // If the most recent assistant message is an unconfirmed action_proposal and the user replies Yes/Confirm or Cancel/No in chat
+    const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant' || m.sender === 'assistant');
+    const pendingProposal =
+      lastAssistantMsg?.diagnosisData?.type === 'action_proposal' &&
+      lastAssistantMsg?.diagnosisData?.action &&
+      lastAssistantMsg?.diagnosisData?.requires_confirmation !== false &&
+      !confirmedActionIds.includes(lastAssistantMsg.id) &&
+      !cancelledActionIds.includes(lastAssistantMsg.id)
+        ? lastAssistantMsg
+        : null;
+
+    if (pendingProposal && trimmed && !currentImage && !currentVideo && !currentAudio) {
+      if (/^(yes|yep|yeah|confirm|confirmed|yes\s+please|sure|ok|okay|go\s+ahead|proceed|save|save\s+it|add\s+it|do\s+it|oo|opo|sige|tama|go)\s*[.!]*$/i.test(trimmed)) {
+        if (!isCustomOverride) {
+          setMessage('');
+        }
+        await handleConfirmAIAction(
+          pendingProposal.id,
+          pendingProposal.diagnosisData.action,
+          pendingProposal.diagnosisData.parameters,
+        );
+        return;
+      }
+      if (/^(no|nope|cancel|stop|never\s*mind|abort|wag|wag\s+na|huwag|ayoko)\s*[.!]*$/i.test(trimmed)) {
+        if (!isCustomOverride) {
+          setMessage('');
+        }
+        handleCancelAIAction(pendingProposal.id);
+        return;
+      }
     }
 
     if (trimmed && isExplicitlyUnrelated(trimmed, chatMessages)) {
@@ -2901,8 +2949,44 @@ export default function AskVehiCareScreen({
                           );
                         }
 
+                        if (diagData.requires_confirmation === false && diagData.vehicle_created) {
+                          return (
+                            <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.12)', borderWidth: 1, borderColor: '#10B981', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                              <Text style={{ fontFamily: 'Inter-SemiBold', fontSize: 12, color: '#10B981' }}>
+                                Vehicle Added to Garage
+                              </Text>
+                            </View>
+                          );
+                        }
+
                         return null;
                       })()}
+
+                      {Boolean(item.diagnosisData?.upgrade_required) && (
+                        <TouchableOpacity
+                          testID={`upgrade-premium-msg-${item.id}`}
+                          style={{
+                            marginTop: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            paddingVertical: 9,
+                            paddingHorizontal: 14,
+                            borderRadius: 10,
+                            backgroundColor: theme.accent || '#F63B05',
+                          }}
+                          activeOpacity={0.85}
+                          onPress={() => navigation.navigate('ManagePlan')}
+                        >
+                          <Ionicons name="sparkles" size={14} color="#FFFFFF" />
+                          <Text style={{ fontFamily: 'Inter-Bold', fontSize: 12.5, color: '#FFFFFF' }}>
+                            Upgrade to Premium
+                          </Text>
+                          <Feather name="arrow-right" size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      )}
 
                       {Boolean(item.maintenanceActionTarget) && (
                         <TouchableOpacity

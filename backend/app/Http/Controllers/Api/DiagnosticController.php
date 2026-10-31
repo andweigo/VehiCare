@@ -26,6 +26,7 @@ class DiagnosticController extends Controller
     protected AIDiagnosticCacheService $cacheService;
     protected \App\Services\EntitlementService $entitlementService;
     protected \App\Services\AI\AIAssistantActionService $actionService;
+    protected \App\Services\AI\ConversationalVehicleOnboardingService $onboardingService;
 
     public function __construct(
         AIServiceClient $aiServiceClient,
@@ -34,7 +35,8 @@ class DiagnosticController extends Controller
         AIMediaValidationService $mediaValidationService,
         AIDiagnosticCacheService $cacheService,
         \App\Services\EntitlementService $entitlementService,
-        \App\Services\AI\AIAssistantActionService $actionService
+        \App\Services\AI\AIAssistantActionService $actionService,
+        \App\Services\AI\ConversationalVehicleOnboardingService $onboardingService
     ) {
         $this->aiServiceClient = $aiServiceClient;
         $this->geminiService = $geminiService;
@@ -43,6 +45,7 @@ class DiagnosticController extends Controller
         $this->cacheService = $cacheService;
         $this->entitlementService = $entitlementService;
         $this->actionService = $actionService;
+        $this->onboardingService = $onboardingService;
     }
 
     protected function toSafeString($value, string $default = ''): string
@@ -727,8 +730,22 @@ class DiagnosticController extends Controller
             $analysis = null;
             $aiSource = 'gemini';
 
-            // Fast local database cache lookup for text diagnoses (instant response, zero external API failure risk)
-            if ($inputType === 'text' && empty($mediaBase64) && empty($validated['history'])) {
+            // 1. Conversational Vehicle Onboarding (Add Vehicle through Chat with Plan & Allowance Check)
+            if ($inputType === 'text' && empty($mediaBase64)) {
+                $onboardingTurn = $this->onboardingService->handleTurn(
+                    $validated['symptoms'],
+                    $validated['history'] ?? [],
+                    $entitlements,
+                    $preferredLanguage
+                );
+                if ($onboardingTurn !== null) {
+                    $analysis = $onboardingTurn;
+                    $aiSource = 'conversational_onboarding';
+                }
+            }
+
+            // 2. Fast local database cache lookup for text diagnoses (skip for action proposals/onboarding)
+            if ($analysis === null && $inputType === 'text' && empty($mediaBase64) && empty($validated['history'])) {
                 $cached = $this->cacheService->find($vehicleInfo, $validated['symptoms']);
                 if ($cached !== null) {
                     $analysis = $cached;
@@ -760,7 +777,7 @@ class DiagnosticController extends Controller
                         throw $microserviceException;
                     }
 
-                    if ($isGeminiConfigured && $microserviceException->retryable && $microserviceException->httpStatus >= 500) {
+                    if ($isGeminiConfigured && ($microserviceException->retryable || $microserviceException->httpStatus >= 500)) {
                         Log::warning('[DiagnosticController] Node.js AI service unavailable, attempting Gemini direct fallback', [
                             'request_id' => $requestId,
                             'reason' => $microserviceException->errorCode,
@@ -772,7 +789,9 @@ class DiagnosticController extends Controller
                             $validated['symptoms'],
                             $mediaBase64,
                             $mediaMime,
-                            $validated['history'] ?? []
+                            $validated['history'] ?? [],
+                            $entitlements,
+                            $historicalContext
                         );
                         $aiSource = 'gemini_direct_fallback';
                     } else {
@@ -788,6 +807,49 @@ class DiagnosticController extends Controller
                     true,
                     503
                 );
+            }
+
+            $intentType = strtolower($analysis['type'] ?? 'conversation');
+
+            // Action Proposal Intent (Conversational vehicle management, maintenance, priorities, briefings)
+            // Checked BEFORE mismatch/switch-confirmation so adding/switching vehicles is never hijacked
+            if ($intentType === 'action_proposal') {
+                $action = $analysis['action'] ?? null;
+                $params = (array) ($analysis['parameters'] ?? []);
+                $requiresConfirmation = (bool) ($analysis['requires_confirmation'] ?? true);
+
+                $actionResult = null;
+                $responseText = $analysis['response'] ?? 'I have prepared this vehicle care action for you.';
+                if (!$requiresConfirmation && $user && $action) {
+                    try {
+                        $actionResult = $this->actionService->execute($user, $action, $params);
+                    } catch (\Throwable $actionException) {
+                        $responseText = $actionException->getMessage();
+                        $requiresConfirmation = true;
+                    }
+                }
+
+                $responseData = [
+                    'type' => 'action_proposal',
+                    'status' => 'action_proposal',
+                    'action' => $action,
+                    'parameters' => $params,
+                    'requires_confirmation' => $requiresConfirmation,
+                    'confirmation_summary' => $analysis['confirmation_summary'] ?? null,
+                    'response' => $responseText,
+                    'action_result' => $actionResult,
+                    'vehicle_created' => !$requiresConfirmation && $action === 'create_vehicle' && !empty($actionResult['vehicle']),
+                    'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
+                    'scope_notice' => $analysis['scope_notice'] ?? null,
+                    'plan_tier' => $entitlements['plan'],
+                    'entitlements' => $entitlements,
+                    'ai_source' => $aiSource,
+                    'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
+                    'media_notice' => $analysis['media_notice'] ?? null,
+                    'remaining_consultations' => $reservation['remaining'],
+                ];
+                $this->usageService->markAsSuccessful($logId, $responseData);
+                return response()->json(['status' => 'success', 'data' => $responseData], 200);
             }
 
             // Check for Vehicle Mismatch
@@ -844,47 +906,13 @@ class DiagnosticController extends Controller
                 return response()->json(['status' => 'success', 'data' => $responseData], 200);
             }
 
-            $intentType = strtolower($analysis['type'] ?? 'conversation');
-
-            // Action Proposal Intent (Conversational vehicle management, maintenance, priorities, briefings)
-            if ($intentType === 'action_proposal') {
-                $action = $analysis['action'] ?? null;
-                $params = (array) ($analysis['parameters'] ?? []);
-                $requiresConfirmation = (bool) ($analysis['requires_confirmation'] ?? true);
-
-                $actionResult = null;
-                if (!$requiresConfirmation && $user && $action) {
-                    $actionResult = $this->actionService->execute($user, $action, $params);
-                }
-
-                $responseData = [
-                    'type' => 'action_proposal',
-                    'status' => 'action_proposal',
-                    'action' => $action,
-                    'parameters' => $params,
-                    'requires_confirmation' => $requiresConfirmation,
-                    'confirmation_summary' => $analysis['confirmation_summary'] ?? null,
-                    'response' => $analysis['response'] ?? 'I have prepared this vehicle care action for you.',
-                    'action_result' => $actionResult,
-                    'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
-                    'scope_notice' => $analysis['scope_notice'] ?? null,
-                    'plan_tier' => $entitlements['plan'],
-                    'entitlements' => $entitlements,
-                    'ai_source' => $aiSource,
-                    'media_fallback' => (bool) ($analysis['media_fallback'] ?? false),
-                    'media_notice' => $analysis['media_notice'] ?? null,
-                    'remaining_consultations' => $reservation['remaining'],
-                ];
-                $this->usageService->markAsSuccessful($logId, $responseData);
-                return response()->json(['status' => 'success', 'data' => $responseData], 200);
-            }
-
             // General Conversation Intent
             if ($intentType !== 'diagnostic') {
                 $responseData = [
                     'type' => 'conversation',
                     'status' => 'conversation',
                     'response' => $analysis['response'] ?? 'I am here to assist with your vehicle.',
+                    'upgrade_required' => (bool) ($analysis['upgrade_required'] ?? false),
                     'out_of_scope' => (bool) ($analysis['out_of_scope'] ?? false),
                     'scope_notice' => $analysis['scope_notice'] ?? null,
                     'plan_tier' => $entitlements['plan'],

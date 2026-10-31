@@ -418,15 +418,16 @@ const runDiagnosisPipeline = async (payload) => {
         jsonObject.image_vehicle_match === 'possible_mismatch' ||
         jsonObject.vehicle_context_status === 'mismatch';
 
-      const isSwitchConfirmationResponse =
-        type === 'vehicle_switch_confirmation_required' ||
-        jsonObject.status === 'vehicle_switch_confirmation_required' ||
-        jsonObject.vehicle_context_status === 'different_vehicle_mentioned';
-
-      const isActionProposal = !isMismatchResponse && !isSwitchConfirmationResponse && (
+      const isActionProposal = !isMismatchResponse && (
         type === 'action_proposal' ||
         jsonObject.status === 'action_proposal' ||
         Boolean(jsonObject.action)
+      );
+
+      const isSwitchConfirmationResponse = !isActionProposal && (
+        type === 'vehicle_switch_confirmation_required' ||
+        jsonObject.status === 'vehicle_switch_confirmation_required' ||
+        jsonObject.vehicle_context_status === 'different_vehicle_mentioned'
       );
 
       const isConversationResponse = !isMismatchResponse && !isSwitchConfirmationResponse && !isActionProposal && (
