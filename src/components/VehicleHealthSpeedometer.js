@@ -8,20 +8,21 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import useVehicleHealth from '../hooks/useVehicleHealth';
-import { getVehicleDisplayName } from '../utils/vehicleDisplay';
+import { useTheme } from '../theme/ThemeContext';
 
-// Arc configuration matching the 0..8 digital cockpit tachometer (240° sweep)
+// 240° horseshoe arc (-120° to +120°)
 const START_ANGLE = -120;
 const ARC_ANGLE = 240;
-const MAJOR_STEPS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-const BAND_SEGMENTS = 33;
+const SCALE_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const BAND_SEGMENTS = 41;
 
-// Dial geometry constants for precise trigonometric layout
-const DIAL_SIZE = 152;
-const DIAL_CENTER = DIAL_SIZE / 2;
-const LABEL_RADIUS = 68;
+// Centered dial geometry with generous breathing room
+const DIAL_BOX_SIZE = 216;
+const DIAL_CENTER = DIAL_BOX_SIZE / 2;
+const OUTER_RING_SIZE = 168;
+const INNER_RING_SIZE = 128;
+const LABEL_RADIUS = 98;
 
 const VehicleHealthSpeedometer = ({
   onPress,
@@ -30,13 +31,14 @@ const VehicleHealthSpeedometer = ({
   showHeader = true,
   containerStyle,
 }) => {
+  const { theme } = useTheme();
+  const isDark = theme?.name === 'dark';
+
   const {
     vehicleProfile,
     healthPercentage,
     healthStatus,
     healthData,
-    completedCount = 0,
-    pendingCount = 0,
   } = useVehicleHealth();
 
   const activeVehicleId = vehicleProfile?.id ?? vehicleProfile?.vehicle_id ?? null;
@@ -46,15 +48,10 @@ const VehicleHealthSpeedometer = ({
       ? Math.min(100, Math.max(0, Math.round(healthPercentage)))
       : 94;
 
-  // Live vehicle metrics
+  // Live issue counts for the active vehicle
   const urgentCount = healthData?.urgentDiagnosticItems?.length || 0;
   const diagCount = healthData?.diagnosticItems?.length || 0;
   const preventiveCount = healthData?.preventiveItems?.length || 0;
-  const maintenanceLogsCount = healthData?.factors?.maintenance ?? completedCount ?? 0;
-  const totalRecordsCount =
-    (Number(maintenanceLogsCount) || 0) +
-    (Number(healthData?.factors?.diagnostics) || diagCount) +
-    (Number(completedCount) || 0);
 
   // Animated sweep value (0 -> score)
   const animValue = useRef(new Animated.Value(0)).current;
@@ -88,47 +85,41 @@ const VehicleHealthSpeedometer = ({
     if (score >= 90) {
       return {
         color: '#10B981',
-        bandColor: 'rgba(16, 185, 129, 0.42)',
-        glowColor: 'rgba(16, 185, 129, 0.22)',
+        glowColor: 'rgba(16, 185, 129, 0.20)',
         bgColor: 'rgba(16, 185, 129, 0.14)',
       };
     }
     if (score >= 80) {
       return {
         color: '#32D583',
-        bandColor: 'rgba(50, 213, 131, 0.40)',
-        glowColor: 'rgba(50, 213, 131, 0.20)',
+        glowColor: 'rgba(50, 213, 131, 0.18)',
         bgColor: 'rgba(50, 213, 131, 0.14)',
       };
     }
     if (score >= 70) {
       return {
         color: '#84CC16',
-        bandColor: 'rgba(132, 204, 22, 0.40)',
-        glowColor: 'rgba(132, 204, 22, 0.20)',
+        glowColor: 'rgba(132, 204, 22, 0.18)',
         bgColor: 'rgba(132, 204, 22, 0.14)',
       };
     }
     if (score >= 60) {
       return {
         color: '#F5B942',
-        bandColor: 'rgba(245, 185, 66, 0.40)',
-        glowColor: 'rgba(245, 185, 66, 0.20)',
+        glowColor: 'rgba(245, 185, 66, 0.18)',
         bgColor: 'rgba(245, 185, 66, 0.14)',
       };
     }
     if (score >= 40) {
       return {
         color: '#FF7337',
-        bandColor: 'rgba(255, 115, 55, 0.42)',
-        glowColor: 'rgba(255, 115, 55, 0.20)',
+        glowColor: 'rgba(255, 115, 55, 0.18)',
         bgColor: 'rgba(255, 115, 55, 0.14)',
       };
     }
     return {
       color: '#EF4444',
-      bandColor: 'rgba(239, 68, 68, 0.45)',
-      glowColor: 'rgba(239, 68, 68, 0.22)',
+      glowColor: 'rgba(239, 68, 68, 0.20)',
       bgColor: 'rgba(239, 68, 68, 0.14)',
     };
   }, [score]);
@@ -147,7 +138,6 @@ const VehicleHealthSpeedometer = ({
     ) {
       return {
         badge: 'CRITICAL',
-        tier: 1,
         color: scorePalette.color,
         glowColor: scorePalette.glowColor,
         bgColor: scorePalette.bgColor,
@@ -167,7 +157,6 @@ const VehicleHealthSpeedometer = ({
     ) {
       return {
         badge: 'ATTENTION',
-        tier: 2,
         color: scorePalette.color,
         glowColor: scorePalette.glowColor,
         bgColor: scorePalette.bgColor,
@@ -186,7 +175,6 @@ const VehicleHealthSpeedometer = ({
     ) {
       return {
         badge: 'GOOD',
-        tier: 3,
         color: scorePalette.color,
         glowColor: scorePalette.glowColor,
         bgColor: scorePalette.bgColor,
@@ -198,7 +186,6 @@ const VehicleHealthSpeedometer = ({
 
     return {
       badge: 'OPTIMAL',
-      tier: 4,
       color: scorePalette.color,
       glowColor: scorePalette.glowColor,
       bgColor: scorePalette.bgColor,
@@ -207,431 +194,211 @@ const VehicleHealthSpeedometer = ({
   }, [score, urgentCount, diagCount, preventiveCount, healthStatus, scorePalette]);
 
   const statusColor = statusInfo.color;
+  const statusBgColor = statusInfo.bgColor;
   const statusLabel = statusInfo.badge;
   const statusDetail = statusInfo.detailText;
 
-  // Cockpit derived telemetry values
-  const nowDate = useMemo(() => {
-    const d = new Date();
-    const day = d.getDate();
-    const month = d.toLocaleString('en-US', { month: 'short' }).toLowerCase();
-    const year = d.getFullYear();
-    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    return { datePart: `${day} ${month} ${year}`, timePart: time };
-  }, []);
-
-  const vehicleShortLabel = useMemo(() => {
-    const name = getVehicleDisplayName(vehicleProfile, 'Active Vehicle');
-    return name.length > 16 ? `${name.slice(0, 15)}…` : name;
-  }, [vehicleProfile]);
-
-  // Left gauge (Care Reserve: 6 segments from E to F)
-  const careFilledSegments = Math.max(1, Math.min(6, Math.round((score / 100) * 6)));
-  // Right lower gauge (System Readiness: 5 segments)
-  const readinessSegments = Math.max(1, Math.min(5, Math.round((score / 100) * 5)));
-  // Right upper gauge (Diagnostic Integrity %)
-  const diagIntegrity = Math.max(50, Math.min(130, Math.round(50 + (score / 100) * 45)));
-  const readinessVoltage = (11.8 + (score / 100) * 2.2).toFixed(1);
-
   const canInteract = Boolean(isInteractive && onPress);
   const CardContainer = canInteract ? TouchableOpacity : View;
-  const cardContainerProps = canInteract ? { activeOpacity: 0.9, onPress } : {};
+  const cardContainerProps = canInteract ? { activeOpacity: 0.88, onPress } : {};
 
   return (
     <CardContainer
-      style={[styles.card, containerStyle]}
+      style={[
+        styles.card,
+        {
+          backgroundColor: theme?.glassSurface || (isDark ? 'rgba(14, 18, 26, 0.94)' : '#12161F'),
+          borderColor: theme?.glassBorder || (isDark ? 'rgba(255, 255, 255, 0.12)' : '#262C3A'),
+        },
+        containerStyle,
+      ]}
       {...cardContainerProps}
     >
-      {/* Ambient Radial Center Glow */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.ambientCenterGlow,
-          { backgroundColor: scorePalette.glowColor },
-        ]}
-      />
-
-      {/* TOP HUD HEADER ROW (Date/Time Left + Vehicle/Sync Right with Angled HUD Underlines) */}
+      {/* Top Header Row */}
       {showHeader && (
-        <View style={styles.topHudRow}>
-          <View style={styles.topHudLeftWrap}>
-            <View style={styles.topHudLeftTextRow}>
-              <Text style={styles.hudDateText}>{nowDate.datePart} </Text>
-              <Text style={styles.hudTimeText}>{nowDate.timePart}</Text>
-            </View>
-            <View style={styles.hudLineLeftContainer}>
-              <View style={styles.hudHorizontalLineLeft} />
-              <View style={styles.hudAngledTailLeft} />
-            </View>
+        <View style={styles.topRow}>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.title}>Vehicle health</Text>
+            <Text style={styles.subtitle}>Real-time diagnostic condition</Text>
           </View>
 
-          <View style={styles.topHudCenterTitle}>
-            <Text style={styles.clusterEyebrow} numberOfLines={1}>
-              {vehicleShortLabel}
-            </Text>
-          </View>
-
-          <View style={styles.topHudRightWrap}>
-            <View style={styles.topHudRightTextRow}>
-              <Text style={[styles.hudRightTempText, { color: statusColor }]}>
-                {statusLabel}
-              </Text>
-              {canInteract && (
-                <Icon
-                  name="call-made"
-                  size={13}
-                  color="#7C8B99"
-                  style={{ marginLeft: 4 }}
-                />
-              )}
-            </View>
-            <View style={styles.hudLineRightContainer}>
-              <View style={styles.hudAngledTailRight} />
-              <View style={styles.hudHorizontalLineRight} />
-            </View>
-          </View>
+          {canInteract && (
+            <Icon name="call-made" size={18} color="#6E6E73" />
+          )}
         </View>
       )}
 
-      {/* MAIN 3-COLUMN DIGITAL COCKPIT CLUSTER */}
-      <View style={styles.clusterMainRow}>
-        {/* ================= LEFT WING: CARE RESERVE GAUGE & CARE LOG TABLE ================= */}
-        <View style={styles.leftWing}>
-          <View style={styles.leftGaugeBlock}>
-            {/* F / 1/2 / E Labels */}
-            <View style={styles.fuelLabelsCol}>
-              <Text style={styles.arcScaleLabel}>F</Text>
-              <Text style={styles.arcScaleLabel}>1/2</Text>
-              <Text style={styles.arcScaleLabel}>E</Text>
-            </View>
+      {/* Centered Speedometer Gauge */}
+      <View style={styles.gaugeWrapper}>
+        <View style={styles.dialBox}>
+          {/* Subtle Ambient Center Glow */}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.ambientGlow,
+              { backgroundColor: scorePalette.glowColor },
+            ]}
+          />
 
-            {/* Curved Segmented Vertical Bar */}
-            <View style={styles.leftCurvedBarOuter}>
-              {[5, 4, 3, 2, 1, 0].map(segIdx => {
-                const isLit = segIdx < careFilledSegments;
-                const isBottomReserve = segIdx === 0;
-                return (
-                  <View
-                    key={segIdx}
-                    style={[
-                      styles.leftBarSegment,
-                      {
-                        backgroundColor: isLit
-                          ? statusColor
-                          : 'rgba(148, 163, 184, 0.10)',
-                        opacity: isLit ? 0.88 : 1,
-                      },
-                      isBottomReserve && styles.leftBarReserveSegment,
-                    ]}
-                  />
-                );
-              })}
-            </View>
+          {/* Outer Scale Numbers (0..100 in steps of 10) Positioned Trigonometrically */}
+          {SCALE_STEPS.map((num, idx) => {
+            const deg = START_ANGLE + (ARC_ANGLE / (SCALE_STEPS.length - 1)) * idx;
+            const rad = ((deg - 90) * Math.PI) / 180;
+            const x = DIAL_CENTER + LABEL_RADIUS * Math.cos(rad);
+            const y = DIAL_CENTER + LABEL_RADIUS * Math.sin(rad);
+            const isActiveStep = score >= num;
 
-            {/* Readout + Dotted Connector Sub-stats */}
-            <View style={styles.leftReadoutCol}>
-              <View style={styles.leftPrimaryMetricRow}>
-                <Text style={styles.smallArrow}>◀</Text>
-                <MaterialCommunityIcons
-                  name="car-wrench"
-                  size={13}
-                  color="#FFFFFF"
-                  style={{ marginHorizontal: 3 }}
-                />
-                <Text style={styles.wingBigValue}>
-                  {score}%
-                </Text>
-              </View>
-
-              <View style={styles.dottedStatsWrap}>
-                <View style={styles.dottedLineRow}>
-                  <View style={styles.dottedTick} />
-                  <Text style={styles.wingSubStatText} numberOfLines={1}>
-                    ~{diagCount} {diagCount === 1 ? 'issue' : 'issues'}
-                  </Text>
-                </View>
-                <View style={styles.dottedLineRow}>
-                  <View style={[styles.dottedTick, { width: 10 }]} />
-                  <Text style={styles.wingSubStatText} numberOfLines={1}>
-                    → {preventiveCount} due
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Bottom-Left Distance-style Table ("Care Log") */}
-          <View style={styles.distanceTableWrap}>
-            <Text style={styles.distanceHeaderLabel}>Care Log</Text>
-            <View style={styles.distancePillRow}>
-              <Text style={styles.distanceRowKey}>Pending</Text>
-              <Text style={styles.distanceRowVal}>{pendingCount} tasks</Text>
-            </View>
-            <View style={styles.distancePillRow}>
-              <Text style={styles.distanceRowKey}>Total</Text>
-              <Text style={styles.distanceRowVal}>{totalRecordsCount} logs</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ================= CENTER: SPEEDOMETER / TACHOMETER DIAL ================= */}
-        <View style={styles.centerDialContainer}>
-          <View style={styles.dialBox}>
-            {/* Outer Scale Numbers 0..8 Positioned Trigonometrically */}
-            {MAJOR_STEPS.map((num, idx) => {
-              const deg = START_ANGLE + (ARC_ANGLE / (MAJOR_STEPS.length - 1)) * idx;
-              const rad = ((deg - 90) * Math.PI) / 180;
-              const x = DIAL_CENTER + LABEL_RADIUS * Math.cos(rad);
-              const y = DIAL_CENTER + LABEL_RADIUS * Math.sin(rad);
-
-              return (
-                <View
-                  key={`num-${num}`}
-                  style={[
-                    styles.outerNumberWrap,
-                    {
-                      left: x - 10,
-                      top: y - 8,
-                    },
-                  ]}
-                >
-                  <Text style={styles.outerNumberText}>{num}</Text>
-                </View>
-              );
-            })}
-
-            {/* Illuminated Radial Band Segments Between Outer & Inner Ring */}
-            {Array.from({ length: BAND_SEGMENTS }).map((_, idx) => {
-              const segAngle = START_ANGLE + (ARC_ANGLE / (BAND_SEGMENTS - 1)) * idx;
-              const segFraction = idx / (BAND_SEGMENTS - 1);
-              const isActive = score / 100 >= segFraction;
-              const isMajorSpoke = idx % 4 === 0;
-              const isHighZone = segFraction >= 0.75;
-
-              return (
-                <View
-                  key={`seg-${idx}`}
-                  pointerEvents="none"
-                  style={[
-                    styles.radialRayWrapper,
-                    {
-                      transform: [{ rotate: `${segAngle}deg` }],
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.radialBandSlice,
-                      isMajorSpoke && styles.majorSpokeSlice,
-                      {
-                        backgroundColor: isActive
-                          ? statusColor
-                          : isHighZone
-                          ? 'rgba(239, 68, 68, 0.16)'
-                          : 'rgba(148, 163, 184, 0.08)',
-                        opacity: isActive ? (isMajorSpoke ? 0.95 : 0.42) : 1,
-                      },
-                    ]}
-                  />
-                </View>
-              );
-            })}
-
-            {/* Outer Thin Ring */}
-            <View style={styles.outerThinArcRing} pointerEvents="none" />
-
-            {/* Sweeping Glowing Needle Assembly */}
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.needleAnchor,
-                {
-                  transform: [{ rotate: needleRotation }],
-                },
-              ]}
-            >
-              <View style={styles.needleBody}>
-                <View
-                  style={[
-                    styles.needleTip,
-                    {
-                      backgroundColor: statusColor,
-                      shadowColor: statusColor,
-                    },
-                  ]}
-                />
-              </View>
-            </Animated.View>
-
-            {/* Crisp White Inner Horseshoe Ring & Center Readout Hub */}
-            <View style={styles.innerWhiteRing}>
-              {/* Top Mode Selector ("Health mode" / "◀ OPTIMAL ▶") */}
-              <Text style={styles.driveModeLabel}>Health mode</Text>
-              <View style={styles.driveModeSelectorRow}>
-                <Text style={styles.modeTriangle}>◀</Text>
+            return (
+              <View
+                key={`scale-${num}`}
+                pointerEvents="none"
+                style={[
+                  styles.scaleNumberWrap,
+                  {
+                    left: x - 14,
+                    top: y - 9,
+                  },
+                ]}
+              >
                 <Text
                   style={[
-                    styles.driveModeValue,
-                    { color: statusColor },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {statusLabel}
-                </Text>
-                <Text style={styles.modeTriangle}>▶</Text>
-              </View>
-
-              {/* Giant Center Score Value */}
-              <Text style={styles.centerGiantScore}>
-                {score}
-              </Text>
-
-              {/* Unit Subtitle ("health %") */}
-              <Text style={styles.centerUnitLabel}>health %</Text>
-
-              {/* Bottom Gear-style Indicator ("V H 4") */}
-              <View style={styles.gearRow}>
-                <Text style={styles.gearMutedText}>V</Text>
-                <Text style={styles.gearActiveText}>H</Text>
-                <Text
-                  style={[
-                    styles.gearNumberText,
-                    { color: statusColor },
+                    styles.scaleNumberText,
+                    isActiveStep && { color: '#F1F5F9', fontWeight: '600' },
                   ]}
                 >
-                  {statusInfo.tier}
+                  {num}
                 </Text>
               </View>
-            </View>
+            );
+          })}
 
-            {/* Bottom-Right Multiplier Label ("×100 IDX") */}
-            <View style={styles.multiplierWrap}>
-              <Text style={styles.multiplierTopText}>×100</Text>
-              <Text style={styles.multiplierSubText}>IDX</Text>
-            </View>
-          </View>
-        </View>
+          {/* Illuminated Radial Band Between Outer & Inner Ring */}
+          {Array.from({ length: BAND_SEGMENTS }).map((_, idx) => {
+            const segAngle = START_ANGLE + (ARC_ANGLE / (BAND_SEGMENTS - 1)) * idx;
+            const segFraction = idx / (BAND_SEGMENTS - 1);
+            const isActive = score / 100 >= segFraction;
+            const isMajorSpoke = idx % 4 === 0;
 
-        {/* ================= RIGHT WING: INTEGRITY & READINESS GAUGES ================= */}
-        <View style={styles.rightWing}>
-          {/* Upper-Right Gauge (Diagnostic Integrity / Temp Style) */}
-          <View style={styles.rightUpperBlock}>
-            <View style={styles.rightMetricInline}>
-              <Text style={styles.wingBigValue}>
-                {100 - Math.min(90, urgentCount * 25 + diagCount * 10)}%
-              </Text>
-              <MaterialCommunityIcons
-                name="coolant-temperature"
-                size={15}
-                color="#FFFFFF"
-                style={{ marginLeft: 4 }}
-              />
-            </View>
-
-            <View style={styles.rightUpperGaugeWrap}>
-              <View style={styles.rightCurvedTempBar}>
-                {/* Red High Zone Top */}
-                <View style={styles.tempTopZone} />
-                {/* Active Glowing Level Fill */}
+            return (
+              <View
+                key={`seg-${idx}`}
+                pointerEvents="none"
+                style={[
+                  styles.radialRayWrapper,
+                  {
+                    transform: [{ rotate: `${segAngle}deg` }],
+                  },
+                ]}
+              >
                 <View
                   style={[
-                    styles.tempActiveFill,
+                    styles.radialBandSlice,
+                    isMajorSpoke && styles.majorSpokeSlice,
                     {
-                      height: `${Math.max(20, Math.min(75, (diagIntegrity - 50)))}%`,
-                      backgroundColor: statusColor,
-                      borderTopColor: '#FFFFFF',
+                      backgroundColor: isActive
+                        ? statusColor
+                        : 'rgba(148, 163, 184, 0.12)',
+                      opacity: isActive ? (isMajorSpoke ? 0.95 : 0.45) : 1,
                     },
                   ]}
                 />
               </View>
+            );
+          })}
 
-              <View style={styles.tempLabelsCol}>
-                <Text style={styles.arcScaleLabel}>100</Text>
-                <Text style={styles.arcScaleLabel}>80</Text>
-                <Text style={styles.arcScaleLabel}>50</Text>
-              </View>
-            </View>
-          </View>
+          {/* Outer Thin Arc Ring */}
+          <View style={styles.outerThinArcRing} pointerEvents="none" />
 
-          {/* Lower-Right Gauge (Battery / System Readiness Style) */}
-          <View style={styles.rightLowerBlock}>
-            <View style={styles.rightMetricInline}>
-              <Text style={styles.wingBigValue}>{readinessVoltage} v</Text>
-              <MaterialCommunityIcons
-                name="car-battery"
-                size={15}
-                color="#FFFFFF"
-                style={{ marginLeft: 4 }}
+          {/* Sweeping Glowing Needle */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.needleAnchor,
+              {
+                transform: [{ rotate: needleRotation }],
+              },
+            ]}
+          >
+            <View style={styles.needleBody}>
+              <View
+                style={[
+                  styles.needleTip,
+                  {
+                    backgroundColor: statusColor,
+                    shadowColor: statusColor,
+                  },
+                ]}
               />
             </View>
+          </Animated.View>
 
-            <View style={styles.rightBatteryBarOuter}>
-              {[4, 3, 2, 1, 0].map(segIdx => {
-                const isLit = segIdx < readinessSegments;
-                return (
-                  <View
-                    key={`bat-${segIdx}`}
-                    style={[
-                      styles.batteryBarSegment,
-                      {
-                        backgroundColor: isLit
-                          ? statusColor
-                          : 'rgba(148, 163, 184, 0.12)',
-                        opacity: isLit ? 0.85 : 1,
-                      },
-                    ]}
-                  />
-                );
-              })}
+          {/* Crisp White Inner Ring & Perfectly Centered Readout */}
+          <View style={styles.innerWhiteRing}>
+            <Text style={styles.healthModeLabel}>Health status</Text>
+
+            <View style={styles.healthModeSelectorRow}>
+              <Text style={styles.modeTriangle}>◀</Text>
+              <Text
+                style={[
+                  styles.healthModeValue,
+                  { color: statusColor },
+                ]}
+                numberOfLines={1}
+              >
+                {statusLabel}
+              </Text>
+              <Text style={styles.modeTriangle}>▶</Text>
             </View>
+
+            <Text style={styles.centerGiantScore}>{score}</Text>
+
+            <Text style={styles.centerUnitLabel}>health %</Text>
           </View>
         </View>
       </View>
 
-      {/* BOTTOM COCKPIT TELLTALE BAR & STATUS STRIP */}
-      <View style={styles.bottomCockpitBar}>
-        <View style={styles.telltaleIconsRow}>
-          {/* 1. Inspection / Headlight Telltale */}
-          <MaterialCommunityIcons
-            name="car-light-high"
-            size={17}
-            color="#F59E0B"
-            style={styles.telltaleAmberGlow}
-          />
+      {/* Clean Bottom Status Strip */}
+      <View style={styles.bottomStrip}>
+        <View style={styles.statusBadgeWrap}>
+          <View
+            style={[
+              styles.bottomBadge,
+              {
+                backgroundColor: statusBgColor,
+                borderColor: statusColor,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: statusColor,
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                {
+                  color: statusColor,
+                },
+              ]}
+            >
+              {statusLabel}
+            </Text>
+          </View>
 
-          {/* 2. Oil / Service Telltale */}
-          <MaterialCommunityIcons
-            name="oil"
-            size={17}
-            color={preventiveCount > 0 ? '#F5B942' : '#263445'}
-          />
+          <Text style={styles.bulletDivider}>·</Text>
 
-          {/* 3. Active Vehicle Sync Turn-Signal Arrows (Glowing Green) */}
-          <MaterialCommunityIcons
-            name="swap-horizontal-bold"
-            size={18}
-            color="#10B981"
-            style={styles.telltaleGreenGlow}
-          />
-
-          {/* 4. Check Engine / Diagnostic Telltale */}
-          <MaterialCommunityIcons
-            name="engine-outline"
-            size={17}
-            color={diagCount > 0 ? statusColor : '#263445'}
-          />
-        </View>
-
-        <View style={styles.bottomSummaryRow}>
-          <Text style={styles.bottomDetailText} numberOfLines={1}>
+          <Text style={styles.statusSubtext} numberOfLines={1}>
             {statusDetail}
           </Text>
-          {showDetailsLink && (
-            <Text style={[styles.viewDetailsText, { color: statusColor }]}>
-              View details ›
-            </Text>
-          )}
         </View>
+
+        {showDetailsLink && (
+          <Text style={styles.viewDetailsText}>View details</Text>
+        )}
       </View>
     </CardContainer>
   );
@@ -639,288 +406,105 @@ const VehicleHealthSpeedometer = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#07131E',
-    borderColor: 'rgba(56, 189, 248, 0.18)',
     borderRadius: 20,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 7,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
     marginBottom: 20,
-    overflow: 'hidden',
   },
-  ambientCenterGlow: {
-    position: 'absolute',
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    alignSelf: 'center',
-    top: 22,
-    opacity: 0.25,
-  },
-
-  // Top HUD Bar
-  topHudRow: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  topHudLeftWrap: {
-    width: '34%',
+  headerTextWrap: {
+    flex: 1,
+    paddingRight: 10,
   },
-  topHudLeftTextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 3,
-  },
-  hudDateText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9.5,
-    color: '#7C8B99',
-  },
-  hudTimeText: {
+  title: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 9.5,
-    color: '#F1F5F9',
-  },
-  hudLineLeftContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  hudHorizontalLineLeft: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.22)',
-  },
-  hudAngledTailLeft: {
-    width: 10,
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.22)',
-    transform: [{ rotate: '-35deg' }, { translateY: -2 }],
-  },
-  topHudCenterTitle: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  clusterEyebrow: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 9.5,
-    color: '#94A3B8',
-    letterSpacing: 0.3,
-  },
-  topHudRightWrap: {
-    width: '30%',
-    alignItems: 'flex-end',
-  },
-  topHudRightTextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 3,
-  },
-  hudRightTempText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 9.5,
-    letterSpacing: 0.5,
-  },
-  hudLineRightContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-  },
-  hudAngledTailRight: {
-    width: 10,
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.22)',
-    transform: [{ rotate: '35deg' }, { translateY: -2 }],
-  },
-  hudHorizontalLineRight: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.22)',
-  },
-
-  // Main 3-Column Layout
-  clusterMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-  },
-
-  // Left Wing
-  leftWing: {
-    width: 96,
-    justifyContent: 'space-between',
-  },
-  leftGaugeBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fuelLabelsCol: {
-    height: 64,
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginRight: 3,
-  },
-  arcScaleLabel: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 8.5,
-    color: '#CBD5E1',
-  },
-  leftCurvedBarOuter: {
-    width: 11,
-    height: 64,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 4,
-    padding: 1.5,
-    justifyContent: 'space-between',
-    transform: [{ rotate: '6deg' }],
-  },
-  leftBarSegment: {
-    flex: 1,
-    marginVertical: 0.6,
-    borderRadius: 1,
-  },
-  leftBarReserveSegment: {
-    borderTopWidth: 1,
-    borderTopColor: '#EF4444',
-  },
-  leftReadoutCol: {
-    marginLeft: 6,
-    flex: 1,
-  },
-  leftPrimaryMetricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  smallArrow: {
-    fontSize: 7,
-    color: '#94A3B8',
-  },
-  wingBigValue: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13.5,
+    fontSize: 15,
+    fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
-  dottedStatsWrap: {
-    marginTop: 4,
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(148, 163, 184, 0.28)',
-    borderStyle: 'dashed',
-    paddingLeft: 4,
-  },
-  dottedLineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  subtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11.5,
+    color: '#8E8E93',
     marginTop: 2,
   },
-  dottedTick: {
-    width: 5,
-    height: 1,
-    backgroundColor: 'rgba(148, 163, 184, 0.35)',
-    marginRight: 3,
-  },
-  wingSubStatText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 8.5,
-    color: '#94A3B8',
-  },
 
-  // Left Distance / Care Log Table
-  distanceTableWrap: {
-    marginTop: 8,
-  },
-  distanceHeaderLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 8.5,
-    color: '#64748B',
-    marginBottom: 3,
-  },
-  distancePillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    paddingHorizontal: 6,
-    paddingVertical: 2.5,
-    borderRadius: 4,
-    marginBottom: 2.5,
-  },
-  distanceRowKey: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 8.5,
-    color: '#94A3B8',
-  },
-  distanceRowVal: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 8.5,
-    color: '#E2E8F0',
-  },
-
-  // Center Speedometer / Tachometer Dial
-  centerDialContainer: {
+  // Perfectly Centered Speedometer Container
+  gaugeWrapper: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    width: DIAL_SIZE,
-    height: DIAL_SIZE,
+    paddingVertical: 6,
   },
   dialBox: {
-    width: DIAL_SIZE,
-    height: DIAL_SIZE,
+    width: DIAL_BOX_SIZE,
+    height: DIAL_BOX_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
-  outerNumberWrap: {
+  ambientGlow: {
     position: 'absolute',
-    width: 20,
-    height: 16,
+    width: OUTER_RING_SIZE + 8,
+    height: OUTER_RING_SIZE + 8,
+    borderRadius: (OUTER_RING_SIZE + 8) / 2,
+    opacity: 0.25,
+  },
+  scaleNumberWrap: {
+    position: 'absolute',
+    width: 28,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  outerNumberText: {
+  scaleNumberText: {
     fontFamily: 'Inter-Medium',
-    fontSize: 9,
-    color: '#CBD5E1',
+    fontSize: 10,
+    color: '#64748B',
+    textAlign: 'center',
   },
   radialRayWrapper: {
     position: 'absolute',
-    width: 124,
-    height: 124,
+    width: OUTER_RING_SIZE,
+    height: OUTER_RING_SIZE,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
   radialBandSlice: {
-    width: 2.5,
-    height: 15,
-    borderRadius: 1,
+    width: 3,
+    height: 18,
+    borderRadius: 1.5,
   },
   majorSpokeSlice: {
-    width: 1.5,
-    height: 16,
+    width: 2,
+    height: 20,
   },
   outerThinArcRing: {
     position: 'absolute',
-    width: 124,
-    height: 124,
-    borderRadius: 62,
+    width: OUTER_RING_SIZE,
+    height: OUTER_RING_SIZE,
+    borderRadius: OUTER_RING_SIZE / 2,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.18)',
+    borderColor: 'rgba(148, 163, 184, 0.20)',
     borderBottomColor: 'transparent',
   },
   needleAnchor: {
     position: 'absolute',
-    width: 124,
-    height: 124,
+    width: OUTER_RING_SIZE,
+    height: OUTER_RING_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -930,208 +514,111 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   needleTip: {
-    width: 3,
-    height: 17,
-    borderRadius: 1.5,
+    width: 3.5,
+    height: 21,
+    borderRadius: 2,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.95,
-    shadowRadius: 6,
+    shadowRadius: 7,
     elevation: 5,
   },
   innerWhiteRing: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
-    backgroundColor: '#06111B',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.85)',
+    width: INNER_RING_SIZE,
+    height: INNER_RING_SIZE,
+    borderRadius: INNER_RING_SIZE / 2,
+    backgroundColor: '#0B0F17',
+    borderWidth: 1.8,
+    borderColor: 'rgba(255, 255, 255, 0.88)',
     borderBottomColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 4,
+    paddingVertical: 6,
   },
-  driveModeLabel: {
+  healthModeLabel: {
     fontFamily: 'Inter-Regular',
-    fontSize: 7.5,
-    color: '#64748B',
+    fontSize: 9.5,
+    color: '#8A99AD',
   },
-  driveModeSelectorRow: {
+  healthModeSelectorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 0.5,
+    marginTop: 2,
   },
   modeTriangle: {
-    fontSize: 6,
+    fontSize: 7,
     color: '#E2E8F0',
-    marginHorizontal: 2,
+    marginHorizontal: 4,
   },
-  driveModeValue: {
+  healthModeValue: {
     fontFamily: 'Inter-Bold',
-    fontSize: 7.5,
-    letterSpacing: 0.6,
+    fontSize: 9.5,
+    letterSpacing: 0.7,
   },
   centerGiantScore: {
     fontFamily: 'Outfit-Bold',
-    fontSize: 32,
-    lineHeight: 35,
+    fontSize: 42,
+    lineHeight: 46,
     color: '#FFFFFF',
     letterSpacing: -1,
-    marginTop: 1,
+    marginTop: 2,
   },
   centerUnitLabel: {
     fontFamily: 'Inter-Regular',
-    fontSize: 8,
-    color: '#94A3B8',
-    marginTop: -2,
-  },
-  gearRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 2,
-  },
-  gearMutedText: {
-    fontFamily: 'Outfit-Medium',
     fontSize: 10,
-    color: '#475569',
-    marginRight: 4,
-  },
-  gearActiveText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 13,
-    color: '#FFFFFF',
-    marginRight: 2,
-  },
-  gearNumberText: {
-    fontFamily: 'Outfit-Bold',
-    fontSize: 12,
-  },
-  multiplierWrap: {
-    position: 'absolute',
-    bottom: 8,
-    right: 16,
-    alignItems: 'center',
-  },
-  multiplierTopText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 7,
     color: '#94A3B8',
-  },
-  multiplierSubText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 6.5,
-    color: '#64748B',
+    marginTop: -1,
   },
 
-  // Right Wing
-  rightWing: {
-    width: 92,
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  rightUpperBlock: {
+  // Bottom Status Strip
+  bottomStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  rightMetricInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  rightUpperGaugeWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rightCurvedTempBar: {
-    width: 11,
-    height: 60,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 4,
-    overflow: 'hidden',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(148, 163, 184, 0.08)',
-    transform: [{ rotate: '-6deg' }],
-  },
-  tempTopZone: {
-    width: '100%',
-    height: 14,
-    backgroundColor: 'rgba(239, 68, 68, 0.38)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(239, 68, 68, 0.7)',
-  },
-  tempActiveFill: {
-    width: '100%',
-    borderTopWidth: 1.5,
-    opacity: 0.85,
-  },
-  tempLabelsCol: {
-    height: 60,
-    justifyContent: 'space-between',
-    marginLeft: 3,
-  },
-  rightLowerBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 12,
-  },
-  rightBatteryBarOuter: {
-    width: 11,
-    height: 44,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 3.5,
-    padding: 1.5,
-    justifyContent: 'space-between',
-    transform: [{ rotate: '6deg' }],
-  },
-  batteryBarSegment: {
-    flex: 1,
-    marginVertical: 0.5,
-    borderRadius: 1,
-  },
-
-  // Bottom Telltale & Status Bar
-  bottomCockpitBar: {
-    marginTop: 8,
-    paddingTop: 7,
+    paddingTop: 12,
+    marginTop: 4,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(148, 163, 184, 0.14)',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
-  telltaleIconsRow: {
+  statusBadgeWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-    marginBottom: 4,
-  },
-  telltaleAmberGlow: {
-    textShadowColor: 'rgba(245, 158, 11, 0.55)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
-  },
-  telltaleGreenGlow: {
-    textShadowColor: 'rgba(16, 185, 129, 0.65)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  bottomSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-  },
-  bottomDetailText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 9.5,
-    color: '#7C8B99',
     flex: 1,
     paddingRight: 8,
   },
+  bottomBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 0.8,
+  },
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 5,
+  },
+  statusText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 9.5,
+    letterSpacing: 0.5,
+  },
+  bulletDivider: {
+    marginHorizontal: 6,
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+  statusSubtext: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: '#8E8E93',
+    flexShrink: 1,
+  },
   viewDetailsText: {
     fontFamily: 'Inter-Medium',
-    fontSize: 9.5,
+    fontSize: 11,
+    color: '#8E8E93',
   },
 });
 
