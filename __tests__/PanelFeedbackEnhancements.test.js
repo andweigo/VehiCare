@@ -158,13 +158,17 @@ describe('VehiCare Panel Feedback Enhancements Verification', () => {
         'utf8',
       );
 
-      // 1. Quick question setup removed
+      // 1. Quick question setup, top step pill buttons, and cramped AI POWERED badge removed
       expect(guideCode).not.toContain('QUICK_CLARIFICATION_OPTIONS');
       expect(guideCode).not.toContain('QUICK QUESTIONS FOR STEP');
+      expect(guideCode).not.toContain('HORIZONTAL STEP PILLS CAROUSEL');
+      expect(guideCode).not.toContain('>AI POWERED<');
 
-      // 2. Step Clarification is collapsed by default
+      // 2. Step Clarification is collapsed by default and strictly scoped to the current/given steps
       expect(guideCode).toContain('const [isClarificationOpen, setIsClarificationOpen] = useState(false);');
       expect(guideCode).toContain('testID="step-clarification-toggle"');
+      expect(guideCode).toContain('isStepFocusedQuery');
+      expect(guideCode).toContain('This assistant only clarifies Step');
 
       // 3. Step Clarification taps into real AI and reflects in AI usage
       expect(guideCode).toContain('useAIUsage');

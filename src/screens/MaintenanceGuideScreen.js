@@ -155,10 +155,102 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     }
   };
 
+  // Check whether the user's input is an actual question/clarification about the current step or guide steps
+  const isStepFocusedQuery = rawText => {
+    const cleaned = String(rawText || '').trim();
+    if (!cleaned || cleaned.length < 3) return false;
+
+    // Reject casual filler, laughter, greetings, or single-word chatter (e.g. "hehe", "haha", "lol", "ok")
+    if (
+      /^(?:(?:he)+h?|(?:ha)+h?|h+e+h+e+|h+a+h+a+|l+o+l+|l+m+a+o+|rofl|hi+|hello+|hey+|yo+|sup|ok+|okay|k+|yes|no|yep|nope|yeah|nah|hmm+|uh+|um+|test|testing|nice|cool|wow|thanks|thank\s*you|ty|salamat|oo|opo|hindi|sige|tama|ge|asdf+|qwerty+|[\W_]+)$/i.test(
+        cleaned,
+      )
+    ) {
+      return false;
+    }
+
+    const words = cleaned
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/gi, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 0) return false;
+
+    // Reject if every word is just laughter/filler like "hehe haha lol"
+    const fillerPattern = /^(?:(?:he)+h?|(?:ha)+h?|lol|lmao|hi|hello|hey|ok|okay|hmm|uh|um|yah|yeah|test)$/i;
+    if (words.every(w => fillerPattern.test(w))) {
+      return false;
+    }
+
+    const stepKeywords = new Set([
+      'where', 'how', 'what', 'why', 'when', 'which', 'who', 'can', 'should', 'do', 'does', 'is', 'are',
+      'mean', 'means', 'meaning', 'explain', 'clarify', 'help', 'understand', 'unsure', 'confused',
+      'locate', 'location', 'find', 'look', 'spot', 'position', 'side',
+      'tool', 'tools', 'wrench', 'socket', 'screwdriver', 'pliers', 'gauge', 'rag', 'gloves', 'jack',
+      'check', 'verify', 'confirm', 'inspect', 'test', 'measure', 'level', 'mark', 'tight', 'tighten', 'loosen', 'loose',
+      'safe', 'safety', 'danger', 'warning', 'caution', 'avoid', 'mistake', 'risk', 'hot', 'cool',
+      'diy', 'myself', 'mechanic', 'shop', 'professional', 'hard', 'difficult', 'easy',
+      'step', 'steps', 'first', 'next', 'previous', 'before', 'after', 'skip', 'part', 'component',
+      'bolt', 'nut', 'screw', 'clip', 'fastener', 'cap', 'cover', 'plug', 'drain', 'fill', 'filter',
+      'oil', 'fluid', 'coolant', 'water', 'brake', 'pad', 'rotor', 'caliper', 'tire', 'wheel', 'psi', 'pressure', 'tread',
+      'battery', 'terminal', 'cable', 'fuse', 'relay', 'wire', 'sensor', 'belt', 'chain', 'sprocket', 'tension', 'lube',
+      'hose', 'clamp', 'leak', 'seep', 'crack', 'wear', 'worn', 'dirty', 'clean', 'replace', 'remove', 'install',
+      'torque', 'spec', 'manual', 'engine', 'motor', 'ignition', 'start', 'idle', 'noise', 'sound',
+      'paano', 'saan', 'ano', 'alin', 'bakit', 'kailangan', 'gamit', 'parte', 'higpit', 'luwag', 'linis', 'palit',
+    ]);
+
+    // Extract keywords from the active step and the given guide steps
+    const stepContextWords = new Set(
+      [
+        activeStepData?.title,
+        activeStepData?.instructions,
+        activeStepData?.check,
+        activeStepData?.warning,
+        item?.title,
+        ...(guide?.tools || []),
+        ...steps.map(s => `${s?.title || ''} ${s?.instructions || ''}`),
+      ]
+        .join(' ')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/gi, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3),
+    );
+
+    const hasRelevantWord = words.some(w => stepKeywords.has(w) || stepContextWords.has(w));
+    const hasQuestionMark = cleaned.includes('?');
+
+    if (words.length === 1) {
+      return hasRelevantWord;
+    }
+
+    return hasRelevantWord || (hasQuestionMark && words.length >= 2);
+  };
+
   // ON-SCREEN AI CLARIFICATION SUBMISSION (taps into real AI & updates AI usage)
   const handleAskClarification = async customQuery => {
     const query = (customQuery || activeInputText).trim();
     if (!query || isAskingAI) return;
+
+    const vehicleDisplayName = getVehicleDisplayName(vehicleProfile, 'Vehicle');
+    const vehicleType = resolveVehicleTypeString(vehicleProfile);
+    const stepTitle = activeStepData.title || `Step ${currentStep + 1}`;
+    const taskTitle = item?.title || 'Maintenance Task';
+
+    // Guard against casual chatter (e.g. "hehe") or off-topic inputs so it only answers about the current step / given steps
+    if (!isStepFocusedQuery(query)) {
+      setClarificationHistory(prev => ({
+        ...prev,
+        [currentStep]: {
+          question: query,
+          answer: `This assistant only clarifies Step ${currentStep + 1} ("${stepTitle}") and the steps in this "${taskTitle}" guide. Please ask a specific question about "${activeStepData.instructions || stepTitle}" — such as where a component is located, what tool to use, or how to verify this step.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      }));
+      setActiveInputText('');
+      return;
+    }
 
     if (usage?.exhausted) {
       setAiError('You have reached your AI consultation limit for this period.');
@@ -168,20 +260,31 @@ const MaintenanceGuideScreen = ({ route, navigation }) => {
     setIsAskingAI(true);
     setAiError(null);
 
-    const vehicleDisplayName = getVehicleDisplayName(vehicleProfile, 'Vehicle');
-    const vehicleType = resolveVehicleTypeString(vehicleProfile);
-    const stepTitle = activeStepData.title || `Step ${currentStep + 1}`;
-    const taskTitle = item?.title || 'Maintenance Task';
-
     try {
-      // Formulate detailed automotive context for the AI
-      const promptText = `I am performing the vehicle maintenance task "${taskTitle}" on my ${vehicleDisplayName} (${vehicleType}).
-Current Step ${currentStep + 1} of ${totalSteps}: "${stepTitle}".
-Step Instructions: "${activeStepData.instructions || ''}".
-Inspection Checkpoint: "${activeStepData.check || 'N/A'}".
-Safety Warning: "${activeStepData.warning || 'None specified'}".
-User's Question / Confusion about this step: "${query}".
-Please provide a concise, direct, step-specific automotive clarification explaining what to do, where to look, tools to use, safety precautions, whether it is safe for DIY or requires a mechanic, or how to verify. Clearly distinguish general maintenance guidance from verified manufacturer-specific specifications.`;
+      const givenStepsText = steps
+        .map((st, idx) => `Step ${idx + 1}: ${st.title || `Step ${idx + 1}`} — ${st.instructions || ''}`)
+        .join('\n');
+
+      // Formulate strictly step-scoped context so the AI only clarifies the active step / given steps
+      const promptText = `[STEP CLARIFICATION MODE — CONVERSATION ONLY]
+Vehicle: ${vehicleDisplayName} (${vehicleType})
+Maintenance Guide: "${taskTitle}"
+Given Steps in this Guide:
+${givenStepsText}
+
+USER IS CURRENTLY ON STEP ${currentStep + 1} OF ${totalSteps}:
+- Step Title: "${stepTitle}"
+- Step Instructions: "${activeStepData.instructions || ''}"
+- Verification Checkpoint: "${activeStepData.check || 'N/A'}"
+- Caution / Warning: "${activeStepData.warning || 'None specified'}"
+
+User's Question about Step ${currentStep + 1}: "${query}"
+
+STRICT INSTRUCTIONS FOR RESPONSE:
+1. Respond with type="conversation" and a direct, plain-text "response" (2 to 4 sentences maximum).
+2. Base your clarification ONLY on Step ${currentStep + 1} ("${stepTitle}") and the given steps above.
+3. DO NOT output the whole maintenance procedure or list all steps from start to finish. Only explain or clarify Step ${currentStep + 1} in response to the user's question.
+4. If the question is unrelated to Step ${currentStep + 1} or the steps given above, politely state that you can only clarify the current step ("${stepTitle}") or the steps in this guide.`;
 
       let answerText = null;
       let aiConsultationSucceeded = false;
@@ -247,23 +350,20 @@ Please provide a concise, direct, step-specific automotive clarification explain
             answerText = res;
           } else if (res.response) {
             answerText = res.response;
-          } else if (res.whats_happening || res.summary || res.repair_guidance) {
-            const parts = [
-              res.whats_happening,
-              res.summary,
-              typeof res.repair_guidance === 'string'
-                ? res.repair_guidance
-                : res.repair_guidance?.overview || res.repair_guidance?.steps?.join('\n'),
-              Array.isArray(res.recommended_actions) && res.recommended_actions.length > 0
-                ? res.recommended_actions
-                    .map(act => (typeof act === 'string' ? act : act?.action || act?.title || ''))
-                    .filter(Boolean)
-                    .join('\n• ')
-                : null,
-            ].filter(Boolean);
-            answerText = parts.join('\n\n');
+          } else if (res.whats_happening || res.summary) {
+            answerText = [res.whats_happening, res.summary].filter(Boolean).join(' ');
           } else if (res.message) {
             answerText = res.message;
+          }
+
+          // If the AI accidentally returned a multi-step list of the whole procedure, scope it back to the current step
+          if (
+            answerText &&
+            /(?:step\s*1\b[\s\S]*step\s*2\b[\s\S]*step\s*3\b|^\s*1\.\s+[\s\S]*^\s*2\.\s+[\s\S]*^\s*3\.\s+)/im.test(
+              answerText,
+            )
+          ) {
+            answerText = null;
           }
         }
       } catch (apiErr) {
@@ -295,25 +395,23 @@ Please provide a concise, direct, step-specific automotive clarification explain
         }
       }
 
-      // Intelligent automotive fallback if API was unavailable or returned empty
+      // Step-scoped fallback based strictly on the current step (Step ${currentStep + 1}) and given guide steps
       if (!answerText) {
         const lowerQuery = query.toLowerCase();
 
-        if (lowerQuery.includes('locate') || lowerQuery.includes('where') || lowerQuery.includes('location')) {
-          answerText = `📍 Component Location for ${stepTitle}:\nOn your ${vehicleDisplayName}, this component is situated near the ${taskTitle.toLowerCase()} assembly within the engine bay or underbody. Make sure the vehicle is parked on level ground with the ignition off and engine completely cool before reaching in. Refer to the owner's manual compartment diagram for exact orientation.`;
-        } else if (lowerQuery.includes('tool') || lowerQuery.includes('need') || lowerQuery.includes('wrench') || lowerQuery.includes('socket')) {
-          const toolsList = guide?.tools?.join(', ') || 'basic metric sockets, screwdriver, and protective work gloves';
-          answerText = `🛠️ Tools for ${stepTitle}:\nRecommended tools include: ${toolsList}. Keep a flashlight or work lamp handy for clear visibility, and wear eye protection while inspecting or loosening fasteners.`;
+        if (lowerQuery.includes('locate') || lowerQuery.includes('where') || lowerQuery.includes('location') || lowerQuery.includes('saan')) {
+          answerText = `For Step ${currentStep + 1} (${stepTitle}): ${activeStepData.instructions || stepTitle} Look around the ${taskTitle.toLowerCase()} area on your ${vehicleDisplayName} while parked on level ground with the engine off and cool.${activeStepData.check ? ` Verify by checking: ${activeStepData.check}` : ''}`;
+        } else if (lowerQuery.includes('tool') || lowerQuery.includes('need') || lowerQuery.includes('wrench') || lowerQuery.includes('socket') || lowerQuery.includes('gamit')) {
+          const toolsList = guide?.tools?.join(', ') || 'basic hand tools and protective gloves';
+          answerText = `For Step ${currentStep + 1} (${stepTitle}), use: ${toolsList}. Follow the step instruction ("${activeStepData.instructions || stepTitle}") carefully and keep a light handy for visibility.`;
         } else if (lowerQuery.includes('verify') || lowerQuery.includes('check') || lowerQuery.includes('right') || lowerQuery.includes('correct') || lowerQuery.includes('confirm')) {
-          answerText = `🔍 Verification Checkpoint:\n${activeStepData.check || 'Confirm that all fittings, fasteners, or connectors are snug and aligned. Verify there is no play, loose debris, or fluid seepage around the component housing.'}`;
-        } else if (lowerQuery.includes('mistake') || lowerQuery.includes('avoid') || lowerQuery.includes('warning') || lowerQuery.includes('danger')) {
-          answerText = `⚠️ Important Precautions for ${stepTitle}:\n${activeStepData.warning || 'Do not overtighten plastic clips or thread fasteners beyond spec. Never force a part that meets stiff resistance; double-check seating alignment and ensure foreign objects cannot fall into open ports.'}`;
-        } else if (lowerQuery.includes('simpl') || lowerQuery.includes('beginner') || lowerQuery.includes('explain')) {
-          answerText = `💬 In Simple Terms (${stepTitle}):\n${activeStepData.instructions || stepTitle} Simply take your time with this step, make sure the vehicle is turned off and cool, and verify "${activeStepData.check || 'that all parts fit snugly before moving on'}". (Note: This is general maintenance guidance; consult your ${vehicleDisplayName} owner's manual for exact manufacturer torque and fluid specifications.)`;
+          answerText = `To verify Step ${currentStep + 1} (${stepTitle}): ${activeStepData.check || `Confirm that "${activeStepData.instructions || stepTitle}" is completed securely with no loose fittings or abnormal play.`}`;
+        } else if (lowerQuery.includes('mistake') || lowerQuery.includes('avoid') || lowerQuery.includes('warning') || lowerQuery.includes('danger') || lowerQuery.includes('safe')) {
+          answerText = `Caution for Step ${currentStep + 1} (${stepTitle}): ${activeStepData.warning || 'Do not force components or overtighten fasteners. Make sure the vehicle is completely off and stable before performing this step.'}`;
         } else if (lowerQuery.includes('diy') || lowerQuery.includes('myself') || lowerQuery.includes('mechanic') || lowerQuery.includes('professional')) {
-          answerText = `🧑‍🔧 DIY vs. Professional Mechanic (${stepTitle}):\nBasic visual checks and accessible fastener steps can be done DIY if you have the listed tools (${guide?.tools?.join(', ') || 'basic hand tools'}) and follow safety precautions. However, if a bolt is seized, special calibration tools are needed, or you feel unsure around pressurized/electrical parts, have a certified mechanic complete the procedure.`;
+          answerText = `Step ${currentStep + 1} (${stepTitle}) involves: "${activeStepData.instructions || stepTitle}". You can perform this step yourself if you have ${guide?.tools?.join(', ') || 'the required tools'} and follow the safety precautions, or have a mechanic assist if any fastener is seized or inaccessible.`;
         } else {
-          answerText = `💡 Guidance for ${stepTitle}:\nWhen following "${activeStepData.instructions || stepTitle}", proceed methodically. Ensure components are cleanly seated and all fasteners are secured. ${activeStepData.check ? `Key checkpoint: ${activeStepData.check}` : 'Double check that everything is back in place before proceeding.'} (General guidance — check your ${vehicleDisplayName} service manual for model-specific specs.)`;
+          answerText = `In Step ${currentStep + 1} (${stepTitle}): ${activeStepData.instructions || stepTitle}${activeStepData.check ? ` After doing this, verify: ${activeStepData.check}` : ''}${activeStepData.warning ? ` Note: ${activeStepData.warning}` : ''}`;
         }
       }
 
@@ -544,7 +642,7 @@ Please provide a concise, direct, step-specific automotive clarification explain
             )}
           </View>
 
-          {/* 3. STEP PROGRESS BAR & STEP PILLS NAVIGATION */}
+          {/* 3. STEP PROGRESS BAR */}
           {totalSteps > 0 && (
             <View style={styles.stepNavigationHeader}>
               <View style={styles.stepProgressRow}>
@@ -556,7 +654,7 @@ Please provide a concise, direct, step-specific automotive clarification explain
                 </Text>
               </View>
 
-              <View style={[styles.progressBarBg, { backgroundColor: theme.surfaceAlt }]}>
+              <View style={[styles.progressBarBg, { backgroundColor: theme.surfaceAlt, marginBottom: 0 }]}>
                 <View
                   style={[
                     styles.progressBarFill,
@@ -567,54 +665,6 @@ Please provide a concise, direct, step-specific automotive clarification explain
                   ]}
                 />
               </View>
-
-              {/* HORIZONTAL STEP PILLS CAROUSEL */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.stepPillsScroll}
-              >
-                {steps.map((st, idx) => {
-                  const isCurrent = idx === currentStep;
-                  const isCompleted = completedSteps.includes(idx + 1);
-
-                  return (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[
-                        styles.stepIndicatorPill,
-                        {
-                          backgroundColor: isCurrent
-                            ? theme.accent
-                            : (isCompleted ? 'rgba(50, 213, 131, 0.14)' : theme.surfaceAlt),
-                          borderColor: isCurrent
-                            ? theme.accent
-                            : (isCompleted ? (theme.success || '#32D583') : theme.border),
-                        },
-                      ]}
-                      activeOpacity={0.75}
-                      onPress={() => setCurrentStep(idx)}
-                    >
-                      {isCompleted && !isCurrent ? (
-                        <Icon name="check" size={13} color={theme.success || '#32D583'} style={{ marginRight: 3 }} />
-                      ) : null}
-                      <Text
-                        style={[
-                          styles.stepIndicatorPillText,
-                          {
-                            color: isCurrent
-                              ? '#FFFFFF'
-                              : (isCompleted ? (theme.success || '#32D583') : theme.textSecondary),
-                            fontFamily: isCurrent ? 'Outfit-Bold' : 'Inter-SemiBold',
-                          },
-                        ]}
-                      >
-                        {`Step ${idx + 1}`}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
             </View>
           )}
 
@@ -698,16 +748,11 @@ Please provide a concise, direct, step-specific automotive clarification explain
                       <Text style={[styles.aiClarificationTitle, { color: theme.text }]}>
                         Step Clarification Assistant
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <View style={[styles.aiPoweredBadge, { backgroundColor: theme.accentSoft }]}>
-                          <Text style={[styles.aiPoweredBadgeText, { color: theme.accent }]}>AI POWERED</Text>
-                        </View>
-                        <Icon
-                          name={isClarificationOpen ? 'expand-less' : 'expand-more'}
-                          size={20}
-                          color={theme.accent}
-                        />
-                      </View>
+                      <Icon
+                        name={isClarificationOpen ? 'expand-less' : 'expand-more'}
+                        size={20}
+                        color={theme.accent}
+                      />
                     </View>
                     <Text style={[styles.aiClarificationSub, { color: theme.textSecondary }]}>
                       {isClarificationOpen
